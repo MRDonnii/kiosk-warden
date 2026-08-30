@@ -59,7 +59,7 @@ sudo apt-get update -y
 sudo apt-get install -y \
   mosquitto-clients jq bc curl xdotool wmctrl unclutter \
   x11-xserver-utils lm-sensors htop openssh-server dbus-x11 \
-  imagemagick gnome-screenshot python3
+  imagemagick gnome-screenshot python3 x11vnc novnc websockify
 
 if ! command -v google-chrome-stable >/dev/null 2>&1; then
   echo "== Installerer Google Chrome =="
@@ -93,6 +93,20 @@ else
   echo "~/kiosk/kiosk.conf findes allerede — rører den ikke."
 fi
 
+echo "== VNC password =="
+if [[ ! -f "$HOME/.vnc/passwd" ]]; then
+  mkdir -p "$HOME/.vnc"
+  ask VNC_PASSWORD "VNC password til fjernstyring (blankt = generér tilfældigt)" "" silent
+  if [[ -z "$VNC_PASSWORD" ]]; then
+    VNC_PASSWORD="$(head -c9 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c12)"
+    echo "Genereret VNC password: $VNC_PASSWORD (skriv det ned — det vises ikke igen)"
+  fi
+  x11vnc -storepasswd "$VNC_PASSWORD" "$HOME/.vnc/passwd" >/dev/null
+  chmod 600 "$HOME/.vnc/passwd"
+else
+  echo "~/.vnc/passwd findes allerede — rører den ikke."
+fi
+
 echo "== Kopierer web-UI til ~/kiosk/webui =="
 mkdir -p "$HOME/kiosk/webui"
 cp "$SRC_DIR"/webui/*.py "$HOME/kiosk/webui/"
@@ -103,18 +117,22 @@ mkdir -p "$HOME/.config/systemd/user"
 cp "$SRC_DIR"/systemd/*.service "$HOME/.config/systemd/user/"
 systemctl --user daemon-reload
 systemctl --user enable kiosk-chrome.service kiosk-mqtt-stats.service \
-  kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-webui.service
+  kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-webui.service \
+  kiosk-vnc.service kiosk-novnc.service
 loginctl enable-linger "$USER" || true
 systemctl --user start kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-webui.service || true
 if [[ -n "${DISPLAY:-}" ]]; then
-  systemctl --user start kiosk-chrome.service kiosk-watchdog.service kiosk-health.service || true
+  systemctl --user start kiosk-chrome.service kiosk-watchdog.service kiosk-health.service \
+    kiosk-vnc.service kiosk-novnc.service || true
 else
-  echo "Ingen grafisk session lige nu — Chrome-relaterede services starter ved næste login/reboot."
+  echo "Ingen grafisk session lige nu — Chrome/VNC-relaterede services starter ved næste login/reboot."
 fi
 
 if command -v ufw >/dev/null 2>&1 && sudo ufw status | grep -q "Status: active"; then
-  echo "== Åbner port 8080 i ufw (web-UI) =="
+  echo "== Åbner porte i ufw (web-UI, VNC) =="
   sudo ufw allow 8080/tcp || true
+  sudo ufw allow 6080/tcp || true
+  sudo ufw allow 5900/tcp || true
 fi
 
 echo "== Sudoers regel til reboot/shutdown =="
@@ -192,5 +210,8 @@ echo "Web-UI (opsætning + kontrolpanel):"
 echo "  http://localhost:8080  (på selve maskinen)"
 [[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:8080  (fra andre enheder på netværket, fx telefonen)"
 echo "Første besøg beder dig sætte et password — gør det med det samme, siden UI'et er tilgængeligt på netværket."
+echo "Fjernstyring (klik direkte på skærmen i browseren): klik 'Fjernstyring' i web-UI'et, eller åbn direkte:"
+[[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:6080/vnc.html"
+echo "Kræver VNC-passwordet sat ovenfor (separat fra web-UI-passwordet)."
 echo "Kør 'bash ~/kiosk/mqtt-discovery.sh' for at (gen)publicere Home Assistant entities."
 echo "Genstart maskinen for at få GDM-autologin og kiosk-chrome til at starte ved boot."

@@ -242,6 +242,7 @@ def render_dashboard(conf, message=None, error=None):
     <form method="post" action="/action"><input type="hidden" name="do" value="restart_chrome"><button type="submit">Genstart Chrome</button></form>
     <form method="post" action="/action"><input type="hidden" name="do" value="screenshot"><button type="submit">Tag screenshot</button></form>
     <form method="post" action="/action"><input type="hidden" name="do" value="backup"><button type="submit">Backup config</button></form>
+    <a href="/vnc"><button type="button">Fjernstyring (VNC)</button></a>
   </div>
   <div class="row">
     <form method="post" action="/action" onsubmit="return confirm('Genstarte maskinen nu?');"><input type="hidden" name="do" value="reboot"><button class="danger" type="submit">Genstart maskine</button></form>
@@ -284,6 +285,34 @@ def render_dashboard(conf, message=None, error=None):
     <div class="row"><button type="submit">Skift password</button></div>
   </fieldset>
 </form>
+"""
+    body += PAGE_TAIL
+    return body
+
+
+def render_vnc(conf):
+    body = PAGE_HEAD.format(title_suffix=" — Fjernstyring")
+    body += "<h1>Fjernstyring</h1>"
+    body += '<div class="sub"><a href="/">&larr; Tilbage</a></div>'
+    body += """
+<div class="row">
+  <button type="button" onclick="document.getElementById('vncframe').requestFullscreen()">Fuld skærm</button>
+  <button type="button" onclick="reloadFrame()">Genopfrisk forbindelse</button>
+</div>
+<div style="margin-top:.8rem; border-radius:10px; overflow:hidden; border:1px solid rgba(128,128,128,.35);">
+  <iframe id="vncframe" allowfullscreen
+    style="width:100%; height:70vh; border:0; display:block; background:#000;"></iframe>
+</div>
+<div class="status">Kræver VNC-password (separat fra login på denne side) ved forbindelse.</div>
+<script>
+  function vncUrl() {
+    return 'http://' + location.hostname + ':6080/vnc.html?autoconnect=true&resize=scale&reconnect=true&_=' + Date.now();
+  }
+  function reloadFrame() {
+    document.getElementById('vncframe').src = vncUrl();
+  }
+  reloadFrame();
+</script>
 """
     body += PAGE_TAIL
     return body
@@ -346,6 +375,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/screenshot.jpg":
             return self._serve_screenshot()
+        if parsed.path == "/vnc":
+            return self._send_html(render_vnc(conf))
         if parsed.path in ("/", ""):
             return self._send_html(render_dashboard(conf))
         self.send_response(404)
