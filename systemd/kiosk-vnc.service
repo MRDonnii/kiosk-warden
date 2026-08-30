@@ -1,0 +1,14 @@
+[Unit]
+Description=Kiosk VNC sharing (x11vnc) for the active desktop
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+ExecStart=/usr/bin/x11vnc -display :0 -auth %t/gdm/Xauthority -rfbauth %h/.vnc/passwd -forever -shared -rfbport 5900 -no6 -noxdamage -repeat -quiet
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

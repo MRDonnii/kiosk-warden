@@ -1,0 +1,13 @@
+[Unit]
+Description=Kiosk noVNC web bridge (browser-based VNC viewer)
+After=kiosk-vnc.service
+Requires=kiosk-vnc.service
+
+[Service]
+Type=simple
+ExecStart=/bin/sh -c 'exec "$(command -v novnc_proxy || echo /usr/share/novnc/utils/novnc_proxy)" --vnc localhost:5900 --listen 6080 --web /usr/share/novnc'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -19,6 +19,9 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
   Home Assistant.
 - Ships a small built-in **web UI** for setup and local control — no SSH or
   terminal needed after the first install.
+- Bundles browser-based **VNC remote control** (x11vnc + noVNC): click
+  directly on the kiosk's screen from the web UI, including a fullscreen
+  toggle.
 
 ## Install
 
@@ -89,6 +92,30 @@ From the web UI you can:
 If you'd rather keep it off the network entirely, set `KIOSK_WEBUI_HOST=127.0.0.1`
 as an `Environment=` line in `~/.config/systemd/user/kiosk-webui.service`
 and run `systemctl --user restart kiosk-webui.service`.
+
+## Remote control (VNC)
+
+The installer sets up `x11vnc` (shares the live X11 session, protected by a
+VNC password you set during install) and bridges it to the browser with
+`noVNC` + `websockify`:
+
+- Raw VNC (for a normal VNC client like TigerVNC/RealVNC): `<kiosk-ip>:5900`
+- Browser-based (noVNC): `http://<kiosk-ip>:6080/vnc.html`
+- Or just click **Fjernstyring (VNC)** on the web UI dashboard, which embeds
+  the same viewer with a fullscreen button — you can click directly on the
+  kiosk's screen from your phone or laptop.
+
+The VNC password is separate from the web UI password — it's asked for
+(or auto-generated and printed once) during `install.sh`, and stored in
+`~/.vnc/passwd`. Services: `kiosk-vnc.service` (x11vnc) and
+`kiosk-novnc.service` (the web bridge on port 6080).
+
+To change the VNC password later:
+
+```bash
+x11vnc -storepasswd <new-password> ~/.vnc/passwd
+systemctl --user restart kiosk-vnc.service
+```
 
 ## Layout
 
@@ -161,8 +188,8 @@ mosquitto_pub -h <MQTT_HOST> -t 'home/kiosk/<KIOSK_ID>/command' -m reload
 ## Services
 
 ```bash
-systemctl --user status  kiosk-chrome kiosk-mqtt-stats kiosk-mqtt-control kiosk-watchdog kiosk-health kiosk-webui
-systemctl --user restart kiosk-chrome kiosk-mqtt-stats kiosk-mqtt-control kiosk-watchdog kiosk-health kiosk-webui
+systemctl --user status  kiosk-chrome kiosk-mqtt-stats kiosk-mqtt-control kiosk-watchdog kiosk-health kiosk-webui kiosk-vnc kiosk-novnc
+systemctl --user restart kiosk-chrome kiosk-mqtt-stats kiosk-mqtt-control kiosk-watchdog kiosk-health kiosk-webui kiosk-vnc kiosk-novnc
 ```
 
 ## Multi-machine
