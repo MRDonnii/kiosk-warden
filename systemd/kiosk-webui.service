@@ -1,0 +1,13 @@
+[Unit]
+Description=Kiosk Warden web UI (setup + control)
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+ExecStart=/usr/bin/python3 %h/kiosk/webui/server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

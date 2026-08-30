@@ -17,6 +17,8 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
   failures. A separate watchdog restarts Chrome if the process dies outright.
 - Takes on-demand screenshots and config backups, both triggerable from
   Home Assistant.
+- Ships a small built-in **web UI** for setup and local control — no SSH or
+  terminal needed after the first install.
 
 ## Install
 
@@ -51,15 +53,48 @@ What it does:
 - Masks sleep/suspend/hibernate so the screen never sleeps.
 - Sets GDM to X11 and enables autologin for your user (Wayland is disabled;
   touch/kiosk automation needs X11).
-- Adds a "Start Kiosk" desktop shortcut that restarts Chrome + the watchdog.
+- Installs the web UI (`~/kiosk/webui/server.py`) as a systemd user service
+  on port 8080.
+- Adds two desktop shortcuts: **Start Kiosk** (restarts Chrome + the
+  watchdog) and **Kiosk Setup** (opens the web UI in a browser).
 
 A reboot after install is recommended so GDM autologin and the boot-time
 services take effect.
+
+## Web UI (setup + control)
+
+The installer starts a small web server on the kiosk itself:
+
+```
+http://localhost:8080         — from the kiosk machine
+http://<kiosk-ip>:8080        — from any device on the same network (phone, laptop)
+```
+
+It binds to `0.0.0.0` by default so you can finish setup from your phone
+without plugging in a keyboard. **The first thing you must do is open it and
+set a password** — until a password is set, the page only shows the
+password form (nothing else is reachable), and once it's set every page
+requires HTTP Basic Auth. Because the port is reachable from your whole LAN,
+don't leave that first-run window open longer than necessary.
+
+From the web UI you can:
+
+- Edit `KIOSK_NAME`, `KIOSK_ID`, `KIOSK_URL`, MQTT host/port/user/password,
+  and the stats interval — saving restarts the affected services and
+  re-publishes Home Assistant discovery automatically.
+- Reload the page, restart Chrome, take a screenshot (shown inline), trigger
+  a config backup, or reboot/shut down the machine.
+- Change the web UI password.
+
+If you'd rather keep it off the network entirely, set `KIOSK_WEBUI_HOST=127.0.0.1`
+as an `Environment=` line in `~/.config/systemd/user/kiosk-webui.service`
+and run `systemctl --user restart kiosk-webui.service`.
 
 ## Layout
 
 ```
 scripts/    the kiosk scripts, installed to ~/kiosk/
+webui/      the web UI (Python 3 stdlib, no pip installs), installed to ~/kiosk/webui/
 systemd/    user service units, installed to ~/.config/systemd/user/
 install.sh  the installer above
 kiosk.conf.example  reference for the config file the installer generates
@@ -126,8 +161,8 @@ mosquitto_pub -h <MQTT_HOST> -t 'home/kiosk/<KIOSK_ID>/command' -m reload
 ## Services
 
 ```bash
-systemctl --user status  kiosk-chrome kiosk-mqtt-stats kiosk-mqtt-control kiosk-watchdog kiosk-health
-systemctl --user restart kiosk-chrome kiosk-mqtt-stats kiosk-mqtt-control kiosk-watchdog kiosk-health
+systemctl --user status  kiosk-chrome kiosk-mqtt-stats kiosk-mqtt-control kiosk-watchdog kiosk-health kiosk-webui
+systemctl --user restart kiosk-chrome kiosk-mqtt-stats kiosk-mqtt-control kiosk-watchdog kiosk-health kiosk-webui
 ```
 
 ## Multi-machine
