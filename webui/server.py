@@ -319,14 +319,14 @@ PAGE_HEAD = """<!doctype html>
   }}
   * {{ box-sizing: border-box; }}
   body {{
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 680px; margin: 0 auto;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: min(1200px, 95vw); margin: 0 auto;
     padding: 1.4rem 1rem 3rem; line-height: 1.45;
     background:
       radial-gradient(1100px circle at 12% -10%, rgba(37,99,235,.12), transparent 55%),
       radial-gradient(900px circle at 100% 0%, rgba(124,58,237,.10), transparent 55%);
     background-attachment: fixed;
   }}
-  body.wide {{ max-width: min(1500px, 97vw); }}
+  .narrow {{ max-width: 640px; }}
   .brand {{ display:flex; align-items:center; gap:.55rem; margin-bottom: 1.2rem; }}
   .brand img {{ width:1.6rem; height:1.6rem; display:block; filter: drop-shadow(0 1px 3px rgba(0,0,0,.25)); }}
   .brand span {{ font-size:.78rem; letter-spacing:.09em; text-transform:uppercase; opacity:.55; font-weight:700; }}
@@ -369,7 +369,7 @@ PAGE_HEAD = """<!doctype html>
   .pill.ok {{ background:rgba(34,197,94,.18); color:#16a34a; }}
   .pill.err {{ background:rgba(239,68,68,.18); color:#dc2626; }}
   .pill.warn {{ background:rgba(245,158,11,.18); color:#b45309; }}
-  .grid {{ display:grid; grid-template-columns: repeat(auto-fit, minmax(130px,1fr)); gap:.6rem; margin: 0 0 1.3rem; }}
+  .grid {{ display:grid; grid-template-columns: repeat(auto-fit, minmax(190px,1fr)); gap:.7rem; margin: 0 0 1.3rem; }}
   .tile {{
     display:flex; align-items:center; gap:.7rem;
     background: rgba(128,128,128,.05); border:1px solid rgba(128,128,128,.2); border-left: 4px solid var(--accent);
@@ -401,7 +401,7 @@ PAGE_HEAD = """<!doctype html>
     box-shadow: 0 4px 14px rgba(37,99,235,.3); }}
 </style>
 </head>
-<body class="{body_class}">
+<body>
 <div class="brand"><img src="/icon.svg" alt=""><span>Kiosk Warden</span></div>
 """
 
@@ -418,10 +418,11 @@ def render_message(message, error):
 
 
 def render_first_run(message=None, error=None):
-    body = PAGE_HEAD.format(title_suffix=" — Opsætning", body_class="")
+    body = PAGE_HEAD.format(title_suffix=" — Opsætning")
     body += "<h1>Velkommen til Kiosk Warden</h1>"
     body += '<div class="sub">Sæt et password for at beskytte opsætningssiden, før du gør noget andet.</div>'
     body += render_message(message, error)
+    body += '<div class="narrow">'
     body += """
 <form method="post" action="/set-password">
   <fieldset>
@@ -434,6 +435,7 @@ def render_first_run(message=None, error=None):
   </fieldset>
 </form>
 """
+    body += "</div>"
     body += PAGE_TAIL
     return body
 
@@ -456,7 +458,7 @@ def render_dashboard(conf, message=None, error=None):
     pill_class = "ok" if health_state == "ON" else ("err" if health_state == "OFF" else "warn")
     pill_label = {"ON": "Kører fint", "OFF": "Fejl"}.get(health_state, health_state or "Ukendt")
 
-    body = PAGE_HEAD.format(title_suffix=f" — {esc(conf.get('KIOSK_NAME', 'Kiosk'))}", body_class="")
+    body = PAGE_HEAD.format(title_suffix=f" — {esc(conf.get('KIOSK_NAME', 'Kiosk'))}")
     body += f"""
 <div class="header-row">
   <div>
@@ -511,7 +513,7 @@ def render_dashboard(conf, message=None, error=None):
 
 
 def render_settings(conf, message=None, error=None):
-    body = PAGE_HEAD.format(title_suffix=" — Indstillinger", body_class="")
+    body = PAGE_HEAD.format(title_suffix=" — Indstillinger")
     body += f"""
 <div class="header-row">
   <div>
@@ -523,6 +525,7 @@ def render_settings(conf, message=None, error=None):
     body += render_nav("/settings")
     body += render_message(message, error)
 
+    body += '<div class="narrow">'
     body += f"""
 <form method="post" action="/save">
   <fieldset>
@@ -558,12 +561,13 @@ def render_settings(conf, message=None, error=None):
   </fieldset>
 </form>
 """
+    body += "</div>"
     body += PAGE_TAIL
     return body
 
 
 def render_vnc(conf):
-    body = PAGE_HEAD.format(title_suffix=" — Fjernstyring", body_class="wide")
+    body = PAGE_HEAD.format(title_suffix=" — Fjernstyring")
     body += f"""
 <div class="header-row">
   <div>
