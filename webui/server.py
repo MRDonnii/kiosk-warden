@@ -391,6 +391,14 @@ PAGE_HEAD = """<!doctype html>
   .tile-body {{ min-width:0; }}
   .tile-label {{ font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; opacity:.55; margin-bottom:.2rem; font-weight:700; }}
   .tile-value {{ font-size:1.1rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+  .nav {{ display:flex; gap:.5rem; margin: 1.1rem 0 1.4rem; flex-wrap:wrap; }}
+  .nav a {{ text-decoration:none; }}
+  .nav-btn {{
+    display:inline-block; padding:.55rem 1.05rem; border-radius:10px; font-size:.85rem; font-weight:700;
+    background: rgba(128,128,128,.07); border:1px solid rgba(128,128,128,.25); color:inherit;
+  }}
+  .nav-btn.active {{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; border-color: transparent;
+    box-shadow: 0 4px 14px rgba(37,99,235,.3); }}
 </style>
 </head>
 <body class="{body_class}">
@@ -430,6 +438,15 @@ def render_first_run(message=None, error=None):
     return body
 
 
+def render_nav(active):
+    items = [("/", "🏠 Oversigt"), ("/vnc", "🖱️ Fjernstyring"), ("/settings", "⚙️ Indstillinger")]
+    parts = []
+    for path, label in items:
+        cls = "nav-btn active" if path == active else "nav-btn"
+        parts.append(f'<a href="{path}"><span class="{cls}">{label}</span></a>')
+    return '<div class="nav">' + "".join(parts) + "</div>"
+
+
 def render_dashboard(conf, message=None, error=None):
     health_state = read_file(os.path.join(KIOSK_DIR, "health_state"), "?")
     health_detail = read_file(os.path.join(KIOSK_DIR, "health_detail"), "")
@@ -449,6 +466,7 @@ def render_dashboard(conf, message=None, error=None):
   <span class="pill {pill_class}">{esc(pill_label)}</span>
 </div>
 """
+    body += render_nav("/")
     body += render_message(message, error)
 
     chrome_label = "Kører" if stats["chrome_running"] else "Stoppet"
@@ -475,25 +493,40 @@ def render_dashboard(conf, message=None, error=None):
 
     body += """
 <fieldset>
-  <legend>Handlinger</legend>
+  <legend>Hurtige handlinger</legend>
   <div class="row">
-    <form method="post" action="/action"><input type="hidden" name="do" value="reload"><button type="submit">Genindlæs side</button></form>
-    <form method="post" action="/action"><input type="hidden" name="do" value="restart_chrome"><button type="submit">Genstart Chrome</button></form>
-    <form method="post" action="/action"><input type="hidden" name="do" value="screenshot"><button type="submit">Tag screenshot</button></form>
-    <form method="post" action="/action"><input type="hidden" name="do" value="backup"><button type="submit">Backup config</button></form>
-    <a href="/vnc"><button class="accent" type="button">🖱️ Fjernstyring (VNC)</button></a>
+    <form method="post" action="/action"><input type="hidden" name="do" value="reload"><button type="submit">🔄 Genindlæs side</button></form>
+    <form method="post" action="/action"><input type="hidden" name="do" value="restart_chrome"><button type="submit">🔁 Genstart Chrome</button></form>
+    <form method="post" action="/action"><input type="hidden" name="do" value="screenshot"><button type="submit">📷 Tag screenshot</button></form>
+    <form method="post" action="/action"><input type="hidden" name="do" value="backup"><button type="submit">🗄️ Backup config</button></form>
   </div>
   <div class="row">
-    <form method="post" action="/action" onsubmit="return confirm('Genstarte maskinen nu?');"><input type="hidden" name="do" value="reboot"><button class="danger" type="submit">Genstart maskine</button></form>
-    <form method="post" action="/action" onsubmit="return confirm('Slukke maskinen nu?');"><input type="hidden" name="do" value="shutdown"><button class="danger" type="submit">Sluk maskine</button></form>
+    <form method="post" action="/action" onsubmit="return confirm('Genstarte maskinen nu?');"><input type="hidden" name="do" value="reboot"><button class="danger" type="submit">⟳ Genstart maskine</button></form>
+    <form method="post" action="/action" onsubmit="return confirm('Slukke maskinen nu?');"><input type="hidden" name="do" value="shutdown"><button class="danger" type="submit">⏻ Sluk maskine</button></form>
   </div>
 </fieldset>
 """
+    body += PAGE_TAIL
+    return body
+
+
+def render_settings(conf, message=None, error=None):
+    body = PAGE_HEAD.format(title_suffix=" — Indstillinger", body_class="")
+    body += f"""
+<div class="header-row">
+  <div>
+    <h1>Indstillinger</h1>
+    <div class="sub">{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</div>
+  </div>
+</div>
+"""
+    body += render_nav("/settings")
+    body += render_message(message, error)
 
     body += f"""
 <form method="post" action="/save">
   <fieldset>
-    <legend>Opsætning</legend>
+    <legend>Kiosk &amp; MQTT</legend>
     <label>Navn på kiosken</label>
     <input type="text" name="KIOSK_NAME" value="{esc(conf.get('KIOSK_NAME',''))}" required>
     <label>Kiosk-id (a-z 0-9 _, bruges i MQTT-topics)</label>
@@ -535,10 +568,11 @@ def render_vnc(conf):
 <div class="header-row">
   <div>
     <h1>Fjernstyring</h1>
-    <div class="sub"><a href="/">&larr; Tilbage til {esc(conf.get('KIOSK_NAME','Kiosk'))}</a></div>
+    <div class="sub">{esc(conf.get('KIOSK_NAME','Kiosk'))}</div>
   </div>
 </div>
 """
+    body += render_nav("/vnc")
     body += """
 <div class="row">
   <button class="primary" type="button" onclick="document.getElementById('vncframe').requestFullscreen()">Fuld skærm</button>
@@ -626,6 +660,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._serve_screenshot()
         if parsed.path == "/vnc":
             return self._send_html(render_vnc(conf))
+        if parsed.path == "/settings":
+            return self._send_html(render_settings(conf))
         if parsed.path in ("/", ""):
             return self._send_html(render_dashboard(conf))
         self.send_response(404)
@@ -659,7 +695,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/save":
             err = validate_settings(fields)
             if err:
-                return self._send_html(render_dashboard(conf, error=err))
+                return self._send_html(render_settings(conf, error=err))
             for key in ["KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL"]:
                 if key in fields:
                     conf[key] = fields[key][0].strip()
@@ -672,16 +708,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             run("systemctl", "--user", "restart", "kiosk-mqtt-stats.service", "kiosk-mqtt-control.service")
             run("systemctl", "--user", "restart", "kiosk-chrome.service", "kiosk-watchdog.service", "kiosk-health.service")
             run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
-            return self._redirect("/")
+            return self._redirect("/settings")
 
         if parsed.path == "/change-password":
             pw = fields.get("password", [""])[0]
             pw2 = fields.get("password2", [""])[0]
             if len(pw) < 8 or pw != pw2:
-                return self._send_html(render_dashboard(conf, error="Password skal være mindst 8 tegn og matche i begge felter."))
+                return self._send_html(render_settings(conf, error="Password skal være mindst 8 tegn og matche i begge felter."))
             conf["WEBUI_PASSWORD_HASH"] = hash_password(pw)
             write_conf(conf)
-            return self._send_html(render_dashboard(conf, message="Password skiftet."))
+            return self._send_html(render_settings(conf, message="Password skiftet."))
 
         if parsed.path == "/action":
             action = fields.get("do", [""])[0]
