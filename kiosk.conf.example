@@ -1,0 +1,10 @@
+KIOSK_NAME="My Kiosk"
+KIOSK_ID="my_kiosk"
+KIOSK_URL="http://homeassistant.local:8123"
+MQTT_HOST="127.0.0.1"
+MQTT_PORT=1883
+MQTT_USER=""
+MQTT_PASS=""
+BASE_TOPIC="home/kiosk/my_kiosk"
+CODEX_REMOTE_TOPIC="home/codex/my_kiosk/remote_control"
+STATS_INTERVAL=10

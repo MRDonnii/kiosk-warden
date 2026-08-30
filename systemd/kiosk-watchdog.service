@@ -1,0 +1,13 @@
+[Unit]
+Description=Kiosk Chrome watchdog
+After=kiosk-chrome.service
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+ExecStart=%h/kiosk/watchdog.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
