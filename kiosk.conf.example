@@ -8,3 +8,4 @@ MQTT_PASS=""
 BASE_TOPIC="home/kiosk/my_kiosk"
 CODEX_REMOTE_TOPIC="home/codex/my_kiosk/remote_control"
 STATS_INTERVAL=10
+WEBUI_PASSWORD_HASH=""

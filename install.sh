@@ -59,7 +59,7 @@ sudo apt-get update -y
 sudo apt-get install -y \
   mosquitto-clients jq bc curl xdotool wmctrl unclutter \
   x11-xserver-utils lm-sensors htop openssh-server dbus-x11 \
-  imagemagick gnome-screenshot
+  imagemagick gnome-screenshot python3
 
 if ! command -v google-chrome-stable >/dev/null 2>&1; then
   echo "== Installerer Google Chrome =="
@@ -93,18 +93,28 @@ else
   echo "~/kiosk/kiosk.conf findes allerede — rører den ikke."
 fi
 
+echo "== Kopierer web-UI til ~/kiosk/webui =="
+mkdir -p "$HOME/kiosk/webui"
+cp "$SRC_DIR"/webui/*.py "$HOME/kiosk/webui/"
+chmod +x "$HOME/kiosk/webui/server.py"
+
 echo "== Installerer systemd user services =="
 mkdir -p "$HOME/.config/systemd/user"
 cp "$SRC_DIR"/systemd/*.service "$HOME/.config/systemd/user/"
 systemctl --user daemon-reload
 systemctl --user enable kiosk-chrome.service kiosk-mqtt-stats.service \
-  kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service
+  kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-webui.service
 loginctl enable-linger "$USER" || true
-systemctl --user start kiosk-mqtt-stats.service kiosk-mqtt-control.service || true
+systemctl --user start kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-webui.service || true
 if [[ -n "${DISPLAY:-}" ]]; then
   systemctl --user start kiosk-chrome.service kiosk-watchdog.service kiosk-health.service || true
 else
   echo "Ingen grafisk session lige nu — Chrome-relaterede services starter ved næste login/reboot."
+fi
+
+if command -v ufw >/dev/null 2>&1 && sudo ufw status | grep -q "Status: active"; then
+  echo "== Åbner port 8080 i ufw (web-UI) =="
+  sudo ufw allow 8080/tcp || true
 fi
 
 echo "== Sudoers regel til reboot/shutdown =="
@@ -161,8 +171,26 @@ StartupNotify=true
 EOF
 chmod +x "$DESKTOP_DIR/Start Kiosk.desktop"
 
+cat > "$DESKTOP_DIR/Kiosk Setup.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Kiosk Setup
+Comment=Åbn kiosk-warden opsætning og kontrolpanel i browseren
+Exec=xdg-open http://localhost:8080
+Icon=preferences-system
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+EOF
+chmod +x "$DESKTOP_DIR/Kiosk Setup.desktop"
+
+IP_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo
 echo "== Færdig =="
 echo "Konfiguration: ~/kiosk/kiosk.conf"
+echo "Web-UI (opsætning + kontrolpanel):"
+echo "  http://localhost:8080  (på selve maskinen)"
+[[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:8080  (fra andre enheder på netværket, fx telefonen)"
+echo "Første besøg beder dig sætte et password — gør det med det samme, siden UI'et er tilgængeligt på netværket."
 echo "Kør 'bash ~/kiosk/mqtt-discovery.sh' for at (gen)publicere Home Assistant entities."
 echo "Genstart maskinen for at få GDM-autologin og kiosk-chrome til at starte ved boot."
