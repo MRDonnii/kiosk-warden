@@ -1,0 +1,12 @@
+[Unit]
+Description=Kiosk MQTT stats publisher
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/kiosk/mqtt-stats.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
