@@ -22,6 +22,8 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
 - Bundles browser-based **VNC remote control** (x11vnc + noVNC): click
   directly on the kiosk's screen from the web UI, including a fullscreen
   toggle.
+- Ships its own icon (`icon.svg`) — used as the browser favicon and as the
+  icon for both desktop shortcuts.
 
 ## Install
 
