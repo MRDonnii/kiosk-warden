@@ -22,6 +22,23 @@ HOME = os.path.expanduser("~")
 KIOSK_DIR = os.path.join(HOME, "kiosk")
 CONF_PATH = os.path.join(KIOSK_DIR, "kiosk.conf")
 SCREENSHOT_PATH = os.path.join(KIOSK_DIR, "screenshots", "latest.jpg")
+ICON_PATH = os.path.join(KIOSK_DIR, "icon.svg")
+
+FALLBACK_ICON_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <path d="M50 4 L90 18 V46 C90 74 72 90 50 97 C28 90 10 74 10 46 V18 Z" fill="url(#g)"/>
+  <rect x="28" y="30" width="44" height="30" rx="4" fill="#0f172a"/>
+  <rect x="31" y="33" width="38" height="21" rx="2" fill="#e2e8f0"/>
+  <polyline points="35,46 42,46 46,38 51,52 55,42 58,46 65,46" fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="44" y="60" width="12" height="6" fill="#0f172a"/>
+  <rect x="37" y="66" width="26" height="4" rx="2" fill="#0f172a"/>
+</svg>
+"""
 
 BIND_HOST = os.environ.get("KIOSK_WEBUI_HOST", "0.0.0.0")
 BIND_PORT = int(os.environ.get("KIOSK_WEBUI_PORT", "8080"))
@@ -245,6 +262,27 @@ def get_stats():
     }
 
 
+def level_for(value, warn, crit):
+    if value is None:
+        return "neutral"
+    if value >= crit:
+        return "err"
+    if value >= warn:
+        return "warn"
+    return "ok"
+
+
+def render_tile(icon, label, value, level="neutral"):
+    return (
+        f'<div class="tile tile-{level}">'
+        f'<div class="tile-icon">{icon}</div>'
+        f'<div class="tile-body">'
+        f'<div class="tile-label">{esc(label)}</div>'
+        f'<div class="tile-value">{esc(value)}</div>'
+        f'</div></div>'
+    )
+
+
 def validate_settings(fields):
     kiosk_id = fields.get("KIOSK_ID", [""])[0].strip()
     kiosk_url = fields.get("KIOSK_URL", [""])[0].strip()
@@ -270,32 +308,37 @@ PAGE_HEAD = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="apple-touch-icon" href="/icon.svg">
 <title>Kiosk Warden{title_suffix}</title>
 <style>
-  :root {{ color-scheme: light dark; --accent: #2563eb; --accent-2: #7c3aed; }}
+  :root {{
+    color-scheme: light dark;
+    --accent: #2563eb; --accent-2: #7c3aed;
+    --ok: #22c55e; --warn: #f59e0b; --err: #ef4444;
+  }}
   * {{ box-sizing: border-box; }}
   body {{
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 680px; margin: 0 auto;
     padding: 1.4rem 1rem 3rem; line-height: 1.45;
+    background:
+      radial-gradient(1100px circle at 12% -10%, rgba(37,99,235,.12), transparent 55%),
+      radial-gradient(900px circle at 100% 0%, rgba(124,58,237,.10), transparent 55%);
+    background-attachment: fixed;
   }}
   body.wide {{ max-width: min(1500px, 97vw); }}
-  .brand {{
-    display:flex; align-items:center; gap:.6rem; margin-bottom: 1.1rem;
-  }}
-  .brand .dot {{
-    width:.6rem; height:.6rem; border-radius:50%;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    box-shadow: 0 0 0 4px rgba(124,58,237,.15);
-  }}
-  .brand span {{ font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; opacity:.55; font-weight:600; }}
+  .brand {{ display:flex; align-items:center; gap:.55rem; margin-bottom: 1.2rem; }}
+  .brand img {{ width:1.6rem; height:1.6rem; display:block; filter: drop-shadow(0 1px 3px rgba(0,0,0,.25)); }}
+  .brand span {{ font-size:.78rem; letter-spacing:.09em; text-transform:uppercase; opacity:.55; font-weight:700; }}
   .header-row {{ display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap; margin-bottom: .3rem; }}
-  h1 {{ font-size: 1.5rem; margin: 0 0 .15rem; letter-spacing: -.01em; }}
+  h1 {{ font-size: 1.6rem; margin: 0 0 .15rem; letter-spacing: -.01em; }}
   .sub {{ opacity: .6; font-size: .85rem; margin-bottom: 1.3rem; }}
   fieldset {{
-    border: 1px solid rgba(128,128,128,.28); border-radius: 14px; margin-bottom: 1.1rem;
-    padding: 1rem 1.1rem 1.2rem; background: rgba(128,128,128,.035);
+    border: 1px solid rgba(128,128,128,.26); border-radius: 16px; margin-bottom: 1.1rem;
+    padding: 1rem 1.1rem 1.2rem; background: rgba(128,128,128,.04);
+    backdrop-filter: blur(6px);
   }}
-  legend {{ padding: 0 .5rem; font-weight: 650; font-size: .95rem; }}
+  legend {{ padding: 0 .5rem; font-weight: 700; font-size: .95rem; }}
   label {{ display:block; margin-top:.75rem; font-size:.82rem; opacity: .8; }}
   input[type=text], input[type=password], input[type=number] {{
     width:100%; padding:.6rem .7rem; margin-top:.3rem; box-sizing:border-box;
@@ -305,37 +348,53 @@ PAGE_HEAD = """<!doctype html>
   input:focus {{ outline: 2px solid var(--accent); outline-offset: 1px; }}
   .row {{ display:flex; gap:.5rem; flex-wrap:wrap; margin-top: .7rem; }}
   button {{
-    padding:.65rem 1.15rem; border-radius:9px; border:1px solid rgba(128,128,128,.4);
-    cursor:pointer; font-size:.92rem; font-weight:500; background: rgba(128,128,128,.08); color: inherit;
-    transition: filter .1s ease;
+    padding:.65rem 1.15rem; border-radius:10px; border:1px solid rgba(128,128,128,.4);
+    cursor:pointer; font-size:.92rem; font-weight:600; background: rgba(128,128,128,.08); color: inherit;
+    transition: filter .1s ease, transform .05s ease;
   }}
-  button:hover {{ filter: brightness(1.08); }}
-  button.primary {{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; border-color: transparent; }}
-  button.danger {{ background:#dc2626; color:#fff; border-color:#dc2626; }}
-  .msg {{ padding:.7rem 1rem; border-radius:10px; margin-bottom:1rem; font-size:.9rem; }}
-  .msg.error {{ background:#fee2e2; color:#7f1d1d; }}
-  .msg.ok {{ background:#dcfce7; color:#14532d; }}
+  button:hover {{ filter: brightness(1.1); }}
+  button:active {{ transform: scale(.98); }}
+  button.primary {{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; border-color: transparent;
+    box-shadow: 0 4px 14px rgba(37,99,235,.35); }}
+  button.accent {{ background: linear-gradient(135deg, #06b6d4, var(--accent-2)); color:#fff; border-color: transparent;
+    box-shadow: 0 4px 14px rgba(124,58,237,.3); }}
+  button.danger {{ background: linear-gradient(135deg, #ef4444, #b91c1c); color:#fff; border-color: transparent; }}
+  .msg {{ padding:.7rem 1rem; border-radius:10px; margin-bottom:1rem; font-size:.9rem; font-weight:600; }}
+  .msg.error {{ background:rgba(239,68,68,.15); color:#dc2626; }}
+  .msg.ok {{ background:rgba(34,197,94,.15); color:#16a34a; }}
   img.shot {{ max-width:100%; border-radius:12px; border:1px solid rgba(128,128,128,.3); display:block; }}
   .status {{ font-size:.85rem; opacity:.7; margin-top:.4rem; }}
   a {{ color: var(--accent); }}
-  .pill {{
-    padding:.3rem .75rem; border-radius:999px; font-size:.78rem; font-weight:650; white-space:nowrap;
-  }}
-  .pill.ok {{ background:#dcfce7; color:#14532d; }}
-  .pill.err {{ background:#fee2e2; color:#7f1d1d; }}
-  .pill.warn {{ background:#fef3c7; color:#78350f; }}
-  .grid {{ display:grid; grid-template-columns: repeat(auto-fit, minmax(118px,1fr)); gap:.6rem; margin: 0 0 1.3rem; }}
+  .pill {{ padding:.35rem .8rem; border-radius:999px; font-size:.78rem; font-weight:700; white-space:nowrap; }}
+  .pill.ok {{ background:rgba(34,197,94,.18); color:#16a34a; }}
+  .pill.err {{ background:rgba(239,68,68,.18); color:#dc2626; }}
+  .pill.warn {{ background:rgba(245,158,11,.18); color:#b45309; }}
+  .grid {{ display:grid; grid-template-columns: repeat(auto-fit, minmax(130px,1fr)); gap:.6rem; margin: 0 0 1.3rem; }}
   .tile {{
-    background: rgba(128,128,128,.06); border:1px solid rgba(128,128,128,.22); border-radius: 12px;
-    padding:.75rem .85rem;
+    display:flex; align-items:center; gap:.7rem;
+    background: rgba(128,128,128,.05); border:1px solid rgba(128,128,128,.2); border-left: 4px solid var(--accent);
+    border-radius: 12px; padding:.7rem .8rem;
   }}
-  .tile-label {{ font-size:.68rem; text-transform:uppercase; letter-spacing:.06em; opacity:.55; margin-bottom:.25rem; font-weight:600; }}
-  .tile-value {{ font-size:1.2rem; font-weight:650; }}
-  .tile-value.small {{ font-size:.95rem; }}
+  .tile-icon {{
+    width:2.2rem; height:2.2rem; border-radius:10px; font-size:1.25rem; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; background: rgba(37,99,235,.12);
+  }}
+  .tile-ok {{ border-left-color: var(--ok); }}
+  .tile-ok .tile-icon {{ background: rgba(34,197,94,.16); }}
+  .tile-ok .tile-value {{ color:#16a34a; }}
+  .tile-warn {{ border-left-color: var(--warn); }}
+  .tile-warn .tile-icon {{ background: rgba(245,158,11,.16); }}
+  .tile-warn .tile-value {{ color:#b45309; }}
+  .tile-err {{ border-left-color: var(--err); }}
+  .tile-err .tile-icon {{ background: rgba(239,68,68,.16); }}
+  .tile-err .tile-value {{ color:#dc2626; }}
+  .tile-body {{ min-width:0; }}
+  .tile-label {{ font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; opacity:.55; margin-bottom:.2rem; font-weight:700; }}
+  .tile-value {{ font-size:1.1rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 </style>
 </head>
 <body class="{body_class}">
-<div class="brand"><span class="dot"></span><span>Kiosk Warden</span></div>
+<div class="brand"><img src="/icon.svg" alt=""><span>Kiosk Warden</span></div>
 """
 
 PAGE_TAIL = "</body></html>"
@@ -392,23 +451,23 @@ def render_dashboard(conf, message=None, error=None):
 """
     body += render_message(message, error)
 
-    chrome_label = "● Kører" if stats["chrome_running"] else "○ Stoppet"
+    chrome_label = "Kører" if stats["chrome_running"] else "Stoppet"
+    chrome_level = "ok" if stats["chrome_running"] else "err"
     temp_val = f'{stats["cpu_temp"]}°C' if stats["cpu_temp"] is not None else "?"
     ram_val = f'{stats["ram_percent"]}%' if stats["ram_percent"] is not None else "?"
     disk_val = f'{stats["disk_percent"]}%' if stats["disk_percent"] is not None else "?"
 
-    body += f"""
-<div class="grid">
-  <div class="tile"><div class="tile-label">IP</div><div class="tile-value small">{esc(stats["ip"])}</div></div>
-  <div class="tile"><div class="tile-label">Oppetid</div><div class="tile-value small">{esc(stats["uptime"])}</div></div>
-  <div class="tile"><div class="tile-label">RAM</div><div class="tile-value">{esc(ram_val)}</div></div>
-  <div class="tile"><div class="tile-label">Disk</div><div class="tile-value">{esc(disk_val)}</div></div>
-  <div class="tile"><div class="tile-label">Temp</div><div class="tile-value">{esc(temp_val)}</div></div>
-  <div class="tile"><div class="tile-label">Load (1/5/15m)</div><div class="tile-value small">{esc(stats["loadavg"])}</div></div>
-  <div class="tile"><div class="tile-label">Chrome</div><div class="tile-value small">{esc(chrome_label)}</div></div>
-  <div class="tile"><div class="tile-label">Model</div><div class="tile-value small">{esc(stats["model"])}</div></div>
-</div>
-"""
+    body += '<div class="grid">'
+    body += render_tile("🌐", "IP", stats["ip"])
+    body += render_tile("⏱️", "Oppetid", stats["uptime"])
+    body += render_tile("🧠", "RAM", ram_val, level_for(stats["ram_percent"], 70, 90))
+    body += render_tile("💾", "Disk", disk_val, level_for(stats["disk_percent"], 80, 93))
+    body += render_tile("🌡️", "Temperatur", temp_val, level_for(stats["cpu_temp"], 65, 80))
+    load_1m = stats["loadavg"].split(" / ")[0]
+    body += render_tile("📈", "CPU load (1m)", load_1m)
+    body += render_tile("🖥️", "Chrome", chrome_label, chrome_level)
+    body += render_tile("🏷️", "Model", stats["model"])
+    body += "</div>"
 
     if has_screenshot:
         body += f'<img class="shot" src="/screenshot.jpg?_={secrets.token_hex(4)}" alt="Seneste screenshot">'
@@ -422,7 +481,7 @@ def render_dashboard(conf, message=None, error=None):
     <form method="post" action="/action"><input type="hidden" name="do" value="restart_chrome"><button type="submit">Genstart Chrome</button></form>
     <form method="post" action="/action"><input type="hidden" name="do" value="screenshot"><button type="submit">Tag screenshot</button></form>
     <form method="post" action="/action"><input type="hidden" name="do" value="backup"><button type="submit">Backup config</button></form>
-    <a href="/vnc"><button type="button">Fjernstyring (VNC)</button></a>
+    <a href="/vnc"><button class="accent" type="button">🖱️ Fjernstyring (VNC)</button></a>
   </div>
   <div class="row">
     <form method="post" action="/action" onsubmit="return confirm('Genstarte maskinen nu?');"><input type="hidden" name="do" value="reboot"><button class="danger" type="submit">Genstart maskine</button></form>
@@ -546,6 +605,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlsplit(self.path)
+
+        if parsed.path == "/icon.svg":
+            return self._serve_icon()
+
         conf = read_conf()
         password_set = bool(conf.get("WEBUI_PASSWORD_HASH"))
 
@@ -638,6 +701,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         self.send_response(404)
         self.end_headers()
+
+    def _serve_icon(self):
+        if os.path.exists(ICON_PATH):
+            with open(ICON_PATH, "rb") as f:
+                data = f.read()
+        else:
+            data = FALLBACK_ICON_SVG
+        self.send_response(200)
+        self.send_header("Content-Type", "image/svg+xml")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _serve_screenshot(self):
         if not os.path.exists(SCREENSHOT_PATH):

@@ -74,6 +74,7 @@ echo "== Kopierer scripts til ~/kiosk =="
 mkdir -p "$HOME/kiosk/backups" "$HOME/kiosk/screenshots"
 cp "$SRC_DIR"/scripts/*.sh "$HOME/kiosk/"
 chmod +x "$HOME"/kiosk/*.sh
+cp "$SRC_DIR/icon.svg" "$HOME/kiosk/icon.svg"
 
 if [[ ! -f "$HOME/kiosk/kiosk.conf" ]]; then
   cat > "$HOME/kiosk/kiosk.conf" <<EOF
@@ -182,7 +183,7 @@ Type=Application
 Name=Start Kiosk
 Comment=Start eller genstart Chrome kiosk
 Exec=$HOME/kiosk/restart-kiosk-desktop.sh
-Icon=google-chrome
+Icon=$HOME/kiosk/icon.svg
 Terminal=false
 Categories=Utility;
 StartupNotify=true
@@ -195,7 +196,7 @@ Type=Application
 Name=Kiosk Setup
 Comment=Åbn kiosk-warden opsætning og kontrolpanel i browseren
 Exec=xdg-open http://localhost:8080
-Icon=preferences-system
+Icon=$HOME/kiosk/icon.svg
 Terminal=false
 Categories=Utility;
 StartupNotify=true
