@@ -25,6 +25,7 @@ KIOSK_DIR = os.path.join(HOME, "kiosk")
 CONF_PATH = os.path.join(KIOSK_DIR, "kiosk.conf")
 SCREENSHOT_PATH = os.path.join(KIOSK_DIR, "screenshots", "latest.jpg")
 ICON_PATH = os.path.join(KIOSK_DIR, "icon.svg")
+VNC_PASSWD_PATH = os.path.join(HOME, ".vnc", "passwd")
 CHANGELOG_PATH = os.path.join(KIOSK_DIR, "CHANGELOG.md")
 VERSION_PATH = os.path.join(KIOSK_DIR, ".version")
 REPO_URL = os.environ.get("KIOSK_WARDEN_REPO", "https://github.com/MRDonnii/kiosk-warden.git")
@@ -114,6 +115,24 @@ def verify_password(password, stored):
     except ValueError:
         return False
     return hmac.compare_digest(dk.hex(), hashed)
+
+
+def set_vnc_password(password):
+    vnc_dir = os.path.dirname(VNC_PASSWD_PATH)
+    os.makedirs(vnc_dir, exist_ok=True)
+    try:
+        result = subprocess.run(["x11vnc", "-storepasswd", password, VNC_PASSWD_PATH],
+                                 capture_output=True, text=True, timeout=10)
+    except Exception as exc:
+        return False, f"Kunne ikke sætte VNC password: {exc}"
+    if result.returncode != 0:
+        return False, (result.stderr or result.stdout or "Kunne ikke sætte VNC password.").strip()
+    try:
+        os.chmod(VNC_PASSWD_PATH, 0o600)
+    except OSError:
+        pass
+    run("systemctl", "--user", "restart", "kiosk-vnc.service")
+    return True, "VNC password skiftet."
 
 
 def run(*args, timeout=15):
@@ -715,6 +734,18 @@ def render_settings(conf, message=None, error=None):
   </fieldset>
 </form>
 
+<form method="post" action="/vnc-password">
+  <fieldset>
+    <legend>Fjernstyring (VNC) password</legend>
+    <div class="sub">Separat fra login på denne side. Klassisk VNC-password — kun de første 8 tegn bruges.</div>
+    <label>Nyt VNC password</label>
+    <input type="password" name="password" required minlength="4" maxlength="8">
+    <label>Gentag nyt VNC password</label>
+    <input type="password" name="password2" required minlength="4" maxlength="8">
+    <div class="row"><button type="submit">Skift VNC password</button></div>
+  </fieldset>
+</form>
+
 <form method="post" action="/update">
   <fieldset>
     <legend>Software</legend>
@@ -886,6 +917,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             conf["WEBUI_PASSWORD_HASH"] = hash_password(pw)
             write_conf(conf)
             return self._send_html(render_settings(conf, message="Password skiftet."))
+
+        if parsed.path == "/vnc-password":
+            pw = fields.get("password", [""])[0]
+            pw2 = fields.get("password2", [""])[0]
+            if len(pw) < 4 or pw != pw2:
+                return self._send_html(render_settings(conf, error="VNC password skal være mindst 4 tegn og matche i begge felter."))
+            ok, msg = set_vnc_password(pw)
+            if ok:
+                return self._send_html(render_settings(conf, message=msg))
+            return self._send_html(render_settings(conf, error=msg))
 
         if parsed.path == "/update":
             ok, msg = run_self_update()

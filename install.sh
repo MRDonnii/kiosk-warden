@@ -41,15 +41,47 @@ ask() {
 }
 
 echo "== kiosk-warden install =="
+echo
+echo "Du kan udfylde kiosk-navn/URL/MQTT her i terminalen nu,"
+echo "eller installere med standardværdier og gøre det bagefter via web-UI'et (Indstillinger)."
 
-ask KIOSK_NAME "Navn på kiosken (til Home Assistant device)" "Kiosk"
-ask KIOSK_ID "Kort id (kun a-z 0-9 _)" "kiosk_$(hostname | tr 'A-Z' 'a-z' | tr -c 'a-z0-9' '_')"
-ask KIOSK_URL "URL kiosken skal vise" "http://homeassistant.local:8123"
-ask MQTT_HOST "MQTT broker host/IP" "127.0.0.1"
-ask MQTT_PORT "MQTT broker port" "1883"
-ask MQTT_USER "MQTT brugernavn (blank = ingen auth)" ""
-ask MQTT_PASS "MQTT password" "" silent
-ask STATS_INTERVAL "Stats-interval i sekunder" "10"
+CONFIGURE_NOW="${CONFIGURE_NOW:-}"
+if [[ -z "$CONFIGURE_NOW" ]]; then
+  ans=""
+  if [[ -t 0 ]]; then
+    read -rp "Konfigurer nu i terminalen? [J/n]: " ans
+  elif [[ -r /dev/tty ]]; then
+    read -rp "Konfigurer nu i terminalen? [J/n]: " ans </dev/tty
+  fi
+  if [[ "$ans" =~ ^[Nn] ]]; then
+    CONFIGURE_NOW="no"
+  else
+    CONFIGURE_NOW="yes"
+  fi
+fi
+
+if [[ "$CONFIGURE_NOW" == "yes" ]]; then
+  ask KIOSK_NAME "Navn på kiosken (til Home Assistant device)" "Kiosk"
+  ask KIOSK_ID "Kort id (kun a-z 0-9 _)" "kiosk_$(hostname | tr 'A-Z' 'a-z' | tr -c 'a-z0-9' '_')"
+  ask KIOSK_URL "URL kiosken skal vise" "http://homeassistant.local:8123"
+  ask MQTT_HOST "MQTT broker host/IP" "127.0.0.1"
+  ask MQTT_PORT "MQTT broker port" "1883"
+  ask MQTT_USER "MQTT brugernavn (blank = ingen auth)" ""
+  ask MQTT_PASS "MQTT password" "" silent
+  ask STATS_INTERVAL "Stats-interval i sekunder" "10"
+  ask VNC_PASSWORD "VNC password til fjernstyring (blankt = generér tilfældigt)" "" silent
+else
+  echo "Springer terminal-opsætning over — brug web-UI'et (Indstillinger) efter installationen."
+  KIOSK_NAME="${KIOSK_NAME:-Kiosk}"
+  KIOSK_ID="${KIOSK_ID:-kiosk_$(hostname | tr 'A-Z' 'a-z' | tr -c 'a-z0-9' '_')}"
+  KIOSK_URL="${KIOSK_URL:-http://homeassistant.local:8123}"
+  MQTT_HOST="${MQTT_HOST:-127.0.0.1}"
+  MQTT_PORT="${MQTT_PORT:-1883}"
+  MQTT_USER="${MQTT_USER:-}"
+  MQTT_PASS="${MQTT_PASS:-}"
+  STATS_INTERVAL="${STATS_INTERVAL:-10}"
+  VNC_PASSWORD="${VNC_PASSWORD:-}"
+fi
 BASE_TOPIC="home/kiosk/${KIOSK_ID}"
 CODEX_REMOTE_TOPIC="home/codex/${KIOSK_ID}/remote_control"
 
@@ -103,10 +135,9 @@ fi
 echo "== VNC password =="
 if [[ ! -f "$HOME/.vnc/passwd" ]]; then
   mkdir -p "$HOME/.vnc"
-  ask VNC_PASSWORD "VNC password til fjernstyring (blankt = generér tilfældigt)" "" silent
-  if [[ -z "$VNC_PASSWORD" ]]; then
+  if [[ -z "${VNC_PASSWORD:-}" ]]; then
     VNC_PASSWORD="$(head -c9 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c12)"
-    echo "Genereret VNC password: $VNC_PASSWORD (skriv det ned — det vises ikke igen)"
+    echo "Genereret VNC password: $VNC_PASSWORD (skriv det ned — det kan skiftes senere i web-UI'et under Indstillinger)"
   fi
   x11vnc -storepasswd "$VNC_PASSWORD" "$HOME/.vnc/passwd" >/dev/null
   chmod 600 "$HOME/.vnc/passwd"
