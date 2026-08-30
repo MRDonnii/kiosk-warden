@@ -119,13 +119,30 @@ x11vnc -storepasswd <new-password> ~/.vnc/passwd
 systemctl --user restart kiosk-vnc.service
 ```
 
+## Updating
+
+Click **⬇️ Tjek og opdater fra GitHub** under Indstillinger in the web UI —
+it pulls the latest commit, replaces the scripts/web UI/systemd units in
+place, and restarts the affected services. The current version (short
+commit hash) is shown right above the button; release notes are on the
+**Nyheder** tab (rendered from `CHANGELOG.md`).
+
+It also shows up in Home Assistant: a `update.kiosk_..._update` entity
+reports `installed_version`/`latest_version` (checked every 30 minutes) and
+its **Install** button triggers the same update over MQTT — no need to open
+the web UI at all. Both paths run `scripts/self-update.sh` in its own
+`systemd-run --user` scope, so it survives restarting `kiosk-webui.service`
+or `kiosk-mqtt-control.service` on itself.
+
 ## Layout
 
 ```
-scripts/    the kiosk scripts, installed to ~/kiosk/
+scripts/    the kiosk scripts, installed to ~/kiosk/ (includes self-update.sh)
 webui/      the web UI (Python 3 stdlib, no pip installs), installed to ~/kiosk/webui/
 systemd/    user service units, installed to ~/.config/systemd/user/
 install.sh  the installer above
+icon.svg    logo used as favicon and desktop-shortcut icon
+CHANGELOG.md  shown in the web UI's Nyheder tab
 kiosk.conf.example  reference for the config file the installer generates
 ```
 
@@ -178,6 +195,8 @@ Base topic: `home/kiosk/<KIOSK_ID>`
 .../set_theme
 .../set_volume
 .../image/screenshot    (retained JPEG, also mirrored to homeassistant/image/... discovery)
+.../update/state        (JSON: installed_version/latest_version, checked every 30 min)
+.../update/install      (send "install" to trigger self-update.sh, same as the HA update entity's button)
 ```
 
 Test manually:

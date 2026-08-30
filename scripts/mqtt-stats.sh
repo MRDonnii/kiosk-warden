@@ -31,6 +31,28 @@ memory_size_gib() {
   awk '/^MemTotal:/ {printf "%.2f GiB", $2/1024/1024}' /proc/meminfo
 }
 
+UPDATE_CHECK_INTERVAL=1800
+UPDATE_REPO_URL="${KIOSK_WARDEN_REPO:-https://github.com/MRDonnii/kiosk-warden.git}"
+VERSION_MARKER="$HOME/kiosk/.version"
+last_update_check=0
+
+check_for_update() {
+  local now latest current
+  now="$(date +%s)"
+  if (( now - last_update_check < UPDATE_CHECK_INTERVAL )); then
+    return 0
+  fi
+  last_update_check="$now"
+  latest="$(git ls-remote "$UPDATE_REPO_URL" HEAD 2>/dev/null | awk '{print $1}')" || true
+  if [[ -z "$latest" ]]; then
+    return 0
+  fi
+  current="$(cat "$VERSION_MARKER" 2>/dev/null || echo unknown)"
+  mqtt_pub "$BASE_TOPIC/update/state" \
+    "$(jq -cn --arg inst "${current:0:7}" --arg lat "${latest:0:7}" '{installed_version:$inst, latest_version:$lat}')" \
+    -r || true
+}
+
 prev="$(read_cpu_total_idle)"
 mqtt_pub "$BASE_TOPIC/online/status" "online" -r || true
 
@@ -83,4 +105,5 @@ while true; do
   mqtt_pub "$BASE_TOPIC/diagnostic/heartbeat" "$heartbeat" || true
   mqtt_pub "$BASE_TOPIC/diagnostic/last_active" "$heartbeat" || true
   mqtt_pub "$BASE_TOPIC/diagnostic/version" "$(cat "$VERSION_FILE" 2>/dev/null || echo 1.5.0)" -r || true
+  check_for_update
 done

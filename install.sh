@@ -75,6 +75,12 @@ mkdir -p "$HOME/kiosk/backups" "$HOME/kiosk/screenshots"
 cp "$SRC_DIR"/scripts/*.sh "$HOME/kiosk/"
 chmod +x "$HOME"/kiosk/*.sh
 cp "$SRC_DIR/icon.svg" "$HOME/kiosk/icon.svg"
+cp "$SRC_DIR/CHANGELOG.md" "$HOME/kiosk/CHANGELOG.md" 2>/dev/null || true
+if command -v git >/dev/null 2>&1; then
+  git -C "$SRC_DIR" rev-parse HEAD > "$HOME/kiosk/.version" 2>/dev/null || echo unknown > "$HOME/kiosk/.version"
+else
+  echo unknown > "$HOME/kiosk/.version"
+fi
 
 if [[ ! -f "$HOME/kiosk/kiosk.conf" ]]; then
   cat > "$HOME/kiosk/kiosk.conf" <<EOF

@@ -16,6 +16,8 @@ import secrets
 import shutil
 import socketserver
 import subprocess
+import threading
+import time
 import urllib.parse
 
 HOME = os.path.expanduser("~")
@@ -23,6 +25,9 @@ KIOSK_DIR = os.path.join(HOME, "kiosk")
 CONF_PATH = os.path.join(KIOSK_DIR, "kiosk.conf")
 SCREENSHOT_PATH = os.path.join(KIOSK_DIR, "screenshots", "latest.jpg")
 ICON_PATH = os.path.join(KIOSK_DIR, "icon.svg")
+CHANGELOG_PATH = os.path.join(KIOSK_DIR, "CHANGELOG.md")
+VERSION_PATH = os.path.join(KIOSK_DIR, ".version")
+REPO_URL = os.environ.get("KIOSK_WARDEN_REPO", "https://github.com/MRDonnii/kiosk-warden.git")
 
 FALLBACK_ICON_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
@@ -124,6 +129,76 @@ def run_bg(*args):
         subprocess.Popen(list(args), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass
+
+
+def current_version():
+    return read_file(VERSION_PATH, "ukendt")
+
+
+UPDATE_CHECK_INTERVAL = 1800  # 30 minutter
+_update_cache = {"latest": None, "checked_at": 0.0, "error": None}
+_update_lock = threading.Lock()
+
+
+def _do_update_check():
+    try:
+        latest = check_latest_version()
+        with _update_lock:
+            _update_cache["latest"] = latest
+            _update_cache["error"] = None
+    except Exception as exc:
+        with _update_lock:
+            _update_cache["error"] = str(exc)
+    with _update_lock:
+        _update_cache["checked_at"] = time.time()
+
+
+def trigger_update_check():
+    threading.Thread(target=_do_update_check, daemon=True).start()
+
+
+def background_update_checker():
+    while True:
+        _do_update_check()
+        time.sleep(UPDATE_CHECK_INTERVAL)
+
+
+def get_cached_latest_version():
+    with _update_lock:
+        return _update_cache.get("latest")
+
+
+def check_latest_version():
+    result = subprocess.run(["git", "ls-remote", REPO_URL, "HEAD"],
+                             capture_output=True, text=True, timeout=15)
+    if result.returncode != 0 or not result.stdout.strip():
+        raise RuntimeError(result.stderr.strip() or "kunne ikke kontakte GitHub")
+    return result.stdout.split()[0]
+
+
+def run_self_update():
+    # Runs the shared self-update.sh (also used by the MQTT "install" button)
+    # in its own transient systemd scope via systemd-run, so restarting
+    # kiosk-webui.service (or any other unit it restarts) at the end can't
+    # kill the update process out from under itself.
+    script = os.path.join(KIOSK_DIR, "self-update.sh")
+    try:
+        result = subprocess.run(
+            ["systemd-run", "--user", "--wait", "--pipe", "--collect",
+             "--unit", f"kiosk-self-update-{int(time.time())}", script],
+            capture_output=True, text=True, timeout=90,
+        )
+    except Exception as exc:
+        return False, f"Kunne ikke starte opdatering: {exc}"
+
+    output = (result.stdout or "").strip()
+    if output.startswith("UPTODATE"):
+        return False, f"Allerede på nyeste version ({output.split()[1][:7]})."
+    if output.startswith("UPDATED"):
+        return True, f"Opdateret til {output.split()[1][:7]}. Siden genstarter om et par sekunder…"
+    if output.startswith("ERROR"):
+        return False, output[len("ERROR "):] or "Opdatering fejlede."
+    return False, f"Uventet svar fra opdatering: {output or result.stderr.strip()}"
 
 
 def chrome_focus_and_key(key):
@@ -399,6 +474,15 @@ PAGE_HEAD = """<!doctype html>
   }}
   .nav-btn.active {{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; border-color: transparent;
     box-shadow: 0 4px 14px rgba(37,99,235,.3); }}
+  .update-banner {{
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; font-weight:700;
+    padding:.8rem 1.1rem; border-radius:12px; margin-bottom:1.1rem; box-shadow: 0 4px 14px rgba(37,99,235,.3);
+  }}
+  .changelog h2 {{ font-size:1.05rem; margin: 1.4rem 0 .4rem; }}
+  .changelog h2:first-child {{ margin-top: 0; }}
+  .changelog ul {{ padding-left:1.3rem; margin:.3rem 0 0; }}
+  .changelog li {{ margin:.3rem 0; }}
+  .changelog p {{ opacity:.75; font-size:.85rem; margin:.2rem 0 .6rem; }}
 </style>
 </head>
 <body>
@@ -441,12 +525,72 @@ def render_first_run(message=None, error=None):
 
 
 def render_nav(active):
-    items = [("/", "🏠 Oversigt"), ("/vnc", "🖱️ Fjernstyring"), ("/settings", "⚙️ Indstillinger")]
+    items = [
+        ("/", "🏠 Oversigt"),
+        ("/vnc", "🖱️ Fjernstyring"),
+        ("/changelog", "📝 Nyheder"),
+        ("/settings", "⚙️ Indstillinger"),
+    ]
     parts = []
     for path, label in items:
         cls = "nav-btn active" if path == active else "nav-btn"
         parts.append(f'<a href="{path}"><span class="{cls}">{label}</span></a>')
     return '<div class="nav">' + "".join(parts) + "</div>"
+
+
+def render_markdown_lite(text):
+    lines_out = []
+    in_list = False
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        if line.startswith("## "):
+            if in_list:
+                lines_out.append("</ul>")
+                in_list = False
+            lines_out.append(f"<h2>{esc(line[3:])}</h2>")
+        elif line.startswith("# "):
+            if in_list:
+                lines_out.append("</ul>")
+                in_list = False
+            lines_out.append(f"<h2>{esc(line[2:])}</h2>")
+        elif line.startswith("- "):
+            if not in_list:
+                lines_out.append("<ul>")
+                in_list = True
+            content = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc(line[2:]))
+            lines_out.append(f"<li>{content}</li>")
+        elif line == "":
+            if in_list:
+                lines_out.append("</ul>")
+                in_list = False
+        else:
+            if in_list:
+                lines_out.append("</ul>")
+                in_list = False
+            content = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc(line))
+            lines_out.append(f"<p>{content}</p>")
+    if in_list:
+        lines_out.append("</ul>")
+    return "\n".join(lines_out)
+
+
+def render_changelog(conf):
+    body = PAGE_HEAD.format(title_suffix=" — Nyheder")
+    body += f"""
+<div class="header-row">
+  <div>
+    <h1>Nyheder</h1>
+    <div class="sub">{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</div>
+  </div>
+</div>
+"""
+    body += render_nav("/changelog")
+    text = read_file(CHANGELOG_PATH, "Ingen changelog fundet endnu.")
+    body += '<div class="narrow changelog">'
+    body += render_markdown_lite(text)
+    body += "</div>"
+    body += PAGE_TAIL
+    return body
 
 
 def render_dashboard(conf, message=None, error=None):
@@ -469,6 +613,16 @@ def render_dashboard(conf, message=None, error=None):
 </div>
 """
     body += render_nav("/")
+
+    latest = get_cached_latest_version()
+    current = current_version()
+    if latest and current != "ukendt" and latest != current:
+        body += f"""
+<a href="/settings" style="text-decoration:none; color:inherit;">
+  <div class="update-banner">🔔 Ny version tilgængelig ({esc(latest[:7])}) — klik for at opdatere i Indstillinger</div>
+</a>
+"""
+
     body += render_message(message, error)
 
     chrome_label = "Kører" if stats["chrome_running"] else "Stoppet"
@@ -558,6 +712,14 @@ def render_settings(conf, message=None, error=None):
     <label>Gentag nyt password</label>
     <input type="password" name="password2" required minlength="8">
     <div class="row"><button type="submit">Skift password</button></div>
+  </fieldset>
+</form>
+
+<form method="post" action="/update">
+  <fieldset>
+    <legend>Software</legend>
+    <div class="sub">Version: {esc(current_version()[:7])}</div>
+    <div class="row"><button class="accent" type="submit">⬇️ Tjek og opdater fra GitHub</button></div>
   </fieldset>
 </form>
 """
@@ -664,6 +826,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._serve_screenshot()
         if parsed.path == "/vnc":
             return self._send_html(render_vnc(conf))
+        if parsed.path == "/changelog":
+            return self._send_html(render_changelog(conf))
         if parsed.path == "/settings":
             return self._send_html(render_settings(conf))
         if parsed.path in ("/", ""):
@@ -723,6 +887,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             write_conf(conf)
             return self._send_html(render_settings(conf, message="Password skiftet."))
 
+        if parsed.path == "/update":
+            ok, msg = run_self_update()
+            trigger_update_check()
+            if ok:
+                return self._send_html(render_settings(conf, message=msg))
+            return self._send_html(render_settings(conf, error=msg))
+
         if parsed.path == "/action":
             action = fields.get("do", [""])[0]
             if action == "reload":
@@ -777,6 +948,7 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 def main():
     os.makedirs(KIOSK_DIR, exist_ok=True)
+    threading.Thread(target=background_update_checker, daemon=True).start()
     server = ThreadingHTTPServer((BIND_HOST, BIND_PORT), Handler)
     server.serve_forever()
 

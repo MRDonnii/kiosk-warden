@@ -178,6 +178,11 @@ restart_codex_remote() {
   systemctl --user restart codex-remote-control.service
 }
 
+handle_update_install() {
+  systemd-run --user --collect --unit="kiosk-self-update-$(date +%s)" \
+    "$HOME/kiosk/self-update.sh" >/dev/null 2>&1 || true
+}
+
 handle_codex_remote_command() {
   case "$1" in
     restart) restart_codex_remote ;;
@@ -228,4 +233,5 @@ listen_topic "$BASE_TOPIC/set_zoom" set_zoom &
 listen_topic "$BASE_TOPIC/set_theme" set_theme &
 listen_topic "$BASE_TOPIC/set_volume" set_volume &
 listen_topic "$CODEX_REMOTE_TOPIC/command" handle_codex_remote_command &
+listen_topic "$BASE_TOPIC/update/install" handle_update_install &
 listen_topic "$BASE_TOPIC/command" handle_command
