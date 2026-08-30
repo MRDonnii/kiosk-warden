@@ -57,7 +57,7 @@ echo
 echo "== Installerer apt-pakker =="
 sudo apt-get update -y
 sudo apt-get install -y \
-  mosquitto-clients jq bc curl xdotool wmctrl unclutter \
+  git mosquitto-clients jq bc curl xdotool wmctrl unclutter \
   x11-xserver-utils lm-sensors htop openssh-server dbus-x11 \
   imagemagick gnome-screenshot python3 x11vnc novnc websockify
 
