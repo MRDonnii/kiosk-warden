@@ -13,6 +13,7 @@ import http.server
 import os
 import re
 import secrets
+import shutil
 import socketserver
 import subprocess
 import urllib.parse
@@ -131,6 +132,119 @@ def read_file(path, default=""):
         return default
 
 
+def read_dmi(name, default="Ukendt"):
+    try:
+        with open(f"/sys/devices/virtual/dmi/id/{name}", encoding="utf-8") as f:
+            val = f.read().strip()
+            return val or default
+    except OSError:
+        return default
+
+
+def read_uptime_human():
+    try:
+        with open("/proc/uptime", encoding="utf-8") as f:
+            seconds = float(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return "?"
+    days, rem = divmod(int(seconds), 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if days or hours:
+        parts.append(f"{hours}t")
+    parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
+def read_loadavg():
+    try:
+        one, five, fifteen = os.getloadavg()
+        return f"{one:.2f} / {five:.2f} / {fifteen:.2f}"
+    except OSError:
+        return "?"
+
+
+def read_ram_percent():
+    try:
+        info = {}
+        with open("/proc/meminfo", encoding="utf-8") as f:
+            for line in f:
+                key, _, rest = line.partition(":")
+                parts = rest.strip().split()
+                if parts:
+                    info[key] = int(parts[0])
+        total = info.get("MemTotal", 0)
+        avail = info.get("MemAvailable", total)
+        if total <= 0:
+            return None
+        return round(100 * (total - avail) / total, 1)
+    except (OSError, ValueError):
+        return None
+
+
+def read_disk_percent():
+    try:
+        usage = shutil.disk_usage("/")
+        if usage.total <= 0:
+            return None
+        return round(100 * usage.used / usage.total, 1)
+    except OSError:
+        return None
+
+
+def read_cpu_temp():
+    try:
+        out = subprocess.run(["sensors"], capture_output=True, text=True, timeout=3).stdout
+    except Exception:
+        return None
+    for line in out.splitlines():
+        if "Package id 0" in line or "Tctl" in line or re.match(r"^CPU", line):
+            parts = line.split()
+            if len(parts) >= 4:
+                val = parts[3].lstrip("+").rstrip("°C").rstrip("C")
+                try:
+                    return round(float(val), 1)
+                except ValueError:
+                    continue
+    return None
+
+
+def read_ip():
+    try:
+        out = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=3).stdout
+        parts = out.split()
+        return parts[0] if parts else "?"
+    except Exception:
+        return "?"
+
+
+def chrome_is_running():
+    profile_dir = os.path.join(HOME, ".config", "chrome-kiosk")
+    try:
+        result = subprocess.run(["pgrep", "-f", profile_dir], stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, timeout=3)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def get_stats():
+    return {
+        "hostname": os.uname().nodename,
+        "ip": read_ip(),
+        "uptime": read_uptime_human(),
+        "loadavg": read_loadavg(),
+        "ram_percent": read_ram_percent(),
+        "disk_percent": read_disk_percent(),
+        "cpu_temp": read_cpu_temp(),
+        "chrome_running": chrome_is_running(),
+        "model": read_dmi("product_name"),
+    }
+
+
 def validate_settings(fields):
     kiosk_id = fields.get("KIOSK_ID", [""])[0].strip()
     kiosk_url = fields.get("KIOSK_URL", [""])[0].strip()
@@ -158,33 +272,70 @@ PAGE_HEAD = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kiosk Warden{title_suffix}</title>
 <style>
-  :root {{ color-scheme: light dark; }}
-  body {{ font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 0 auto;
-         padding: 1.2rem 1rem 3rem; line-height: 1.4; }}
-  h1 {{ font-size: 1.25rem; margin-bottom: .2rem; }}
-  .sub {{ opacity: .65; font-size: .85rem; margin-bottom: 1.2rem; }}
-  fieldset {{ border: 1px solid rgba(128,128,128,.35); border-radius: 10px; margin-bottom: 1.1rem; padding: .9rem 1rem 1.1rem; }}
-  legend {{ padding: 0 .4rem; font-weight: 600; font-size: .95rem; }}
-  label {{ display:block; margin-top:.7rem; font-size:.85rem; opacity: .85; }}
-  input[type=text], input[type=password], input[type=number] {{
-    width:100%; padding:.55rem .6rem; margin-top:.25rem; box-sizing:border-box;
-    border-radius:8px; border:1px solid rgba(128,128,128,.4); font-size: 1rem;
-    background: transparent; color: inherit;
+  :root {{ color-scheme: light dark; --accent: #2563eb; --accent-2: #7c3aed; }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 680px; margin: 0 auto;
+    padding: 1.4rem 1rem 3rem; line-height: 1.45;
   }}
-  .row {{ display:flex; gap:.5rem; flex-wrap:wrap; margin-top: .6rem; }}
-  button {{ padding:.65rem 1.1rem; border-radius:8px; border:1px solid rgba(128,128,128,.4);
-            cursor:pointer; font-size:.95rem; background: rgba(128,128,128,.08); color: inherit; }}
-  button.primary {{ background:#2563eb; color:#fff; border-color:#2563eb; }}
+  body.wide {{ max-width: min(1500px, 97vw); }}
+  .brand {{
+    display:flex; align-items:center; gap:.6rem; margin-bottom: 1.1rem;
+  }}
+  .brand .dot {{
+    width:.6rem; height:.6rem; border-radius:50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 0 0 4px rgba(124,58,237,.15);
+  }}
+  .brand span {{ font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; opacity:.55; font-weight:600; }}
+  .header-row {{ display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap; margin-bottom: .3rem; }}
+  h1 {{ font-size: 1.5rem; margin: 0 0 .15rem; letter-spacing: -.01em; }}
+  .sub {{ opacity: .6; font-size: .85rem; margin-bottom: 1.3rem; }}
+  fieldset {{
+    border: 1px solid rgba(128,128,128,.28); border-radius: 14px; margin-bottom: 1.1rem;
+    padding: 1rem 1.1rem 1.2rem; background: rgba(128,128,128,.035);
+  }}
+  legend {{ padding: 0 .5rem; font-weight: 650; font-size: .95rem; }}
+  label {{ display:block; margin-top:.75rem; font-size:.82rem; opacity: .8; }}
+  input[type=text], input[type=password], input[type=number] {{
+    width:100%; padding:.6rem .7rem; margin-top:.3rem; box-sizing:border-box;
+    border-radius:9px; border:1px solid rgba(128,128,128,.4); font-size: 1rem;
+    background: rgba(128,128,128,.05); color: inherit;
+  }}
+  input:focus {{ outline: 2px solid var(--accent); outline-offset: 1px; }}
+  .row {{ display:flex; gap:.5rem; flex-wrap:wrap; margin-top: .7rem; }}
+  button {{
+    padding:.65rem 1.15rem; border-radius:9px; border:1px solid rgba(128,128,128,.4);
+    cursor:pointer; font-size:.92rem; font-weight:500; background: rgba(128,128,128,.08); color: inherit;
+    transition: filter .1s ease;
+  }}
+  button:hover {{ filter: brightness(1.08); }}
+  button.primary {{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; border-color: transparent; }}
   button.danger {{ background:#dc2626; color:#fff; border-color:#dc2626; }}
-  .msg {{ padding:.65rem 1rem; border-radius:8px; margin-bottom:1rem; font-size:.9rem; }}
+  .msg {{ padding:.7rem 1rem; border-radius:10px; margin-bottom:1rem; font-size:.9rem; }}
   .msg.error {{ background:#fee2e2; color:#7f1d1d; }}
   .msg.ok {{ background:#dcfce7; color:#14532d; }}
-  img.shot {{ max-width:100%; border-radius:10px; border:1px solid rgba(128,128,128,.35); display:block; }}
-  .status {{ font-size:.85rem; opacity:.75; margin-top:.3rem; }}
-  a {{ color: #2563eb; }}
+  img.shot {{ max-width:100%; border-radius:12px; border:1px solid rgba(128,128,128,.3); display:block; }}
+  .status {{ font-size:.85rem; opacity:.7; margin-top:.4rem; }}
+  a {{ color: var(--accent); }}
+  .pill {{
+    padding:.3rem .75rem; border-radius:999px; font-size:.78rem; font-weight:650; white-space:nowrap;
+  }}
+  .pill.ok {{ background:#dcfce7; color:#14532d; }}
+  .pill.err {{ background:#fee2e2; color:#7f1d1d; }}
+  .pill.warn {{ background:#fef3c7; color:#78350f; }}
+  .grid {{ display:grid; grid-template-columns: repeat(auto-fit, minmax(118px,1fr)); gap:.6rem; margin: 0 0 1.3rem; }}
+  .tile {{
+    background: rgba(128,128,128,.06); border:1px solid rgba(128,128,128,.22); border-radius: 12px;
+    padding:.75rem .85rem;
+  }}
+  .tile-label {{ font-size:.68rem; text-transform:uppercase; letter-spacing:.06em; opacity:.55; margin-bottom:.25rem; font-weight:600; }}
+  .tile-value {{ font-size:1.2rem; font-weight:650; }}
+  .tile-value.small {{ font-size:.95rem; }}
 </style>
 </head>
-<body>
+<body class="{body_class}">
+<div class="brand"><span class="dot"></span><span>Kiosk Warden</span></div>
 """
 
 PAGE_TAIL = "</body></html>"
@@ -200,7 +351,7 @@ def render_message(message, error):
 
 
 def render_first_run(message=None, error=None):
-    body = PAGE_HEAD.format(title_suffix=" — Opsætning")
+    body = PAGE_HEAD.format(title_suffix=" — Opsætning", body_class="")
     body += "<h1>Velkommen til Kiosk Warden</h1>"
     body += '<div class="sub">Sæt et password for at beskytte opsætningssiden, før du gør noget andet.</div>'
     body += render_message(message, error)
@@ -224,11 +375,40 @@ def render_dashboard(conf, message=None, error=None):
     health_state = read_file(os.path.join(KIOSK_DIR, "health_state"), "?")
     health_detail = read_file(os.path.join(KIOSK_DIR, "health_detail"), "")
     has_screenshot = os.path.exists(SCREENSHOT_PATH)
+    stats = get_stats()
 
-    body = PAGE_HEAD.format(title_suffix=f" — {esc(conf.get('KIOSK_NAME', 'Kiosk'))}")
-    body += f"<h1>{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</h1>"
-    body += f'<div class="sub">Kiosk-id: {esc(conf.get("KIOSK_ID",""))} · Health: {esc(health_state)}</div>'
+    pill_class = "ok" if health_state == "ON" else ("err" if health_state == "OFF" else "warn")
+    pill_label = {"ON": "Kører fint", "OFF": "Fejl"}.get(health_state, health_state or "Ukendt")
+
+    body = PAGE_HEAD.format(title_suffix=f" — {esc(conf.get('KIOSK_NAME', 'Kiosk'))}", body_class="")
+    body += f"""
+<div class="header-row">
+  <div>
+    <h1>{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</h1>
+    <div class="sub">Kiosk-id: {esc(conf.get("KIOSK_ID",""))}</div>
+  </div>
+  <span class="pill {pill_class}">{esc(pill_label)}</span>
+</div>
+"""
     body += render_message(message, error)
+
+    chrome_label = "● Kører" if stats["chrome_running"] else "○ Stoppet"
+    temp_val = f'{stats["cpu_temp"]}°C' if stats["cpu_temp"] is not None else "?"
+    ram_val = f'{stats["ram_percent"]}%' if stats["ram_percent"] is not None else "?"
+    disk_val = f'{stats["disk_percent"]}%' if stats["disk_percent"] is not None else "?"
+
+    body += f"""
+<div class="grid">
+  <div class="tile"><div class="tile-label">IP</div><div class="tile-value small">{esc(stats["ip"])}</div></div>
+  <div class="tile"><div class="tile-label">Oppetid</div><div class="tile-value small">{esc(stats["uptime"])}</div></div>
+  <div class="tile"><div class="tile-label">RAM</div><div class="tile-value">{esc(ram_val)}</div></div>
+  <div class="tile"><div class="tile-label">Disk</div><div class="tile-value">{esc(disk_val)}</div></div>
+  <div class="tile"><div class="tile-label">Temp</div><div class="tile-value">{esc(temp_val)}</div></div>
+  <div class="tile"><div class="tile-label">Load (1/5/15m)</div><div class="tile-value small">{esc(stats["loadavg"])}</div></div>
+  <div class="tile"><div class="tile-label">Chrome</div><div class="tile-value small">{esc(chrome_label)}</div></div>
+  <div class="tile"><div class="tile-label">Model</div><div class="tile-value small">{esc(stats["model"])}</div></div>
+</div>
+"""
 
     if has_screenshot:
         body += f'<img class="shot" src="/screenshot.jpg?_={secrets.token_hex(4)}" alt="Seneste screenshot">'
@@ -291,17 +471,23 @@ def render_dashboard(conf, message=None, error=None):
 
 
 def render_vnc(conf):
-    body = PAGE_HEAD.format(title_suffix=" — Fjernstyring")
-    body += "<h1>Fjernstyring</h1>"
-    body += '<div class="sub"><a href="/">&larr; Tilbage</a></div>'
+    body = PAGE_HEAD.format(title_suffix=" — Fjernstyring", body_class="wide")
+    body += f"""
+<div class="header-row">
+  <div>
+    <h1>Fjernstyring</h1>
+    <div class="sub"><a href="/">&larr; Tilbage til {esc(conf.get('KIOSK_NAME','Kiosk'))}</a></div>
+  </div>
+</div>
+"""
     body += """
 <div class="row">
-  <button type="button" onclick="document.getElementById('vncframe').requestFullscreen()">Fuld skærm</button>
+  <button class="primary" type="button" onclick="document.getElementById('vncframe').requestFullscreen()">Fuld skærm</button>
   <button type="button" onclick="reloadFrame()">Genopfrisk forbindelse</button>
 </div>
-<div style="margin-top:.8rem; border-radius:10px; overflow:hidden; border:1px solid rgba(128,128,128,.35);">
+<div style="margin-top:.8rem; border-radius:14px; overflow:hidden; border:1px solid rgba(128,128,128,.3);">
   <iframe id="vncframe" allowfullscreen
-    style="width:100%; height:70vh; border:0; display:block; background:#000;"></iframe>
+    style="width:100%; height:calc(100vh - 190px); min-height:420px; border:0; display:block; background:#000;"></iframe>
 </div>
 <div class="status">Kræver VNC-password (separat fra login på denne side) ved forbindelse.</div>
 <script>
