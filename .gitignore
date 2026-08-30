@@ -2,3 +2,5 @@ kiosk.conf
 backups/
 screenshots/
 *.log
+__pycache__/
+*.pyc
