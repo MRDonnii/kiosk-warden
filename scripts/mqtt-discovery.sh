@@ -60,6 +60,17 @@ binary_sensor_entity() {
   publish_config binary_sensor health "$payload"
 }
 
+update_entity() {
+  local payload
+  payload="$(jq -cn --arg name "Kiosk Warden Update" --arg uniq "${KIOSK_ID}_update" \
+    --arg stat "$BASE_TOPIC/update/state" --arg cmd "$BASE_TOPIC/update/install" \
+    --arg av "$BASE_TOPIC/online/status" --argjson dev "$device_json" \
+    '{name:$name, unique_id:$uniq, state_topic:$stat, command_topic:$cmd, payload_install:"install",
+      availability_topic:$av, payload_available:"online", payload_not_available:"offline",
+      title:"Kiosk Warden", icon:"mdi:update", device:$dev}')"
+  publish_config update update "$payload"
+}
+
 switch_entity() {
   local object="$1" name="$2" state_topic="$3" on_payload="$4" off_payload="$5" icon="$6"
   local payload
@@ -127,6 +138,7 @@ sensor backup_path "Backup Path" "diagnostic/backup_path" "" "mdi:folder-zip" ""
 light_entity
 image_entity
 binary_sensor_entity
+update_entity
 switch_entity keyboard "Keyboard" "state/keyboard" "keyboard_on" "keyboard_off" "mdi:keyboard"
 select_entity window_mode "Kiosk" "state/window_mode" "command" "mdi:window-maximize" "Kiosk" "Fullscreen" "Windowed"
 select_entity theme "Theme" "state/theme" "set_theme" "mdi:theme-light-dark" "Dark" "Light" "Auto"
@@ -156,3 +168,6 @@ mqtt_pub "$BASE_TOPIC/diagnostic/version" "$(cat "$HOME/kiosk/version" 2>/dev/nu
 
 mqtt_pub "$BASE_TOPIC/health/status" "$(cat "$HOME/kiosk/health_state" 2>/dev/null || echo ON)" -r
 mqtt_pub "$BASE_TOPIC/health/detail" "$(cat "$HOME/kiosk/health_detail" 2>/dev/null || echo Pending)" -r
+
+current_version="$(cat "$HOME/kiosk/.version" 2>/dev/null || echo unknown)"
+mqtt_pub "$BASE_TOPIC/update/state" "$(jq -cn --arg v "${current_version:0:7}" '{installed_version:$v, latest_version:$v}')" -r

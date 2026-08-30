@@ -1,4 +1,5 @@
 kiosk.conf
+.version
 backups/
 screenshots/
 *.log
