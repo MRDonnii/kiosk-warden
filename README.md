@@ -34,15 +34,28 @@ kiosk:
 bash <(curl -fsSL https://raw.githubusercontent.com/MRDonnii/kiosk-warden/main/install.sh)
 ```
 
-The installer asks for kiosk name/id, the URL to display, and your MQTT
-broker host/user/password (input is read from your terminal even when piped
-through `curl`). You can skip the prompts by pre-setting environment
-variables before running it:
+Early on it asks: **configure now in the terminal, or skip and finish later
+in the web UI?** Answering no (or piping in `CONFIGURE_NOW=no`) installs
+everything with placeholder values and skips straight to the apt/systemd
+setup — you then open the web UI's Indstillinger page afterward to set the
+real kiosk name/URL/MQTT details and passwords. Answering yes asks for kiosk
+name/id, the URL to display, MQTT broker host/user/password, and a VNC
+password (input is read from your terminal even when piped through `curl`).
+
+You can skip all of it non-interactively by pre-setting environment
+variables before running it (this also skips the corresponding prompts even
+when `CONFIGURE_NOW` isn't set):
 
 ```bash
 KIOSK_NAME="Kitchen" KIOSK_ID="kiosk_kitchen" KIOSK_URL="http://homeassistant.local:8123" \
 MQTT_HOST="192.168.1.10" MQTT_USER="local" MQTT_PASS="secret" \
 bash <(curl -fsSL https://raw.githubusercontent.com/MRDonnii/kiosk-warden/main/install.sh)
+```
+
+Or force the terminal question itself to a fixed answer:
+
+```bash
+CONFIGURE_NOW=no bash <(curl -fsSL https://raw.githubusercontent.com/MRDonnii/kiosk-warden/main/install.sh)
 ```
 
 What it does:
@@ -112,7 +125,9 @@ The VNC password is separate from the web UI password — it's asked for
 `~/.vnc/passwd`. Services: `kiosk-vnc.service` (x11vnc) and
 `kiosk-novnc.service` (the web bridge on port 6080).
 
-To change the VNC password later:
+To change the VNC password later, use the **Fjernstyring (VNC) password**
+form under Indstillinger in the web UI (it runs `x11vnc -storepasswd` and
+restarts `kiosk-vnc.service` for you), or do it manually:
 
 ```bash
 x11vnc -storepasswd <new-password> ~/.vnc/passwd
