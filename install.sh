@@ -182,6 +182,14 @@ sudo visudo -c -f "$SUDOERS_FILE"
 echo "== Deaktiverer sleep/suspend/hibernate =="
 sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 
+echo "== Aktiverer skærmtastatur (GNOME tilgængelighed) =="
+if command -v gsettings >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
+  gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true || true
+  echo "ON" > "$HOME/kiosk/keyboard_state"
+else
+  echo "Ingen grafisk session lige nu — sæt den til fra web-UI'et (Keyboard) eller Home Assistant efter reboot."
+fi
+
 if [[ -f /etc/gdm3/custom.conf ]]; then
   echo "== Sætter GDM autologin + X11 for $USER =="
   sudo cp /etc/gdm3/custom.conf "/etc/gdm3/custom.conf.bak.$(date +%s)"

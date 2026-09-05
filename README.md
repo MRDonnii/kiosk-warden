@@ -12,6 +12,10 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
   (Kiosk/Fullscreen/Windowed), theme, zoom, volume, on-screen keyboard, URL
   text field, reboot/shutdown/refresh buttons, screenshot image entity, and
   health/diagnostic sensors.
+- Enables GNOME's built-in touch on-screen keyboard (the one you pull down
+  from the top-bar Quick Settings) by default on install, so typing into
+  the kiosk page works on a touchscreen out of the box — toggle it off/on
+  later from the web UI, Home Assistant, or `gsettings`.
 - Watches itself: a health-check loop polls Chrome via remote debugging every
   20s, reloads on a blank/error page, and restarts Chrome after repeated
   failures. A separate watchdog restarts Chrome if the process dies outright.
@@ -69,6 +73,7 @@ What it does:
 - Enables and starts the systemd **user** services.
 - Adds a passwordless sudo rule for `reboot`/`poweroff` only.
 - Masks sleep/suspend/hibernate so the screen never sleeps.
+- Turns on GNOME's accessibility on-screen keyboard by default.
 - Sets GDM to X11 and enables autologin for your user (Wayland is disabled;
   touch/kiosk automation needs X11).
 - Installs the web UI (`~/kiosk/webui/server.py`) as a systemd user service
