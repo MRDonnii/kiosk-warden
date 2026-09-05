@@ -202,9 +202,12 @@ sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.ta
 echo "== Aktiverer skærmtastatur =="
 if [[ -n "${DISPLAY:-}" ]]; then
   if command -v onboard >/dev/null 2>&1; then
+    gsettings set org.onboard.window docking-enabled true 2>/dev/null || true
+    gsettings set org.onboard.window docking-edge bottom 2>/dev/null || true
+    gsettings set org.onboard.auto-show enabled true 2>/dev/null || true
     pgrep -x onboard >/dev/null || onboard >/dev/null 2>&1 &
     disown 2>/dev/null || true
-    echo "Bruger onboard (virker uanset desktop-miljø: GNOME, Cinnamon, MATE, Xfce...)."
+    echo "Bruger onboard, dokket i bunden af skærmen (virker uanset desktop-miljø: GNOME, Cinnamon, MATE, Xfce...)."
   elif [[ "${XDG_CURRENT_DESKTOP:-}" == *GNOME* ]] && command -v gsettings >/dev/null 2>&1; then
     gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true || true
     echo "onboard ikke tilgængelig — brugte GNOME's indbyggede skærmtastatur i stedet (kun virker under GNOME Shell)."

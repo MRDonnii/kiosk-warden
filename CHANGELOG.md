@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## v1.1.0 — 2026-09-05
 
+- **Touch-tastatur dokket i bunden automatisk**: når `onboard` slås til (ved install eller via MQTT/HA/web-UI), sættes den nu automatisk til at docke i bunden af skærmen og vise sig selv når man trykker i et tekstfelt (`docking-edge bottom` + `auto-show`) — ingen manuel indstilling nødvendig.
 - **Cross-distro support**: `install.sh` registrerer nu OS og display manager (GDM3 vs LightDM) og bruger den rigtige autologin-metode for hver — Ubuntu (GDM) virkede allerede, Linux Mint og andre LightDM-baserede distroer sættes nu også korrekt op.
 - **Touch-tastatur virker på alle desktops**: `onboard` installeres nu altid via apt og bruges som det primære skærmtastatur (virker på GNOME, Cinnamon, MATE, Xfce...); GNOME's indbyggede on-screen keyboard bruges kun som fallback når GNOME faktisk er det aktive skrivebordsmiljø. Tidligere brugte installeren kun GNOME's variant, som ikke virker på fx Linux Mint/Cinnamon.
 - **VNC password skiftes fra web-UI'et**: en ny "Fjernstyring (VNC) password"-formular under Indstillinger sætter `x11vnc -storepasswd` og genstarter `kiosk-vnc.service` — ingen terminal nødvendig.
