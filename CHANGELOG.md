@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- **Touch-tastatur slået til som standard**: `install.sh` aktiverer nu GNOME's indbyggede on-screen keyboard (den man trækker ned fra Quick Settings i toppen) automatisk, så det virker fra første boot uden at skulle tændes manuelt via web-UI/HA først.
+- **Cross-distro support**: `install.sh` registrerer nu OS og display manager (GDM3 vs LightDM) og bruger den rigtige autologin-metode for hver — Ubuntu (GDM) virkede allerede, Linux Mint og andre LightDM-baserede distroer sættes nu også korrekt op.
+- **Touch-tastatur virker på alle desktops**: `onboard` installeres nu altid via apt og bruges som det primære skærmtastatur (virker på GNOME, Cinnamon, MATE, Xfce...); GNOME's indbyggede on-screen keyboard bruges kun som fallback når GNOME faktisk er det aktive skrivebordsmiljø. Tidligere brugte installeren kun GNOME's variant, som ikke virker på fx Linux Mint/Cinnamon.
 - **VNC password skiftes fra web-UI'et**: en ny "Fjernstyring (VNC) password"-formular under Indstillinger sætter `x11vnc -storepasswd` og genstarter `kiosk-vnc.service` — ingen terminal nødvendig.
 - **Valg ved installation**: `install.sh` spørger nu om du vil konfigurere kiosk/MQTT/VNC i terminalen med det samme, eller installere med standardværdier og gøre det bagefter via web-UI'et (`CONFIGURE_NOW=no` for at styre det uden interaktion).
 - `git` er nu en eksplicit del af apt-pakkelisten (var tidligere kun sikret i curl-bootstrap-stien), da selvopdatering kræver den ved kørsel.

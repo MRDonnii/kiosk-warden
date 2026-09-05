@@ -40,6 +40,23 @@ ask() {
   printf -v "$varname" '%s' "${val:-$default}"
 }
 
+echo "== Registrerer OS og display manager =="
+OS_ID="$(. /etc/os-release 2>/dev/null; echo "${ID:-unknown}")"
+OS_NAME="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}")"
+
+DISPLAY_MANAGER="unknown"
+if [[ -f /etc/X11/default-display-manager ]]; then
+  case "$(cat /etc/X11/default-display-manager)" in
+    */gdm3|*/gdm) DISPLAY_MANAGER="gdm3" ;;
+    */lightdm) DISPLAY_MANAGER="lightdm" ;;
+  esac
+fi
+if [[ "$DISPLAY_MANAGER" == "unknown" ]]; then
+  [[ -f /etc/gdm3/custom.conf ]] && DISPLAY_MANAGER="gdm3"
+  [[ -d /etc/lightdm ]] && DISPLAY_MANAGER="lightdm"
+fi
+echo "OS: $OS_NAME ($OS_ID) — display manager: $DISPLAY_MANAGER — desktop: ${XDG_CURRENT_DESKTOP:-ukendt}"
+
 echo "== kiosk-warden install =="
 echo
 echo "Du kan udfylde kiosk-navn/URL/MQTT her i terminalen nu,"
@@ -91,7 +108,7 @@ sudo apt-get update -y
 sudo apt-get install -y \
   git mosquitto-clients jq bc curl xdotool wmctrl unclutter \
   x11-xserver-utils lm-sensors htop openssh-server dbus-x11 \
-  imagemagick gnome-screenshot python3 x11vnc novnc websockify
+  imagemagick gnome-screenshot python3 x11vnc novnc websockify onboard
 
 if ! command -v google-chrome-stable >/dev/null 2>&1; then
   echo "== Installerer Google Chrome =="
@@ -182,15 +199,24 @@ sudo visudo -c -f "$SUDOERS_FILE"
 echo "== Deaktiverer sleep/suspend/hibernate =="
 sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 
-echo "== Aktiverer skærmtastatur (GNOME tilgængelighed) =="
-if command -v gsettings >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
-  gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true || true
+echo "== Aktiverer skærmtastatur =="
+if [[ -n "${DISPLAY:-}" ]]; then
+  if command -v onboard >/dev/null 2>&1; then
+    pgrep -x onboard >/dev/null || onboard >/dev/null 2>&1 &
+    disown 2>/dev/null || true
+    echo "Bruger onboard (virker uanset desktop-miljø: GNOME, Cinnamon, MATE, Xfce...)."
+  elif [[ "${XDG_CURRENT_DESKTOP:-}" == *GNOME* ]] && command -v gsettings >/dev/null 2>&1; then
+    gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true || true
+    echo "onboard ikke tilgængelig — brugte GNOME's indbyggede skærmtastatur i stedet (kun virker under GNOME Shell)."
+  else
+    echo "Kunne ikke aktivere et skærmtastatur automatisk — installer/sæt det manuelt for dit skrivebordsmiljø."
+  fi
   echo "ON" > "$HOME/kiosk/keyboard_state"
 else
   echo "Ingen grafisk session lige nu — sæt den til fra web-UI'et (Keyboard) eller Home Assistant efter reboot."
 fi
 
-if [[ -f /etc/gdm3/custom.conf ]]; then
+if [[ "$DISPLAY_MANAGER" == "gdm3" && -f /etc/gdm3/custom.conf ]]; then
   echo "== Sætter GDM autologin + X11 for $USER =="
   sudo cp /etc/gdm3/custom.conf "/etc/gdm3/custom.conf.bak.$(date +%s)"
   sudo python3 - "$USER" <<'PY'
@@ -214,8 +240,17 @@ with open(path, "w") as f:
     f.write(text)
 PY
   echo "GDM ændret. En genstart er nødvendig før autologin virker."
+elif [[ "$DISPLAY_MANAGER" == "lightdm" ]]; then
+  echo "== Sætter LightDM autologin for $USER (Linux Mint m.fl.) =="
+  sudo mkdir -p /etc/lightdm/lightdm.conf.d
+  sudo tee /etc/lightdm/lightdm.conf.d/50-kiosk-warden.conf >/dev/null <<EOF
+[Seat:*]
+autologin-user=$USER
+autologin-user-timeout=0
+EOF
+  echo "LightDM ændret. En genstart er nødvendig før autologin virker."
 else
-  echo "Ingen /etc/gdm3/custom.conf fundet — spring GDM-autologin over (sæt det manuelt hvis du bruger en anden display manager)."
+  echo "Ingen kendt display manager (GDM/LightDM) fundet — sæt autologin manuelt."
 fi
 
 echo "== Desktop-genvej =="
