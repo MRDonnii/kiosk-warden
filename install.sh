@@ -202,12 +202,20 @@ sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.ta
 echo "== Aktiverer skærmtastatur =="
 if [[ -n "${DISPLAY:-}" ]]; then
   if command -v onboard >/dev/null 2>&1; then
-    gsettings set org.onboard.window docking-enabled true 2>/dev/null || true
-    gsettings set org.onboard.window docking-edge bottom 2>/dev/null || true
-    gsettings set org.onboard.auto-show enabled true 2>/dev/null || true
     pgrep -x onboard >/dev/null || onboard >/dev/null 2>&1 &
     disown 2>/dev/null || true
-    echo "Bruger onboard, dokket i bunden af skærmen (virker uanset desktop-miljø: GNOME, Cinnamon, MATE, Xfce...)."
+    sleep 1
+    if command -v xdotool >/dev/null 2>&1 && command -v wmctrl >/dev/null 2>&1; then
+      geo="$(xdotool getdisplaygeometry 2>/dev/null)"
+      scr_w="$(awk '{print $1}' <<<"$geo")"
+      scr_h="$(awk '{print $2}' <<<"$geo")"
+      if [[ -n "$scr_w" && -n "$scr_h" ]]; then
+        kb_h=$(( scr_h / 3 ))
+        kb_y=$(( scr_h - kb_h ))
+        wmctrl -r onboard -e "0,0,$kb_y,$scr_w,$kb_h" 2>/dev/null || true
+      fi
+    fi
+    echo "Bruger onboard, flyttet til bunden af skærmen med wmctrl (virker uanset desktop-miljø: GNOME, Cinnamon, MATE, Xfce...)."
   elif [[ "${XDG_CURRENT_DESKTOP:-}" == *GNOME* ]] && command -v gsettings >/dev/null 2>&1; then
     gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true || true
     echo "onboard ikke tilgængelig — brugte GNOME's indbyggede skærmtastatur i stedet (kun virker under GNOME Shell)."
