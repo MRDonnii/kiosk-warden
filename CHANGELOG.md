@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Touch-tastatur slået til som standard**: `install.sh` aktiverer nu GNOME's indbyggede on-screen keyboard (den man trækker ned fra Quick Settings i toppen) automatisk, så det virker fra første boot uden at skulle tændes manuelt via web-UI/HA først.
 - **VNC password skiftes fra web-UI'et**: en ny "Fjernstyring (VNC) password"-formular under Indstillinger sætter `x11vnc -storepasswd` og genstarter `kiosk-vnc.service` — ingen terminal nødvendig.
 - **Valg ved installation**: `install.sh` spørger nu om du vil konfigurere kiosk/MQTT/VNC i terminalen med det samme, eller installere med standardværdier og gøre det bagefter via web-UI'et (`CONFIGURE_NOW=no` for at styre det uden interaktion).
 - `git` er nu en eksplicit del af apt-pakkelisten (var tidligere kun sikret i curl-bootstrap-stien), da selvopdatering kræver den ved kørsel.
