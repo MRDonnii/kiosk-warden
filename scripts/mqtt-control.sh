@@ -125,12 +125,23 @@ screen_off() {
   publish_state screen "OFF"
 }
 
+dock_onboard_bottom() {
+  local geo w h kb_h kb_y
+  geo="$(xdotool getdisplaygeometry 2>/dev/null)" || return 0
+  [[ -z "$geo" ]] && return 0
+  w="$(awk '{print $1}' <<<"$geo")"
+  h="$(awk '{print $2}' <<<"$geo")"
+  [[ -z "$w" || -z "$h" ]] && return 0
+  kb_h=$(( h / 3 ))
+  kb_y=$(( h - kb_h ))
+  wmctrl -r onboard -e "0,0,$kb_y,$w,$kb_h" 2>/dev/null || true
+}
+
 keyboard_on() {
   if command -v onboard >/dev/null 2>&1; then
-    gsettings set org.onboard.window docking-enabled true 2>/dev/null || true
-    gsettings set org.onboard.window docking-edge bottom 2>/dev/null || true
-    gsettings set org.onboard.auto-show enabled true 2>/dev/null || true
     pgrep -x onboard >/dev/null || onboard >/dev/null 2>&1 &
+    sleep 1
+    dock_onboard_bottom
   elif command -v gnome-extensions >/dev/null 2>&1; then
     gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true || true
   fi

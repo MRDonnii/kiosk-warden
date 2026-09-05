@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.1 — 2026-09-05
+
+- **Fix: onboard-tastatur der forsvandt uden at komme frem igen**: v1.1.0's docking-indstillinger (`org.onboard.window docking-enabled`/`docking-edge`) viste sig at bringe onboard i en ødelagt tilstand på visse versioner — man kunne se ikonet, men et klik på det fik det til at forsvinde uden at vise tastaturet. Erstattet med at flytte/resize selve vinduet via `wmctrl`/`xdotool` (samme værktøjer kiosk-warden allerede bruger til Chrome-styring) i stedet for at stole på onboard's interne (versions-afhængige) indstillinger.
+
 ## v1.1.0 — 2026-09-05
 
 - **Touch-tastatur dokket i bunden automatisk**: når `onboard` slås til (ved install eller via MQTT/HA/web-UI), sættes den nu automatisk til at docke i bunden af skærmen og vise sig selv når man trykker i et tekstfelt (`docking-edge bottom` + `auto-show`) — ingen manuel indstilling nødvendig.
