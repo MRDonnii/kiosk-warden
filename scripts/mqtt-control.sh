@@ -127,6 +127,9 @@ screen_off() {
 
 keyboard_on() {
   if command -v onboard >/dev/null 2>&1; then
+    gsettings set org.onboard.window docking-enabled true 2>/dev/null || true
+    gsettings set org.onboard.window docking-edge bottom 2>/dev/null || true
+    gsettings set org.onboard.auto-show enabled true 2>/dev/null || true
     pgrep -x onboard >/dev/null || onboard >/dev/null 2>&1 &
   elif command -v gnome-extensions >/dev/null 2>&1; then
     gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true || true
