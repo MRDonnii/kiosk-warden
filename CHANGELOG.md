@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.8.2 — 2026-09-13
+
+- **Visible Warden restart action**: the manual Restart Kiosk Warden button now sits directly below the update controls instead of below rollback and release content where it could be outside the viewport.
+- **Accurate post-update state**: a completed update now explicitly reports that Kiosk Warden has already been restarted and no longer presents a misleading second restart requirement.
+
 ## v1.8.1 — 2026-09-13
 
 - **Reliable web UI activation after updates**: the updater now schedules the web UI restart as an independent systemd timer unit, preventing the delayed restart from being killed with the completed update scope. New navigation and pages become active immediately after every update.

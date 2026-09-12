@@ -680,6 +680,7 @@ def render_updates(conf, message=None, error=None):
     <select name="channel"><option value="stable"{' selected' if channel == 'stable' else ''}>Stable</option><option value="beta"{' selected' if channel == 'beta' else ''}>Beta</option></select>
     <div class="row"><button type="button" id="checkUpdates">Tjek for updates</button><button type="submit" formaction="/update-channel">Gem kanal</button><button class="accent" type="submit" id="installUpdate"{' disabled' if not update_ready else ''}>⬇️ Installer v{esc(latest_version)}</button></div>
   </form>
+  <div class="maintenance-action"><strong>Genstart Kiosk Warden</strong><p class="status">Genstarter Warden-tjenesterne, web-UI'et og kiosk-Chrome uden at genstarte hele maskinen.</p><div class="row"><button class="primary" type="button" id="restartWardenManual">Genstart Kiosk Warden</button></div><div class="countdown" id="manualRestartCountdown"></div></div>
   <div class="progress-shell" id="updateProgress"><div class="progress-track"><div class="progress-fill" id="updateProgressFill"></div></div><div class="progress-meta"><span id="updateProgressText">Forbereder…</span><strong id="updateProgressPercent">0%</strong></div></div>
   <div class="restart-choice" id="restartChoice"><strong>Opdateringen er installeret.</strong><p>Vælg hvad der skal genstartes, eller fortsæt uden genstart.</p><div class="row"><button class="primary" type="button" id="restartWarden">Genstart Kiosk Warden</button><button type="button" id="restartMachine">Genstart maskinen</button><button type="button" id="restartLater">Senere</button></div><div class="countdown" id="restartCountdown"></div></div>
   <div class="release-notes changelog"><strong>Seneste release{' · Beta' if prerelease else ''}</strong>{render_markdown_lite(release_summary)}</div>
@@ -693,7 +694,6 @@ def render_updates(conf, message=None, error=None):
     <div class="row"><button type="submit" {'disabled' if not versions else ''} onclick="return confirm('Gendan den valgte version?');">Gendan valgt version</button></div>
   </form>
 </fieldset>
-<fieldset><legend>Vedligeholdelse</legend><p class="status">Genstarter Warden-tjenesterne og kiosk-Chrome uden at genstarte hele maskinen.</p><div class="row"><button type="button" id="restartWardenManual">Genstart Kiosk Warden</button></div><div class="countdown" id="manualRestartCountdown"></div></fieldset>
 <fieldset><legend>Komplet changelog</legend>
 """
     text = read_file(CHANGELOG_PATH, "Ingen changelog fundet endnu.")

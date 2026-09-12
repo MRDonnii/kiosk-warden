@@ -119,7 +119,7 @@ install_release() {
   publish_update_json "$(jq -cn --arg version "$expected" --arg channel "$CHANNEL" '{installed_version:$version,latest_version:$version,title:"Kiosk Warden",channel:$channel,in_progress:false}')"
   trap - EXIT
   restart_warden
-  write_status complete 100 "Kiosk Warden $expected er installeret." complete true
+  write_status complete 100 "Kiosk Warden $expected er installeret og genstartet." complete false
   echo "UPDATED $expected backup=$backup"
 }
 
