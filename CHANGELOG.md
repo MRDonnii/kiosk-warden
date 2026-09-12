@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.9.2 — 2026-09-13
+
+- **Screenshot on Styring**: the latest kiosk screenshot now appears beside its capture action on the Styring page, while Overview remains a focused status dashboard.
+
 ## v1.9.1 — 2026-09-13
 
 - **Clean service restarts**: x11vnc and noVNC now treat their normal termination exit codes as successful, so a deliberate Warden restart no longer leaves transient failed-unit records.

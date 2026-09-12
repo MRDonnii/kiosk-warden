@@ -59,7 +59,10 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('id="restartWardenManual"', control)
         self.assertIn("Genstart Kiosk Warden", control)
         self.assertIn("Genstart maskine", control)
+        self.assertIn("Skærmbillede", control)
+        self.assertIn("/screenshot.jpg", control)
         self.assertNotIn("Hurtige handlinger", dashboard)
+        self.assertNotIn("/screenshot.jpg", dashboard)
 
     def test_mqtt_exposes_power_profile_and_warden_restart(self):
         discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
