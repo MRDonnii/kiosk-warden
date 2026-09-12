@@ -43,7 +43,7 @@ check_for_update() {
   last_update_check="$now"
   channel="$(cat "$HOME/kiosk/update_channel" 2>/dev/null || echo stable)"
   state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null)" || return 0
-  mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress}' <<<"$state")" -r || true
+  mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress} | with_entries(select(.value != null))' <<<"$state")" -r || true
 }
 
 prev="$(read_cpu_total_idle)"
