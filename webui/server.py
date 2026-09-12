@@ -157,6 +157,34 @@ def current_version():
     return read_file(VERSION_PATH, "ukendt")
 
 
+POWER_PROFILES = {
+    "power-saver": "Strømbesparelse",
+    "balanced": "Balanceret",
+    "performance": "Ydelse",
+}
+
+
+def current_power_profile():
+    try:
+        result = subprocess.run(["powerprofilesctl", "get"], capture_output=True, text=True, timeout=5)
+        profile = result.stdout.strip()
+        return profile if result.returncode == 0 and profile in POWER_PROFILES else "ukendt"
+    except (OSError, subprocess.SubprocessError):
+        return "ukendt"
+
+
+def set_power_profile(profile):
+    if profile not in POWER_PROFILES:
+        return False, "Ugyldig strømprofil."
+    try:
+        result = subprocess.run(["powerprofilesctl", "set", profile], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"Kunne ikke skifte strømprofil: {exc}"
+    if result.returncode != 0:
+        return False, (result.stderr or "Kunne ikke skifte strømprofil.").strip()
+    return True, f"Strømprofil sat til {POWER_PROFILES[profile]}."
+
+
 UPDATE_CHECK_INTERVAL = 1800  # 30 minutter
 _update_cache = {"latest": None, "checked_at": 0.0, "error": None}
 _update_lock = threading.Lock()
@@ -585,6 +613,7 @@ def render_nav(active):
     items = [
         ("/", "🏠 Oversigt"),
         ("/vnc", "🖱️ Fjernstyring"),
+        ("/control", "🎛️ Styring"),
         ("/updates", "⬇️ Opdateringer"),
         ("/settings", "⚙️ Indstillinger"),
     ]
@@ -680,7 +709,6 @@ def render_updates(conf, message=None, error=None):
     <select name="channel"><option value="stable"{' selected' if channel == 'stable' else ''}>Stable</option><option value="beta"{' selected' if channel == 'beta' else ''}>Beta</option></select>
     <div class="row"><button type="button" id="checkUpdates">Tjek for updates</button><button type="submit" formaction="/update-channel">Gem kanal</button><button class="accent" type="submit" id="installUpdate"{' disabled' if not update_ready else ''}>⬇️ Installer v{esc(latest_version)}</button></div>
   </form>
-  <div class="maintenance-action"><strong>Genstart Kiosk Warden</strong><p class="status">Genstarter Warden-tjenesterne, web-UI'et og kiosk-Chrome uden at genstarte hele maskinen.</p><div class="row"><button class="primary" type="button" id="restartWardenManual">Genstart Kiosk Warden</button></div><div class="countdown" id="manualRestartCountdown"></div></div>
   <div class="progress-shell" id="updateProgress"><div class="progress-track"><div class="progress-fill" id="updateProgressFill"></div></div><div class="progress-meta"><span id="updateProgressText">Forbereder…</span><strong id="updateProgressPercent">0%</strong></div></div>
   <div class="restart-choice" id="restartChoice"><strong>Opdateringen er installeret.</strong><p>Vælg hvad der skal genstartes, eller fortsæt uden genstart.</p><div class="row"><button class="primary" type="button" id="restartWarden">Genstart Kiosk Warden</button><button type="button" id="restartMachine">Genstart maskinen</button><button type="button" id="restartLater">Senere</button></div><div class="countdown" id="restartCountdown"></div></div>
   <div class="release-notes changelog"><strong>Seneste release{' · Beta' if prerelease else ''}</strong>{render_markdown_lite(release_summary)}</div>
@@ -737,7 +765,6 @@ function restartCountdown(action, button, label) {
 }
 document.getElementById('restartWarden').addEventListener('click', event => restartCountdown('restart_warden', event.currentTarget, document.getElementById('restartCountdown')));
 document.getElementById('restartMachine').addEventListener('click', event => restartCountdown('reboot', event.currentTarget, document.getElementById('restartCountdown')));
-document.getElementById('restartWardenManual').addEventListener('click', event => restartCountdown('restart_warden', event.currentTarget, document.getElementById('manualRestartCountdown')));
 pollStatus();
 </script>
 """
@@ -800,23 +827,42 @@ def render_dashboard(conf, message=None, error=None):
         body += f'<img class="shot" src="/screenshot.jpg?_={secrets.token_hex(4)}" alt="Seneste screenshot">'
         body += f'<div class="status">{esc(health_detail)}</div>'
 
-    body += """
-<fieldset>
-  <legend>Hurtige handlinger</legend>
-  <div class="row">
-    <form method="post" action="/action"><input type="hidden" name="do" value="reload"><button type="submit">🔄 Genindlæs side</button></form>
-    <form method="post" action="/action"><input type="hidden" name="do" value="restart_chrome"><button type="submit">🔁 Genstart Chrome</button></form>
-    <form method="post" action="/action"><input type="hidden" name="do" value="screenshot"><button type="submit">📷 Tag screenshot</button></form>
-    <form method="post" action="/action"><input type="hidden" name="do" value="backup"><button type="submit">🗄️ Backup config</button></form>
-  </div>
-  <div class="row">
-    <form method="post" action="/action" onsubmit="return confirm('Genstarte maskinen nu?');"><input type="hidden" name="do" value="reboot"><button class="danger" type="submit">⟳ Genstart maskine</button></form>
-    <form method="post" action="/action" onsubmit="return confirm('Slukke maskinen nu?');"><input type="hidden" name="do" value="shutdown"><button class="danger" type="submit">⏻ Sluk maskine</button></form>
-  </div>
-</fieldset>
-"""
     body += PAGE_TAIL
     return body
+
+
+def render_control(conf, message=None, error=None):
+    profile = current_power_profile()
+    options = "".join(
+        f'<option value="{key}"{" selected" if key == profile else ""}>{label}</option>'
+        for key, label in POWER_PROFILES.items()
+    )
+    body = PAGE_HEAD.format(title_suffix=" — Styring")
+    body += f'<div class="header-row"><div><h1>Styring</h1><div class="sub">{esc(conf.get("KIOSK_NAME", "Kiosk"))}</div></div></div>'
+    body += render_nav("/control") + render_message(message, error)
+    body += f"""
+<fieldset><legend>Strømprofil</legend>
+  <p class="status">Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.</p>
+  <form method="post" action="/power-profile"><label>Aktiv profil</label><select name="profile">{options}</select><div class="row"><button class="primary" type="submit">Skift strømprofil</button></div></form>
+</fieldset>
+<fieldset><legend>Kiosk og Warden</legend><div class="row">
+  <form method="post" action="/action"><input type="hidden" name="do" value="reload"><button type="submit">🔄 Genindlæs side</button></form>
+  <form method="post" action="/action"><input type="hidden" name="do" value="restart_chrome"><button type="submit">🔁 Genstart Chrome</button></form>
+  <button class="primary" type="button" id="restartWardenManual">🛡️ Genstart Kiosk Warden</button>
+  <form method="post" action="/action"><input type="hidden" name="do" value="screenshot"><button type="submit">📷 Tag screenshot</button></form>
+  <form method="post" action="/action"><input type="hidden" name="do" value="backup"><button type="submit">🗄️ Backup config</button></form>
+</div><div class="countdown" id="manualRestartCountdown"></div></fieldset>
+<fieldset><legend>Maskine</legend><div class="row">
+  <form method="post" action="/action" onsubmit="return confirm('Genstarte maskinen nu?');"><input type="hidden" name="do" value="reboot"><button class="danger" type="submit">⟳ Genstart maskine</button></form>
+  <form method="post" action="/action" onsubmit="return confirm('Slukke maskinen nu?');"><input type="hidden" name="do" value="shutdown"><button class="danger" type="submit">⏻ Sluk maskine</button></form>
+</div></fieldset>
+<script>
+document.getElementById('restartWardenManual').addEventListener('click', event => {{
+  let seconds = 5; const button = event.currentTarget; const label = document.getElementById('manualRestartCountdown'); button.disabled = true; label.textContent = `Genstarter om ${{seconds}} sekunder…`;
+  const timer = setInterval(async () => {{ seconds -= 1; label.textContent = `Genstarter om ${{seconds}} sekunder…`; if (seconds <= 0) {{ clearInterval(timer); await fetch('/action', {{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'do=restart_warden'}}); label.textContent = 'Kiosk Warden genstarter…'; }} }}, 1000);
+}});
+</script>"""
+    return body + PAGE_TAIL
 
 
 def render_settings(conf, message=None, error=None):
@@ -995,6 +1041,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_json(update_status())
         if parsed.path == "/vnc":
             return self._send_html(render_vnc(conf))
+        if parsed.path == "/control":
+            return self._send_html(render_control(conf))
         if parsed.path in ("/updates", "/changelog"):
             return self._send_html(render_updates(conf))
         if parsed.path == "/settings":
@@ -1101,6 +1149,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send_html(render_updates(conf, error=f"Kanalen blev gemt, men update-tjek fejlede: {exc}"))
             return self._send_html(render_updates(conf, message=f"Opdateringskanal sat til {channel.title()}."))
 
+        if parsed.path == "/power-profile":
+            ok, msg = set_power_profile(fields.get("profile", [""])[0])
+            if ok:
+                run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
+                return self._send_html(render_control(conf, message=msg))
+            return self._send_html(render_control(conf, error=msg))
+
         if parsed.path == "/rollback":
             version = fields.get("version", [""])[0]
             if not re.fullmatch(r"\d+\.\d+\.\d+", version):
@@ -1130,13 +1185,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                 "/usr/bin/systemctl", "--user", "restart",
                                 "kiosk-mqtt-stats.service", "kiosk-mqtt-control.service",
                                 "kiosk-watchdog.service", "kiosk-health.service",
+                                "kiosk-vnc.service", "kiosk-novnc.service",
                                 "kiosk-chrome.service", "kiosk-webui.service"],
                                timeout=10, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             elif action == "reboot":
                 run_bg("sudo", "/sbin/reboot")
             elif action == "shutdown":
                 run_bg("sudo", "/sbin/poweroff")
-            return self._redirect("/")
+            return self._redirect("/control")
 
         self.send_response(404)
         self.end_headers()

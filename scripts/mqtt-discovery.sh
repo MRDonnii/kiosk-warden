@@ -146,12 +146,14 @@ select_entity theme "Theme" "state/theme" "set_theme" "mdi:theme-light-dark" "Da
 text_entity
 select_entity page_zoom "Page Zoom" "state/page_zoom" "set_zoom" "mdi:magnify-plus" "50%" "75%" "90%" "100%" "110%" "125%" "150%" "175%" "200%"
 select_entity update_channel "Update Channel" "state/update_channel" "set_update_channel" "mdi:source-branch" "Stable" "Beta"
+select_entity power_profile "Power Profile" "state/power_profile" "set_power_profile" "mdi:speedometer" "Strømbesparelse" "Balanceret" "Ydelse"
 number_entity volume "Volume" "state/volume" "set_volume" 0 100 1 "%" "mdi:volume-high"
 
 button reboot "Reboot" "reboot" "mdi:restart-alert"
 button refresh "Refresh" "refresh" "mdi:web-refresh"
 button shutdown "Shutdown" "shutdown" "mdi:power"
 button restart_chrome "Restart Chrome" "restart_chrome" "mdi:restart"
+button restart_warden "Restart Kiosk Warden" "restart_warden" "mdi:shield-refresh"
 button restart_codex_remote "Genstart Codex Remote" "restart" "mdi:remote-desktop" "$CODEX_REMOTE_TOPIC/command"
 button hard_reload "Hard Reload" "hard_reload" "mdi:reload-alert"
 button screenshot_button "Take Screenshot" "screenshot" "mdi:camera"
@@ -168,6 +170,7 @@ mqtt_pub "$BASE_TOPIC/state/page_zoom" "$(cat "$HOME/kiosk/page_zoom" 2>/dev/nul
 mqtt_pub "$BASE_TOPIC/state/volume" "$(cat "$HOME/kiosk/volume" 2>/dev/null || echo 100)" -r
 mqtt_pub "$BASE_TOPIC/stats/web_ui_url" "${KIOSK_WEBUI_SCHEME:-http}://$(hostname -I | awk '{print $1}'):${KIOSK_WEBUI_PORT:-8080}" -r
 mqtt_pub "$BASE_TOPIC/state/update_channel" "$(sed 's/.*/\u&/' "$HOME/kiosk/update_channel" 2>/dev/null || echo Stable)" -r
+case "$(powerprofilesctl get 2>/dev/null || true)" in power-saver) mqtt_pub "$BASE_TOPIC/state/power_profile" "Strømbesparelse" -r ;; balanced) mqtt_pub "$BASE_TOPIC/state/power_profile" "Balanceret" -r ;; performance) mqtt_pub "$BASE_TOPIC/state/power_profile" "Ydelse" -r ;; esac
 mqtt_pub "$BASE_TOPIC/diagnostic/version" "$(cat "$HOME/kiosk/version" 2>/dev/null || echo 1.5.0)" -r
 
 mqtt_pub "$BASE_TOPIC/health/status" "$(cat "$HOME/kiosk/health_state" 2>/dev/null || echo ON)" -r

@@ -95,6 +95,8 @@ while true; do
   mqtt_pub "$BASE_TOPIC/state/theme" "$(cat "$THEME_FILE" 2>/dev/null || echo Dark)" -r || true
   mqtt_pub "$BASE_TOPIC/state/page_zoom" "$(cat "$ZOOM_FILE" 2>/dev/null || echo 100)" -r || true
   mqtt_pub "$BASE_TOPIC/state/volume" "$volume" -r || true
+  case "$(powerprofilesctl get 2>/dev/null || true)" in power-saver) power_profile="Strømbesparelse" ;; balanced) power_profile="Balanceret" ;; performance) power_profile="Ydelse" ;; *) power_profile="Ukendt" ;; esac
+  mqtt_pub "$BASE_TOPIC/state/power_profile" "$power_profile" -r || true
   mqtt_pub "$BASE_TOPIC/diagnostic/errors" "$(cat "$ERROR_FILE" 2>/dev/null || echo 0)" || true
   mqtt_pub "$BASE_TOPIC/diagnostic/heartbeat" "$heartbeat" || true
   mqtt_pub "$BASE_TOPIC/diagnostic/last_active" "$heartbeat" || true
