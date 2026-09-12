@@ -122,6 +122,8 @@ don't leave that first-run window open longer than necessary.
 
 From the web UI you can:
 
+- Use English by default or switch the complete interface to Danish from
+  **Settings → Interface language**. The selection persists across updates.
 - Monitor CPU, RAM, Intel GPU activity, CPU frequency, CPU/NVMe temperatures
   and network throughput with live status tiles and one-hour history graphs on
   Overview. Samples are retained in memory for up to six hours.

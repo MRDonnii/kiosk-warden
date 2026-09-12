@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.12.0 — 2026-09-13
+
+- **English by default**: every Web UI page, navigation item, control, status, validation message and countdown now uses English on fresh installations.
+- **Danish language option**: Settings includes a persistent Interface language selector for switching the complete interface between English and Danish.
+
 ## v1.11.0 — 2026-09-13
 
 - **Cross-architecture browser install**: amd64 systems use Google Chrome while ARM systems, including Raspberry Pi OS, install Chromium.
@@ -72,33 +77,33 @@
 
 ## v1.1.1 — 2026-09-05
 
-- **Fix: onboard-tastatur der forsvandt uden at komme frem igen**: v1.1.0's docking-indstillinger (`org.onboard.window docking-enabled`/`docking-edge`) viste sig at bringe onboard i en ødelagt tilstand på visse versioner — man kunne se ikonet, men et klik på det fik det til at forsvinde uden at vise tastaturet. Erstattet med at flytte/resize selve vinduet via `wmctrl`/`xdotool` (samme værktøjer kiosk-warden allerede bruger til Chrome-styring) i stedet for at stole på onboard's interne (versions-afhængige) indstillinger.
+- **Onboard keyboard visibility fix**: replaced version-dependent internal docking settings with direct `wmctrl`/`xdotool` positioning so the keyboard reliably opens and remains visible.
 
 ## v1.1.0 — 2026-09-05
 
-- **Touch-tastatur dokket i bunden automatisk**: når `onboard` slås til (ved install eller via MQTT/HA/web-UI), sættes den nu automatisk til at docke i bunden af skærmen og vise sig selv når man trykker i et tekstfelt (`docking-edge bottom` + `auto-show`) — ingen manuel indstilling nødvendig.
-- **Cross-distro support**: `install.sh` registrerer nu OS og display manager (GDM3 vs LightDM) og bruger den rigtige autologin-metode for hver — Ubuntu (GDM) virkede allerede, Linux Mint og andre LightDM-baserede distroer sættes nu også korrekt op.
-- **Touch-tastatur virker på alle desktops**: `onboard` installeres nu altid via apt og bruges som det primære skærmtastatur (virker på GNOME, Cinnamon, MATE, Xfce...); GNOME's indbyggede on-screen keyboard bruges kun som fallback når GNOME faktisk er det aktive skrivebordsmiljø. Tidligere brugte installeren kun GNOME's variant, som ikke virker på fx Linux Mint/Cinnamon.
-- **VNC password skiftes fra web-UI'et**: en ny "Fjernstyring (VNC) password"-formular under Indstillinger sætter `x11vnc -storepasswd` og genstarter `kiosk-vnc.service` — ingen terminal nødvendig.
-- **Valg ved installation**: `install.sh` spørger nu om du vil konfigurere kiosk/MQTT/VNC i terminalen med det samme, eller installere med standardværdier og gøre det bagefter via web-UI'et (`CONFIGURE_NOW=no` for at styre det uden interaktion).
-- `git` er nu en eksplicit del af apt-pakkelisten (var tidligere kun sikret i curl-bootstrap-stien), da selvopdatering kræver den ved kørsel.
+- **Automatic touch keyboard docking**: Onboard is positioned along the bottom edge and automatically shown for text input.
+- **Cross-distro support**: the installer detects GDM and LightDM and configures the appropriate automatic login method.
+- **Portable touch keyboard**: Onboard works across GNOME, Cinnamon, MATE and Xfce, with GNOME's keyboard used only as a fallback.
+- **VNC password management**: Settings can update the x11vnc password and restart its service.
+- **Flexible installation**: configure kiosk, MQTT and VNC interactively or defer configuration to the Web UI.
+- `git` became an explicit installation dependency for self-updates.
 
 ## v1.0.0 — 2026-08-30
 
-Første officielle release.
+First official release.
 
-- **Selvopdatering fra GitHub**: en "Tjek og opdater"-knap under Indstillinger henter nyeste version, opdaterer alle scripts/web-UI/systemd-units, og genstarter de nødvendige services — uden SSH.
-- **Home Assistant-integration af opdateringer**: en `update`-entity i HA viser når en ny version er klar, og "Install"-knappen i HA trigger opdateringen direkte via MQTT.
-- **Nyheder-fane**: denne changelog vises nu direkte i web-UI'et.
-- **Notifikation på forsiden**: en banner viser besked når en ny version er tilgængelig, baseret på et periodisk baggrundstjek mod GitHub.
-- Ensartet sidebredde på alle sider — ingen layout-hop når man skifter mellem Oversigt, Fjernstyring, Nyheder og Indstillinger.
+- **Self-update from GitHub**: fetch and install scripts, Web UI and systemd units without SSH.
+- **Home Assistant updates**: an MQTT update entity reports and installs new releases.
+- **Built-in changelog**: release history is available directly in the Web UI.
+- **Overview notifications**: the dashboard reports newly available releases.
+- Consistent page width across every section.
 
-## Tidligere ændringer (samlet under udvikling)
+## Earlier development changes
 
-- Delt web-UI op i separate sider: **Oversigt** (status + hurtige handlinger), **Fjernstyring** (VNC) og **Indstillinger** (kiosk/MQTT-konfiguration + password), med en fælles navigationsmenu.
-- Tilføjet et brugerdefineret logo/favicon (shield + skærm-ikon) brugt i browserfanen og på begge skrivebordsgenveje.
-- Farvekodede status-felter (grøn/gul/rød) baseret på tærskelværdier for RAM, disk og CPU-temperatur, samt et generelt visuelt løft af web-UI'et.
-- Live maskindata i web-UI'et: IP, oppetid, RAM/disk/temperatur, CPU-load, Chrome-status og model — hentet direkte fra systemet.
-- Bygget browser-baseret **VNC-fjernstyring** ind i pakken (x11vnc + noVNC + websockify), så man kan klikke direkte på kiosk-skærmen fra en browser, inklusiv fuldskærmsvisning.
-- Tilføjet et lille indbygget **web-UI** (ren Python, ingen eksterne afhængigheder) til opsætning og lokal kontrol, tilgængeligt på port 8080.
-- Første udgivelse: et selvhelende Ubuntu Chrome-kiosk-setup bygget på bash og systemd, med fuld Home Assistant MQTT-integration (status, styring, screenshots, backups, health-check/watchdog).
+- Split the Web UI into shared navigation pages for status, VNC and configuration.
+- Added the custom shield/monitor logo and desktop shortcuts.
+- Added colour-coded RAM, disk and CPU temperature health thresholds.
+- Added live IP, uptime, resource, Chrome and hardware information.
+- Added browser-based VNC remote control through x11vnc, noVNC and websockify.
+- Added the dependency-free Python Web UI on port 8080.
+- Established the self-healing Chrome kiosk and complete Home Assistant MQTT integration.
