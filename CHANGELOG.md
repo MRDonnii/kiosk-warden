@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.6.2 — 2026-09-13
+
+- **Strict MQTT schema compliance**: optional update fields with no value are omitted rather than published as `null`, allowing Home Assistant to accept every periodic update-state refresh.
+
 ## v1.6.1 — 2026-09-13
 
 - **Home Assistant update state compatibility**: internal channel and release metadata is now filtered out before MQTT publication, so Home Assistant accepts and displays the semantic versions, release notes, URL and installation progress.

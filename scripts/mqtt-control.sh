@@ -39,7 +39,7 @@ set_update_channel() {
   printf '%s\n' "$channel" > "$UPDATE_CHANNEL_FILE"
   publish_state update_channel "${channel^}"
   state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null)" || return 0
-  mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress}' <<<"$state")" -r || true
+  mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress} | with_entries(select(.value != null))' <<<"$state")" -r || true
 }
 
 set_conf_value() {

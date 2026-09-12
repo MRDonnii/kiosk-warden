@@ -13,7 +13,7 @@ source "$KIOSK_DIR/mqtt-lib.sh" 2>/dev/null || true
 
 publish_update_json() {
   [[ -n "${BASE_TOPIC:-}" ]] || return 0
-  mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress}' <<<"$1")" -r 2>/dev/null || true
+  mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress} | with_entries(select(.value != null))' <<<"$1")" -r 2>/dev/null || true
 }
 
 release_json() {
