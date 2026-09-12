@@ -27,6 +27,10 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
   toggle.
 - Ships its own icon (`icon.svg`) — used as the browser favicon and as the
   icon for both desktop shortcuts.
+- Freezes dashboard rendering while the screen is off and resumes it before
+  the display wakes, reducing idle power without reloading the page.
+- Uses GitHub Releases with selectable Stable/Beta channels, semantic
+  versions, release notes, automatic pre-update snapshots, and rollback.
 
 ## Install
 

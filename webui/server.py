@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import html
 import http.server
+import json
 import os
 import re
 import secrets
@@ -27,7 +28,8 @@ SCREENSHOT_PATH = os.path.join(KIOSK_DIR, "screenshots", "latest.jpg")
 ICON_PATH = os.path.join(KIOSK_DIR, "icon.svg")
 VNC_PASSWD_PATH = os.path.join(HOME, ".vnc", "passwd")
 CHANGELOG_PATH = os.path.join(KIOSK_DIR, "CHANGELOG.md")
-VERSION_PATH = os.path.join(KIOSK_DIR, ".version")
+VERSION_PATH = os.path.join(KIOSK_DIR, "version")
+UPDATE_CHANNEL_PATH = os.path.join(KIOSK_DIR, "update_channel")
 REPO_URL = os.environ.get("KIOSK_WARDEN_REPO", "https://github.com/MRDonnii/kiosk-warden.git")
 
 FALLBACK_ICON_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -188,14 +190,15 @@ def get_cached_latest_version():
 
 
 def check_latest_version():
-    result = subprocess.run(["git", "ls-remote", REPO_URL, "HEAD"],
-                             capture_output=True, text=True, timeout=15)
+    channel = read_file(UPDATE_CHANNEL_PATH, "stable")
+    result = subprocess.run([os.path.join(KIOSK_DIR, "self-update.sh"), "check", channel],
+                             capture_output=True, text=True, timeout=25)
     if result.returncode != 0 or not result.stdout.strip():
         raise RuntimeError(result.stderr.strip() or "kunne ikke kontakte GitHub")
-    return result.stdout.split()[0]
+    return json.loads(result.stdout)
 
 
-def run_self_update():
+def run_self_update(channel=None):
     # Runs the shared self-update.sh (also used by the MQTT "install" button)
     # in its own transient systemd scope via systemd-run, so restarting
     # kiosk-webui.service (or any other unit it restarts) at the end can't
@@ -204,7 +207,7 @@ def run_self_update():
     try:
         result = subprocess.run(
             ["systemd-run", "--user", "--wait", "--pipe", "--collect",
-             "--unit", f"kiosk-self-update-{int(time.time())}", script],
+             "--unit", f"kiosk-self-update-{int(time.time())}", script, "install", channel or read_file(UPDATE_CHANNEL_PATH, "stable")],
             capture_output=True, text=True, timeout=90,
         )
     except Exception as exc:
@@ -212,9 +215,9 @@ def run_self_update():
 
     output = (result.stdout or "").strip()
     if output.startswith("UPTODATE"):
-        return False, f"Allerede på nyeste version ({output.split()[1][:7]})."
+        return False, f"Allerede på nyeste version ({output.split()[1]})."
     if output.startswith("UPDATED"):
-        return True, f"Opdateret til {output.split()[1][:7]}. Siden genstarter om et par sekunder…"
+        return True, f"Opdateret til {output.split()[1]}. Siden genstarter om et par sekunder…"
     if output.startswith("ERROR"):
         return False, output[len("ERROR "):] or "Opdatering fejlede."
     return False, f"Uventet svar fra opdatering: {output or result.stderr.strip()}"
@@ -635,10 +638,11 @@ def render_dashboard(conf, message=None, error=None):
 
     latest = get_cached_latest_version()
     current = current_version()
-    if latest and current != "ukendt" and latest != current:
+    latest_version = latest.get("latest_version") if isinstance(latest, dict) else None
+    if latest_version and current != "ukendt" and latest_version != current:
         body += f"""
 <a href="/settings" style="text-decoration:none; color:inherit;">
-  <div class="update-banner">🔔 Ny version tilgængelig ({esc(latest[:7])}) — klik for at opdatere i Indstillinger</div>
+  <div class="update-banner">🔔 Ny version tilgængelig ({esc(latest_version)}) — klik for at opdatere i Indstillinger</div>
 </a>
 """
 
@@ -686,6 +690,23 @@ def render_dashboard(conf, message=None, error=None):
 
 
 def render_settings(conf, message=None, error=None):
+    channel = read_file(UPDATE_CHANNEL_PATH, "stable")
+    latest = get_cached_latest_version()
+    latest_version = latest.get("latest_version", "ukendt") if isinstance(latest, dict) else "ukendt"
+    prerelease = bool(latest.get("prerelease")) if isinstance(latest, dict) else False
+    try:
+        backups = subprocess.run(
+            [os.path.join(KIOSK_DIR, "self-update.sh"), "list"], capture_output=True,
+            text=True, timeout=10
+        ).stdout.splitlines()
+    except Exception:
+        backups = []
+    versions = []
+    for name in backups:
+        match = re.match(r"^(\d+\.\d+\.\d+)-", name)
+        if match and match.group(1) not in versions:
+            versions.append(match.group(1))
+    rollback_options = "".join(f'<option value="{esc(v)}">{esc(v)}</option>' for v in versions)
     body = PAGE_HEAD.format(title_suffix=" — Indstillinger")
     body += f"""
 <div class="header-row">
@@ -749,8 +770,16 @@ def render_settings(conf, message=None, error=None):
 <form method="post" action="/update">
   <fieldset>
     <legend>Software</legend>
-    <div class="sub">Version: {esc(current_version()[:7])}</div>
-    <div class="row"><button class="accent" type="submit">⬇️ Tjek og opdater fra GitHub</button></div>
+    <div class="sub">Installeret: {esc(current_version())} · Seneste: {esc(latest_version)}{' · Beta' if prerelease else ''}</div>
+    <label>Opdateringskanal</label>
+    <select name="channel">
+      <option value="stable"{' selected' if channel == 'stable' else ''}>Stable</option>
+      <option value="beta"{' selected' if channel == 'beta' else ''}>Beta</option>
+    </select>
+    <div class="row"><button type="submit" formaction="/update-channel">Gem kanal og tjek</button><button class="accent" type="submit">⬇️ Installer seneste release</button></div>
+    <label>Gendan tidligere version</label>
+    <select name="version" {'disabled' if not versions else ''}>{rollback_options or '<option>Ingen backups endnu</option>'}</select>
+    <div class="row"><button type="submit" formaction="/rollback" {'disabled' if not versions else ''}>Gendan valgt version</button></div>
   </fieldset>
 </form>
 """
@@ -929,11 +958,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_html(render_settings(conf, error=msg))
 
         if parsed.path == "/update":
-            ok, msg = run_self_update()
+            channel = fields.get("channel", [read_file(UPDATE_CHANNEL_PATH, "stable")])[0]
+            channel = "beta" if channel == "beta" else "stable"
+            with open(UPDATE_CHANNEL_PATH, "w", encoding="utf-8") as handle:
+                handle.write(channel + "\n")
+            ok, msg = run_self_update(channel)
             trigger_update_check()
             if ok:
                 return self._send_html(render_settings(conf, message=msg))
             return self._send_html(render_settings(conf, error=msg))
+
+        if parsed.path == "/update-channel":
+            channel = "beta" if fields.get("channel", ["stable"])[0] == "beta" else "stable"
+            with open(UPDATE_CHANNEL_PATH, "w", encoding="utf-8") as handle:
+                handle.write(channel + "\n")
+            trigger_update_check()
+            return self._send_html(render_settings(conf, message=f"Opdateringskanal sat til {channel.title()}."))
+
+        if parsed.path == "/rollback":
+            version = fields.get("version", [""])[0]
+            if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+                return self._send_html(render_settings(conf, error="Ugyldig rollback-version."))
+            script = os.path.join(KIOSK_DIR, "self-update.sh")
+            result = subprocess.run(["systemd-run", "--user", "--wait", "--pipe", "--collect",
+                                     "--unit", f"kiosk-rollback-{int(time.time())}", script, "rollback", version],
+                                    capture_output=True, text=True, timeout=90)
+            output = (result.stdout or result.stderr).strip()
+            if output.startswith("ROLLEDBACK"):
+                return self._send_html(render_settings(conf, message=f"Gendannet til {version}. Siden genstarter…"))
+            return self._send_html(render_settings(conf, error=output or "Rollback fejlede."))
 
         if parsed.path == "/action":
             action = fields.get("do", [""])[0]
