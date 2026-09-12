@@ -118,7 +118,8 @@ From the web UI you can:
   re-publishes Home Assistant discovery automatically.
 - Use the dedicated **Styring** page to reload the dashboard, restart Chrome
   or all Kiosk Warden services, take a screenshot, create a config backup, or
-  reboot/shut down the machine.
+  reboot/shut down the machine. The latest screenshot is displayed on the same
+  page, keeping Overview focused on essential live status.
 - Switch the machine between **Strømbesparelse**, **Balanceret** and **Ydelse**;
   the same power-profile control is published to Home Assistant over MQTT.
 - Change the web UI password.

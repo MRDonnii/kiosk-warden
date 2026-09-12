@@ -775,7 +775,6 @@ pollStatus();
 def render_dashboard(conf, message=None, error=None):
     health_state = read_file(os.path.join(KIOSK_DIR, "health_state"), "?")
     health_detail = read_file(os.path.join(KIOSK_DIR, "health_detail"), "")
-    has_screenshot = os.path.exists(SCREENSHOT_PATH)
     stats = get_stats()
 
     pill_class = "ok" if health_state == "ON" else ("err" if health_state == "OFF" else "warn")
@@ -823,9 +822,7 @@ def render_dashboard(conf, message=None, error=None):
     body += render_tile("🏷️", "Model", stats["model"])
     body += "</div>"
 
-    if has_screenshot:
-        body += f'<img class="shot" src="/screenshot.jpg?_={secrets.token_hex(4)}" alt="Seneste screenshot">'
-        body += f'<div class="status">{esc(health_detail)}</div>'
+    body += f'<div class="status">{esc(health_detail)}</div>'
 
     body += PAGE_TAIL
     return body
@@ -833,6 +830,7 @@ def render_dashboard(conf, message=None, error=None):
 
 def render_control(conf, message=None, error=None):
     profile = current_power_profile()
+    has_screenshot = os.path.exists(SCREENSHOT_PATH)
     options = "".join(
         f'<option value="{key}"{" selected" if key == profile else ""}>{label}</option>'
         for key, label in POWER_PROFILES.items()
@@ -852,6 +850,10 @@ def render_control(conf, message=None, error=None):
   <form method="post" action="/action"><input type="hidden" name="do" value="screenshot"><button type="submit">📷 Tag screenshot</button></form>
   <form method="post" action="/action"><input type="hidden" name="do" value="backup"><button type="submit">🗄️ Backup config</button></form>
 </div><div class="countdown" id="manualRestartCountdown"></div></fieldset>
+<fieldset><legend>Skærmbillede</legend>
+  <p class="status">Seneste billede af den aktive kiosk-skærm. Brug Tag screenshot ovenfor for at opdatere det.</p>
+  {f'<img class="shot" src="/screenshot.jpg?_={secrets.token_hex(4)}" alt="Seneste screenshot af kiosk-skærmen">' if has_screenshot else '<div class="status">Der er ikke taget et screenshot endnu.</div>'}
+</fieldset>
 <fieldset><legend>Maskine</legend><div class="row">
   <form method="post" action="/action" onsubmit="return confirm('Genstarte maskinen nu?');"><input type="hidden" name="do" value="reboot"><button class="danger" type="submit">⟳ Genstart maskine</button></form>
   <form method="post" action="/action" onsubmit="return confirm('Slukke maskinen nu?');"><input type="hidden" name="do" value="shutdown"><button class="danger" type="submit">⏻ Sluk maskine</button></form>
