@@ -13,6 +13,7 @@ VERSION_FILE="$HOME/kiosk/version"
 ERROR_FILE="$HOME/kiosk/errors"
 CHROME_LIFECYCLE="$HOME/kiosk/chrome-lifecycle.py"
 UPDATE_CHANNEL_FILE="$HOME/kiosk/update_channel"
+POWER_PROFILE_FILE="$HOME/kiosk/power_profile"
 
 chrome_window() {
   wmctrl -lx | awk 'tolower($0) ~ /google-chrome|chromium/ {print $1; exit}'
@@ -40,6 +41,26 @@ set_update_channel() {
   publish_state update_channel "${channel^}"
   state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null)" || return 0
   mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress} | with_entries(select(.value != null))' <<<"$state")" -r || true
+}
+
+set_power_profile() {
+  local profile="${1,,}"
+  case "$profile" in
+    "strømbesparelse"|"power saver"|power-saver) profile="power-saver"; state="Strømbesparelse" ;;
+    balanceret|balanced) profile="balanced"; state="Balanceret" ;;
+    ydelse|performance) profile="performance"; state="Ydelse" ;;
+    *) return 0 ;;
+  esac
+  powerprofilesctl set "$profile" >/dev/null 2>&1 || return 0
+  printf '%s\n' "$profile" > "$POWER_PROFILE_FILE"
+  publish_state power_profile "$state"
+}
+
+restart_warden() {
+  systemd-run --user --collect --on-active=1s --unit="kiosk-warden-restart-$(date +%s)" \
+    /usr/bin/systemctl --user restart kiosk-mqtt-stats.service kiosk-mqtt-control.service \
+    kiosk-watchdog.service kiosk-health.service kiosk-vnc.service kiosk-novnc.service \
+    kiosk-chrome.service kiosk-webui.service >/dev/null 2>&1 || true
 }
 
 set_conf_value() {
@@ -231,6 +252,7 @@ handle_command() {
     http://*|https://*) set_kiosk_url "$1" ;;
     screenshot) take_screenshot ;;
     backup) backup_kiosk ;;
+    restart_warden) restart_warden ;;
     reboot) sudo /sbin/reboot ;;
     shutdown) sudo /sbin/poweroff ;;
   esac
@@ -255,12 +277,14 @@ publish_state theme "$(cat "$THEME_FILE" 2>/dev/null || echo Dark)"
 publish_state page_zoom "$(cat "$ZOOM_FILE" 2>/dev/null || echo 100)"
 publish_state version "$(cat "$VERSION_FILE" 2>/dev/null || echo 1.5.0)"
 publish_state update_channel "$(sed 's/.*/\u&/' "$UPDATE_CHANNEL_FILE" 2>/dev/null || echo Stable)"
+case "$(powerprofilesctl get 2>/dev/null || true)" in power-saver) publish_state power_profile "Strømbesparelse" ;; balanced) publish_state power_profile "Balanceret" ;; performance) publish_state power_profile "Ydelse" ;; esac
 
 listen_topic "$BASE_TOPIC/set_url" set_kiosk_url &
 listen_topic "$BASE_TOPIC/set_zoom" set_zoom &
 listen_topic "$BASE_TOPIC/set_theme" set_theme &
 listen_topic "$BASE_TOPIC/set_volume" set_volume &
 listen_topic "$BASE_TOPIC/set_update_channel" set_update_channel &
+listen_topic "$BASE_TOPIC/set_power_profile" set_power_profile &
 listen_topic "$CODEX_REMOTE_TOPIC/command" handle_codex_remote_command &
 listen_topic "$BASE_TOPIC/update/install" handle_update_install &
 listen_topic "$BASE_TOPIC/command" handle_command

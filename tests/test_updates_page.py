@@ -39,12 +39,35 @@ class UpdatesPageTest(unittest.TestCase):
             self.assertIn("Tjek for updates", updates)
             self.assertIn("updateProgressFill", updates)
             self.assertIn("Genstart Kiosk Warden", updates)
-            self.assertLess(updates.index('id="restartWardenManual"'), updates.index('class="release-notes changelog"'))
             self.assertIn("Genstart maskinen", updates)
             self.assertIn("restart_warden", updates)
             self.assertIn("Genstarter om ${seconds} sekunder", updates)
             self.assertNotIn("Release-kanal og installation", settings)
             self.assertNotIn("Gendan tidligere version", settings)
+
+    def test_control_page_owns_operations_and_power_profile(self):
+        conf = {"KIOSK_NAME": "Test kiosk", "KIOSK_ID": "test"}
+        original = SERVER.current_power_profile
+        SERVER.current_power_profile = lambda: "power-saver"
+        try:
+            control = SERVER.render_control(conf)
+            dashboard = SERVER.render_dashboard(conf)
+        finally:
+            SERVER.current_power_profile = original
+        self.assertIn("🎛️ Styring", control)
+        self.assertIn("Strømbesparelse", control)
+        self.assertIn('id="restartWardenManual"', control)
+        self.assertIn("Genstart Kiosk Warden", control)
+        self.assertIn("Genstart maskine", control)
+        self.assertNotIn("Hurtige handlinger", dashboard)
+
+    def test_mqtt_exposes_power_profile_and_warden_restart(self):
+        discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
+        control = (ROOT / "scripts" / "mqtt-control.sh").read_text()
+        self.assertIn('select_entity power_profile', discovery)
+        self.assertIn('button restart_warden', discovery)
+        self.assertIn('listen_topic "$BASE_TOPIC/set_power_profile"', control)
+        self.assertIn('restart_warden) restart_warden', control)
 
     def test_updater_uses_independent_webui_restart_timer(self):
         updater = (ROOT / "scripts" / "self-update.sh").read_text()

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.9.0 — 2026-09-13
+
+- **Dedicated control page**: operational actions have moved from Overview to a new Styring tab, keeping Overview focused on status and diagnostics.
+- **Power-profile control**: switch between Strømbesparelse, Balanceret and Ydelse from the web UI or the new Home Assistant MQTT select entity.
+- **Warden restart everywhere it belongs**: restart Kiosk Warden from Styring or the new Home Assistant MQTT button, with a five-second web countdown and an independent systemd restart job.
+
 ## v1.8.2 — 2026-09-13
 
 - **Visible Warden restart action**: the manual Restart Kiosk Warden button now sits directly below the update controls instead of below rollback and release content where it could be outside the viewport.

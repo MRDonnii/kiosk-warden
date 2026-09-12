@@ -116,8 +116,11 @@ From the web UI you can:
 - Edit `KIOSK_NAME`, `KIOSK_ID`, `KIOSK_URL`, MQTT host/port/user/password,
   and the stats interval — saving restarts the affected services and
   re-publishes Home Assistant discovery automatically.
-- Reload the page, restart Chrome, take a screenshot (shown inline), trigger
-  a config backup, or reboot/shut down the machine.
+- Use the dedicated **Styring** page to reload the dashboard, restart Chrome
+  or all Kiosk Warden services, take a screenshot, create a config backup, or
+  reboot/shut down the machine.
+- Switch the machine between **Strømbesparelse**, **Balanceret** and **Ydelse**;
+  the same power-profile control is published to Home Assistant over MQTT.
 - Change the web UI password.
 
 If you'd rather keep it off the network entirely, set `KIOSK_WEBUI_HOST=127.0.0.1`
@@ -214,18 +217,19 @@ Base topic: `home/kiosk/<KIOSK_ID>`
 ```
 .../online/status
 .../stats/*            (cpu_load, ram_used, cpu_temperature, uptime, ip_address, ...)
-.../state/*            (url, window_mode, screen, keyboard, theme, page_zoom, volume, ...)
+.../state/*            (url, window_mode, screen, keyboard, theme, page_zoom, volume, power_profile, ...)
 .../health/status       ON/OFF
 .../health/detail
 .../diagnostic/*        (errors, heartbeat, version, last_backup, last_recovery, ...)
 .../stats/web_ui_url    (complete Web UI address, for example http://192.0.2.10:8080)
-.../command             (reload, hard_reload, restart_chrome, screen_on, screen_off,
+.../command             (reload, hard_reload, restart_chrome, restart_warden, screen_on, screen_off,
                           fullscreen, home, reboot, shutdown, screenshot, backup,
                           Kiosk/Fullscreen/Windowed, Dark/Light/Auto, or a raw http(s) URL)
 .../set_url
 .../set_zoom
 .../set_theme
 .../set_volume
+.../set_power_profile   (Strømbesparelse, Balanceret or Ydelse)
 .../image/screenshot    (retained JPEG, also mirrored to homeassistant/image/... discovery)
 .../update/state        (JSON: installed_version/latest_version, checked every 30 min)
 .../update/install      (send "install" to trigger self-update.sh, same as the HA update entity's button)
