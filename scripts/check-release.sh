@@ -11,4 +11,5 @@ python3 -m unittest discover -s "$ROOT/tests" -p 'test_*.py'
 rg -q 'python3-websocket' "$ROOT/install.sh"
 rg -q 'scripts/\*\.py' "$ROOT/install.sh"
 rg -q 'scripts/\*\.py' "$ROOT/scripts/self-update.sh"
+! rg -q 'chrome-lifecycle\.py.*(active|frozen)|CHROME_LIFECYCLE' "$ROOT/scripts/mqtt-control.sh" "$ROOT/scripts/start-kiosk.sh"
 echo "Kiosk Warden release checks passed: v$version"

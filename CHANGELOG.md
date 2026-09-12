@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.12.1 — 2026-09-13
+
+- **Reliable screen wake**: screen power saving now uses DPMS without freezing Chrome's renderer, preventing the kiosk from waking to a solid grey page.
+- **Safe OFF-state restore**: restarting Chrome while the screen is off still restores the physical DPMS state without suspending dashboard painting.
+
 ## v1.12.0 — 2026-09-13
 
 - **English by default**: every Web UI page, navigation item, control, status, validation message and countdown now uses English on fresh installations.

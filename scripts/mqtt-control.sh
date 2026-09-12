@@ -11,7 +11,6 @@ ZOOM_FILE="$HOME/kiosk/page_zoom"
 KEYBOARD_FILE="$HOME/kiosk/keyboard_state"
 VERSION_FILE="$HOME/kiosk/version"
 ERROR_FILE="$HOME/kiosk/errors"
-CHROME_LIFECYCLE="$HOME/kiosk/chrome-lifecycle.py"
 UPDATE_CHANNEL_FILE="$HOME/kiosk/update_channel"
 POWER_PROFILE_FILE="$HOME/kiosk/power_profile"
 
@@ -141,7 +140,6 @@ set_zoom() {
 }
 
 screen_on() {
-  "$CHROME_LIFECYCLE" active || true
   xset dpms force on || true
   xset s off || true
   xset s noblank || true
@@ -151,7 +149,6 @@ screen_on() {
 }
 
 screen_off() {
-  "$CHROME_LIFECYCLE" frozen || true
   xset +dpms || true
   xset dpms 0 0 1 || true
   xset dpms force off || true

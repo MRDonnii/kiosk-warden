@@ -38,14 +38,14 @@ fi
 wmctrl -c "Indstillinger" >/dev/null 2>&1 || true
 wmctrl -c "Settings" >/dev/null 2>&1 || true
 
-# A Chrome restart while the physical screen is off creates a fresh active
-# page. Re-apply the persisted state once DevTools is listening so background
-# animations do not silently start consuming power again.
+# A Chrome restart must preserve the physical OFF state. Do not freeze the
+# renderer: Chromium can acknowledge the later `active` transition without
+# repainting, leaving a physically awakened kiosk as a solid grey screen.
 if [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "OFF" ]]; then
   (
     for _ in $(seq 1 20); do
       sleep 0.5
-      if "$HOME/kiosk/chrome-lifecycle.py" frozen >/dev/null 2>&1; then
+      if curl -fsS --max-time 1 http://127.0.0.1:9222/json/list >/dev/null 2>&1; then
         xset +dpms >/dev/null 2>&1 || true
         xset dpms 0 0 1 >/dev/null 2>&1 || true
         xset dpms force off >/dev/null 2>&1 || true
