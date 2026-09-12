@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.8.0 — 2026-09-13
+
+- **Manual update check**: the Updates page now has a dedicated check button that refreshes GitHub release information without installing anything.
+- **Live installation progress**: download, validation, backup, file installation and service restart stages are shown in a persistent progress bar that survives the web UI service restart.
+- **Controlled reboot**: after a successful update, choose to restart the machine now or later. Restart Now displays a visible five-second countdown before reboot.
+- **Web UI address in Home Assistant**: MQTT discovery now adds a Web UI sensor containing the kiosk's complete `http://IP:port` address.
+
 ## v1.7.0 — 2026-09-13
 
 - **Dedicated Updates page**: Kiosk Warden now has a separate Updates navigation tab with installed/latest versions, Stable/Beta selection, release notes, installation controls, local snapshots, rollback and the complete changelog.

@@ -118,6 +118,7 @@ sensor memory_size "Memory Size" "stats/memory_size" "" "mdi:memory"
 sensor memory_usage "Memory Usage" "stats/memory_usage" "%" "mdi:memory" "" "measurement"
 sensor model "Model" "stats/model" "" "mdi:chip"
 sensor network_address "Network Address" "stats/network_address" "" "mdi:ip-network"
+sensor web_ui_url "Web UI" "stats/web_ui_url" "" "mdi:web"
 sensor package_upgrades "Package Upgrades" "stats/package_upgrades" "" "mdi:package-up"
 sensor processor_temperature "Processor Temperature" "stats/processor_temperature" "°C" "mdi:thermometer" "temperature" "measurement"
 sensor processor_usage "Processor Usage" "stats/processor_usage" "%" "mdi:cpu-64-bit" "" "measurement"
@@ -165,6 +166,7 @@ mqtt_pub "$BASE_TOPIC/state/keyboard" "$(cat "$HOME/kiosk/keyboard_state" 2>/dev
 mqtt_pub "$BASE_TOPIC/state/theme" "$(cat "$HOME/kiosk/theme" 2>/dev/null || echo Dark)" -r
 mqtt_pub "$BASE_TOPIC/state/page_zoom" "$(cat "$HOME/kiosk/page_zoom" 2>/dev/null || echo 100)" -r
 mqtt_pub "$BASE_TOPIC/state/volume" "$(cat "$HOME/kiosk/volume" 2>/dev/null || echo 100)" -r
+mqtt_pub "$BASE_TOPIC/stats/web_ui_url" "${KIOSK_WEBUI_SCHEME:-http}://$(hostname -I | awk '{print $1}'):${KIOSK_WEBUI_PORT:-8080}" -r
 mqtt_pub "$BASE_TOPIC/state/update_channel" "$(sed 's/.*/\u&/' "$HOME/kiosk/update_channel" 2>/dev/null || echo Stable)" -r
 mqtt_pub "$BASE_TOPIC/diagnostic/version" "$(cat "$HOME/kiosk/version" 2>/dev/null || echo 1.5.0)" -r
 

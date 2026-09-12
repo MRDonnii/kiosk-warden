@@ -82,6 +82,7 @@ while true; do
   mqtt_pub "$BASE_TOPIC/stats/uptime_minutes" "$uptime_minutes" || true
   mqtt_pub "$BASE_TOPIC/stats/ip_address" "$ip_addr" || true
   mqtt_pub "$BASE_TOPIC/stats/network_address" "$ip_addr" || true
+  mqtt_pub "$BASE_TOPIC/stats/web_ui_url" "${KIOSK_WEBUI_SCHEME:-http}://${ip_addr}:${KIOSK_WEBUI_PORT:-8080}" -r || true
   mqtt_pub "$BASE_TOPIC/stats/host_name" "$(hostname)" -r || true
   mqtt_pub "$BASE_TOPIC/stats/model" "$(host_model)" -r || true
   mqtt_pub "$BASE_TOPIC/stats/serial_number" "$(serial_number)" -r || true

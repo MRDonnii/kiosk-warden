@@ -34,6 +34,8 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
 - Provides a dedicated **Updates** page in the web UI with channel selection,
   release details, install controls, snapshot history, rollback, and the full
   changelog.
+- Shows persistent stage-by-stage update progress, offers reboot now/later,
+  and displays a five-second countdown before an update-triggered reboot.
 
 ## Install
 
@@ -216,6 +218,7 @@ Base topic: `home/kiosk/<KIOSK_ID>`
 .../health/status       ON/OFF
 .../health/detail
 .../diagnostic/*        (errors, heartbeat, version, last_backup, last_recovery, ...)
+.../stats/web_ui_url    (complete Web UI address, for example http://192.0.2.10:8080)
 .../command             (reload, hard_reload, restart_chrome, screen_on, screen_off,
                           fullscreen, home, reboot, shutdown, screenshot, backup,
                           Kiosk/Fullscreen/Windowed, Dark/Light/Auto, or a raw http(s) URL)

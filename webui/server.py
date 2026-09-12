@@ -30,6 +30,7 @@ VNC_PASSWD_PATH = os.path.join(HOME, ".vnc", "passwd")
 CHANGELOG_PATH = os.path.join(KIOSK_DIR, "CHANGELOG.md")
 VERSION_PATH = os.path.join(KIOSK_DIR, "version")
 UPDATE_CHANNEL_PATH = os.path.join(KIOSK_DIR, "update_channel")
+UPDATE_STATUS_PATH = os.path.join(KIOSK_DIR, "update_status.json")
 REPO_URL = os.environ.get("KIOSK_WARDEN_REPO", "https://github.com/MRDonnii/kiosk-warden.git")
 
 FALLBACK_ICON_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -221,6 +222,27 @@ def run_self_update(channel=None):
     if output.startswith("ERROR"):
         return False, output[len("ERROR "):] or "Opdatering fejlede."
     return False, f"Uventet svar fra opdatering: {output or result.stderr.strip()}"
+
+
+def start_self_update(channel):
+    script = os.path.join(KIOSK_DIR, "self-update.sh")
+    unit = f"kiosk-self-update-{int(time.time())}"
+    result = subprocess.run(
+        ["systemd-run", "--user", "--collect", "--unit", unit,
+         script, "install", channel], capture_output=True, text=True, timeout=15
+    )
+    if result.returncode != 0:
+        return False, result.stderr.strip() or "Kunne ikke starte opdateringen."
+    return True, unit
+
+
+def update_status():
+    try:
+        with open(UPDATE_STATUS_PATH, encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {"stage": "idle", "percent": 0, "message": "Klar til at tjekke efter opdateringer.", "result": "idle", "restart_required": False}
 
 
 def chrome_focus_and_key(key):
@@ -512,6 +534,12 @@ PAGE_HEAD = """<!doctype html>
   .version-card span {{ display:block; opacity:.6; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; }}
   .version-card strong {{ display:block; font-size:1.35rem; margin-top:.25rem; }}
   .release-notes {{ border-left:4px solid var(--accent); padding:.2rem 0 .2rem 1rem; margin:1rem 0; }}
+  .progress-shell {{ display:none; margin-top:1rem; }}
+  .progress-track {{ height:14px; overflow:hidden; border-radius:999px; background:rgba(128,128,128,.18); }}
+  .progress-fill {{ width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition:width .35s ease; }}
+  .progress-meta {{ display:flex; justify-content:space-between; gap:1rem; margin-top:.45rem; font-size:.82rem; }}
+  .restart-choice {{ display:none; margin-top:1rem; padding:1rem; border-radius:12px; background:rgba(34,197,94,.12); }}
+  .countdown {{ font-size:1.1rem; font-weight:800; color:var(--warn); }}
 </style>
 </head>
 <body>
@@ -650,8 +678,10 @@ def render_updates(conf, message=None, error=None):
   <form method="post" action="/update">
     <label>Opdateringskanal</label>
     <select name="channel"><option value="stable"{' selected' if channel == 'stable' else ''}>Stable</option><option value="beta"{' selected' if channel == 'beta' else ''}>Beta</option></select>
-    <div class="row"><button type="submit" formaction="/update-channel">Gem kanal og tjek igen</button><button class="accent" type="submit"{' disabled' if not update_ready else ''}>⬇️ Installer v{esc(latest_version)}</button></div>
+    <div class="row"><button type="button" id="checkUpdates">Tjek for updates</button><button type="submit" formaction="/update-channel">Gem kanal</button><button class="accent" type="submit" id="installUpdate"{' disabled' if not update_ready else ''}>⬇️ Installer v{esc(latest_version)}</button></div>
   </form>
+  <div class="progress-shell" id="updateProgress"><div class="progress-track"><div class="progress-fill" id="updateProgressFill"></div></div><div class="progress-meta"><span id="updateProgressText">Forbereder…</span><strong id="updateProgressPercent">0%</strong></div></div>
+  <div class="restart-choice" id="restartChoice"><strong>Opdateringen er installeret.</strong><p>Vil du genstarte maskinen nu eller senere?</p><div class="row"><button class="primary" type="button" id="restartNow">Genstart nu</button><button type="button" id="restartLater">Senere</button></div><div class="countdown" id="restartCountdown"></div></div>
   <div class="release-notes changelog"><strong>Seneste release{' · Beta' if prerelease else ''}</strong>{render_markdown_lite(release_summary)}</div>
   {f'<a href="{esc(release_url)}" target="_blank" rel="noreferrer">Se hele releasen på GitHub</a>' if release_url else ''}
 </fieldset>
@@ -669,6 +699,45 @@ def render_updates(conf, message=None, error=None):
     body += '<div class="changelog">'
     body += render_markdown_lite(text)
     body += "</div></fieldset>"
+    body += """
+<script>
+const progress = document.getElementById('updateProgress');
+const fill = document.getElementById('updateProgressFill');
+const progressText = document.getElementById('updateProgressText');
+const progressPercent = document.getElementById('updateProgressPercent');
+const restartChoice = document.getElementById('restartChoice');
+let pollTimer = null;
+function showStatus(status) {
+  const percent = Math.max(0, Math.min(100, Number(status.percent || 0)));
+  if (status.result !== 'idle') progress.style.display = 'block';
+  fill.style.width = percent + '%'; progressPercent.textContent = percent + '%';
+  progressText.textContent = status.message || status.stage || 'Arbejder…';
+  if (status.result === 'running') return;
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (status.result === 'complete' && status.restart_required && localStorage.getItem('kiosk-restart-later') !== status.updated_at) restartChoice.style.display = 'block';
+}
+async function pollStatus() {
+  try { const response = await fetch('/api/update-status', {cache:'no-store'}); if (response.ok) showStatus(await response.json()); } catch (_) {}
+}
+document.getElementById('checkUpdates').addEventListener('click', async () => {
+  progress.style.display = 'block'; progressText.textContent = 'Tjekker GitHub Releases…'; fill.style.width = '10%'; progressPercent.textContent = '10%';
+  try { const response = await fetch('/api/update-check', {method:'POST'}); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Update-tjek fejlede'); location.reload(); }
+  catch (error) { progressText.textContent = error.message; fill.style.width = '100%'; progressPercent.textContent = 'Fejl'; }
+});
+document.getElementById('installUpdate').closest('form').addEventListener('submit', event => {
+  if (event.submitter && event.submitter.id !== 'installUpdate') return;
+  progress.style.display = 'block'; showStatus({percent:2,message:'Starter opdateringen…',result:'running'});
+  pollTimer = setInterval(pollStatus, 800); setTimeout(pollStatus, 250);
+});
+document.getElementById('restartLater').addEventListener('click', async () => { const response = await fetch('/api/update-status', {cache:'no-store'}); const status = await response.json(); restartChoice.style.display = 'none'; localStorage.setItem('kiosk-restart-later', status.updated_at || '1'); });
+document.getElementById('restartNow').addEventListener('click', () => {
+  let seconds = 5; document.getElementById('restartNow').disabled = true;
+  const label = document.getElementById('restartCountdown'); label.textContent = `Genstarter om ${seconds} sekunder…`;
+  const timer = setInterval(async () => { seconds -= 1; label.textContent = `Genstarter om ${seconds} sekunder…`; if (seconds <= 0) { clearInterval(timer); await fetch('/action', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'do=reboot'}); } }, 1000);
+});
+pollStatus();
+</script>
+"""
     body += PAGE_TAIL
     return body
 
@@ -699,8 +768,8 @@ def render_dashboard(conf, message=None, error=None):
     latest_version = latest.get("latest_version") if isinstance(latest, dict) else None
     if latest_version and current != "ukendt" and latest_version != current:
         body += f"""
-<a href="/settings" style="text-decoration:none; color:inherit;">
-  <div class="update-banner">🔔 Ny version tilgængelig ({esc(latest_version)}) — klik for at opdatere i Indstillinger</div>
+<a href="/updates" style="text-decoration:none; color:inherit;">
+  <div class="update-banner">🔔 Ny version tilgængelig ({esc(latest_version)}) — åbn Opdateringer</div>
 </a>
 """
 
@@ -863,6 +932,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_json(self, payload, status=200):
+        data = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _redirect(self, location):
         self.send_response(303)
         self.send_header("Location", location)
@@ -910,6 +988,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/screenshot.jpg":
             return self._serve_screenshot()
+        if parsed.path == "/api/update-status":
+            return self._send_json(update_status())
         if parsed.path == "/vnc":
             return self._send_html(render_vnc(conf))
         if parsed.path in ("/updates", "/changelog"):
@@ -945,6 +1025,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if not self._authenticated(conf):
             return self._require_auth()
+
+        if parsed.path == "/api/update-check":
+            try:
+                latest = check_latest_version()
+                with _update_lock:
+                    _update_cache["latest"] = latest
+                    _update_cache["checked_at"] = time.time()
+                    _update_cache["error"] = None
+                return self._send_json(latest)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, 502)
 
         if parsed.path == "/save":
             err = validate_settings(fields)
@@ -988,10 +1079,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             channel = "beta" if channel == "beta" else "stable"
             with open(UPDATE_CHANNEL_PATH, "w", encoding="utf-8") as handle:
                 handle.write(channel + "\n")
-            ok, msg = run_self_update(channel)
-            trigger_update_check()
+            ok, msg = start_self_update(channel)
             if ok:
-                return self._send_html(render_updates(conf, message=msg))
+                return self._redirect("/updates?started=1")
             return self._send_html(render_updates(conf, error=msg))
 
         if parsed.path == "/update-channel":
