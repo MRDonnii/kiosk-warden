@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.6.3 — 2026-09-13
+
+- **Reliable failed-update reporting**: if release download, validation, backup or file replacement fails after installation starts, Home Assistant now receives a final `in_progress: false` state instead of leaving the update entity spinning.
+
 ## v1.6.2 — 2026-09-13
 
 - **Strict MQTT schema compliance**: optional update fields with no value are omitted rather than published as `null`, allowing Home Assistant to accept every periodic update-state refresh.

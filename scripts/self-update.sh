@@ -16,6 +16,15 @@ publish_update_json() {
   mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress} | with_entries(select(.value != null))' <<<"$1")" -r 2>/dev/null || true
 }
 
+reset_progress_on_failure() {
+  local code=$?
+  trap - EXIT
+  if (( code != 0 )) && [[ -n "${UPDATE_FAILURE_STATE:-}" ]]; then
+    publish_update_json "$UPDATE_FAILURE_STATE"
+  fi
+  exit "$code"
+}
+
 release_json() {
   local url="https://api.github.com/repos/$REPO_SLUG/releases/latest"
   [[ "$CHANNEL" == beta ]] && url="https://api.github.com/repos/$REPO_SLUG/releases?per_page=1"
@@ -73,6 +82,8 @@ install_release() {
   state="$(check_release)" || return 1
   tag="$(jq -r .tag <<<"$state")"; expected="$(jq -r .latest_version <<<"$state")"; installed="$(jq -r .installed_version <<<"$state")"
   version_newer "$expected" "$installed" || { echo "UPTODATE $installed"; return 0; }
+  UPDATE_FAILURE_STATE="$(jq -c '. + {in_progress:false}' <<<"$state")"
+  trap reset_progress_on_failure EXIT
   publish_update_json "$(jq -c '. + {in_progress:true}' <<<"$state")"
   workdir="$(mktemp -d)"; trap 'rm -rf "$workdir"' RETURN
   git clone --depth 1 --branch "$tag" "$REPO_URL" "$workdir/repo" -q || { echo 'ERROR release download failed'; return 1; }
@@ -87,6 +98,7 @@ install_release() {
   for file in "$repo"/systemd/*.service; do replace_atomic "$file" "$HOME/.config/systemd/user/$(basename "$file")" 644; done
   git -C "$repo" rev-parse HEAD > "$KIOSK_DIR/.version"
   publish_update_json "$(jq -cn --arg version "$expected" --arg channel "$CHANNEL" '{installed_version:$version,latest_version:$version,title:"Kiosk Warden",channel:$channel,in_progress:false}')"
+  trap - EXIT
   restart_warden
   echo "UPDATED $expected backup=$backup"
 }
