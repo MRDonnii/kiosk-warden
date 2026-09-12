@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.0 — 2026-09-13
+
+- **Telemetry overview**: Overview now shows live CPU, RAM, Intel GPU activity, CPU frequency, CPU/NVMe temperatures and network throughput.
+- **Live history graphs**: four lightweight canvas charts retain up to six hours in memory and display the latest hour without page or DOM rebuilds.
+- **Low-overhead updates**: telemetry samples every ten seconds, GPU residency every thirty seconds, and redraws existing canvases in place.
+
 ## v1.9.2 — 2026-09-13
 
 - **Screenshot on Styring**: the latest kiosk screenshot now appears beside its capture action on the Styring page, while Overview remains a focused status dashboard.
