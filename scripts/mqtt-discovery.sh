@@ -173,4 +173,4 @@ mqtt_pub "$BASE_TOPIC/health/detail" "$(cat "$HOME/kiosk/health_detail" 2>/dev/n
 
 channel="$(cat "$HOME/kiosk/update_channel" 2>/dev/null || echo stable)"
 update_state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null || true)"
-[[ -n "$update_state" ]] && mqtt_pub "$BASE_TOPIC/update/state" "$update_state" -r
+[[ -n "$update_state" ]] && mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress}' <<<"$update_state")" -r
