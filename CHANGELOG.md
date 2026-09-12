@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.6.1 — 2026-09-13
+
+- **Home Assistant update state compatibility**: internal channel and release metadata is now filtered out before MQTT publication, so Home Assistant accepts and displays the semantic versions, release notes, URL and installation progress.
+
 ## v1.6.0 — 2026-09-13
 
 - **Automatic low-power screen state**: `screen_off` now freezes the Chrome page before DPMS powers down the monitor, while `screen_on` resumes it before the display returns. The persisted OFF state is restored after Chrome restarts.
