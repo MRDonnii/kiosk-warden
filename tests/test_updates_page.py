@@ -69,6 +69,12 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('listen_topic "$BASE_TOPIC/set_power_profile"', control)
         self.assertIn('restart_warden) restart_warden', control)
 
+    def test_vnc_services_stop_cleanly_during_warden_restart(self):
+        vnc = (ROOT / "systemd" / "kiosk-vnc.service").read_text()
+        novnc = (ROOT / "systemd" / "kiosk-novnc.service").read_text()
+        self.assertIn("SuccessExitStatus=2", vnc)
+        self.assertIn("SuccessExitStatus=143", novnc)
+
     def test_updater_uses_independent_webui_restart_timer(self):
         updater = (ROOT / "scripts" / "self-update.sh").read_text()
         self.assertIn("systemd-run --user --collect --on-active=2s", updater)

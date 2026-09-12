@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.9.1 — 2026-09-13
+
+- **Clean service restarts**: x11vnc and noVNC now treat their normal termination exit codes as successful, so a deliberate Warden restart no longer leaves transient failed-unit records.
+
 ## v1.9.0 — 2026-09-13
 
 - **Dedicated control page**: operational actions have moved from Overview to a new Styring tab, keeping Overview focused on status and diagnostics.
