@@ -85,7 +85,9 @@ restart_warden() {
   systemctl --user daemon-reload
   systemctl --user restart kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-vnc.service kiosk-novnc.service || true
   systemctl --user restart kiosk-chrome.service || true
-  (sleep 2 && systemctl --user restart kiosk-webui.service) >/dev/null 2>&1 & disown
+  systemd-run --user --collect --on-active=2s \
+    --unit="kiosk-webui-restart-$(date +%s)" \
+    /usr/bin/systemctl --user restart kiosk-webui.service >/dev/null
 }
 
 install_release() {

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.8.1 — 2026-09-13
+
+- **Reliable web UI activation after updates**: the updater now schedules the web UI restart as an independent systemd timer unit, preventing the delayed restart from being killed with the completed update scope. New navigation and pages become active immediately after every update.
+- **Restart Kiosk Warden control**: the Updates page can restart all Warden and kiosk Chrome services without rebooting the machine. Both Warden restart and full machine restart show a five-second countdown, and the post-update prompt still supports Later.
+
 ## v1.8.0 — 2026-09-13
 
 - **Manual update check**: the Updates page now has a dedicated check button that refreshes GitHub release information without installing anything.
