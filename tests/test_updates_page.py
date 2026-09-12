@@ -63,6 +63,11 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("/screenshot.jpg", control)
         self.assertNotIn("Hurtige handlinger", dashboard)
         self.assertNotIn("/screenshot.jpg", dashboard)
+        self.assertIn('id="usageChart"', dashboard)
+        self.assertIn('id="temperatureChart"', dashboard)
+        self.assertIn('id="frequencyChart"', dashboard)
+        self.assertIn('id="networkChart"', dashboard)
+        self.assertIn("/api/telemetry", dashboard)
 
     def test_mqtt_exposes_power_profile_and_warden_restart(self):
         discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()

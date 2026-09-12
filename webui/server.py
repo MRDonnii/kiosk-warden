@@ -6,6 +6,7 @@ Stdlib-only on purpose (no pip installs needed on the kiosk). Binds to
 (e.g. a phone) — see README for restricting it to localhost instead.
 """
 import base64
+import collections
 import hashlib
 import hmac
 import html
@@ -188,6 +189,10 @@ def set_power_profile(profile):
 UPDATE_CHECK_INTERVAL = 1800  # 30 minutter
 _update_cache = {"latest": None, "checked_at": 0.0, "error": None}
 _update_lock = threading.Lock()
+_telemetry = collections.deque(maxlen=2160)  # six hours at ten-second intervals
+_telemetry_lock = threading.Lock()
+_cpu_previous = None
+_net_previous = None
 
 
 def _do_update_check():
@@ -374,6 +379,91 @@ def read_cpu_temp():
                 except ValueError:
                     continue
     return None
+
+
+def read_nvme_temp():
+    try:
+        out = subprocess.run(["sensors"], capture_output=True, text=True, timeout=3).stdout
+        block = out.split("nvme-pci-", 1)[1]
+        match = re.search(r"Composite:\s+\+?([0-9.]+)°C", block)
+        return round(float(match.group(1)), 1) if match else None
+    except (Exception, IndexError):
+        return None
+
+
+def read_cpu_frequency():
+    values = []
+    for path in __import__("glob").glob("/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq"):
+        try:
+            values.append(int(read_file(path)))
+        except ValueError:
+            pass
+    return round(sum(values) / len(values) / 1000) if values else None
+
+
+def read_cpu_usage():
+    global _cpu_previous
+    try:
+        fields = read_file("/proc/stat").splitlines()[0].split()[1:]
+        values = [int(value) for value in fields]
+        total, idle = sum(values), values[3] + values[4]
+    except (ValueError, IndexError):
+        return None
+    previous, _cpu_previous = _cpu_previous, (total, idle)
+    if not previous or total == previous[0]:
+        return 0.0
+    return round(100 * (1 - (idle - previous[1]) / (total - previous[0])), 1)
+
+
+def read_network_rate():
+    global _net_previous
+    total = 0
+    try:
+        for line in read_file("/proc/net/dev").splitlines()[2:]:
+            name, data = line.split(":", 1)
+            if name.strip() != "lo":
+                fields = data.split(); total += int(fields[0]) + int(fields[8])
+    except (ValueError, IndexError):
+        return None
+    now = time.time(); previous, _net_previous = _net_previous, (now, total)
+    if not previous or now <= previous[0]:
+        return 0.0
+    return round((total - previous[1]) / (now - previous[0]) / 1024, 1)
+
+
+def read_gpu_usage():
+    try:
+        result = subprocess.run(["turbostat", "--no-msr", "--no-perf", "--quiet", "--Summary",
+                                 "--interval", "0.1", "--num_iterations", "1"],
+                                capture_output=True, text=True, timeout=2)
+        lines = [line.split() for line in result.stdout.splitlines() if line.strip()]
+        if len(lines) >= 2 and "GFX%rc6" in lines[0]:
+            rc6 = float(lines[1][lines[0].index("GFX%rc6")])
+            return round(max(0.0, min(100.0, 100.0 - rc6)), 1)
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        pass
+    return None
+
+
+def collect_telemetry():
+    sample_count = 0
+    last_gpu = None
+    while True:
+        gpu = read_gpu_usage() if sample_count % 3 == 0 else last_gpu
+        if gpu is not None:
+            last_gpu = gpu
+        sample = {"time": int(time.time()), "cpu": read_cpu_usage(), "ram": read_ram_percent(),
+                  "gpu": last_gpu, "cpu_temp": read_cpu_temp(), "nvme_temp": read_nvme_temp(),
+                  "cpu_mhz": read_cpu_frequency(), "network_kbps": read_network_rate()}
+        with _telemetry_lock:
+            _telemetry.append(sample)
+        sample_count += 1
+        time.sleep(10)
+
+
+def telemetry_data():
+    with _telemetry_lock:
+        return list(_telemetry)
 
 
 def read_ip():
@@ -568,6 +658,11 @@ PAGE_HEAD = """<!doctype html>
   .progress-meta {{ display:flex; justify-content:space-between; gap:1rem; margin-top:.45rem; font-size:.82rem; }}
   .restart-choice {{ display:none; margin-top:1rem; padding:1rem; border-radius:12px; background:rgba(34,197,94,.12); }}
   .countdown {{ font-size:1.1rem; font-weight:800; color:var(--warn); }}
+  .charts {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr)); gap:.8rem; margin-bottom:1.1rem; }}
+  .chart-card {{ border:1px solid rgba(128,128,128,.24); border-radius:14px; padding:.8rem; background:rgba(128,128,128,.04); }}
+  .chart-title {{ font-size:.8rem; font-weight:700; margin-bottom:.45rem; opacity:.8; }}
+  canvas.telemetry-chart {{ display:block; width:100%; height:150px; }}
+  @media (max-width:600px) {{ .charts {{ grid-template-columns:1fr; }} }}
 </style>
 </head>
 <body>
@@ -776,6 +871,8 @@ def render_dashboard(conf, message=None, error=None):
     health_state = read_file(os.path.join(KIOSK_DIR, "health_state"), "?")
     health_detail = read_file(os.path.join(KIOSK_DIR, "health_detail"), "")
     stats = get_stats()
+    history = telemetry_data()
+    live = history[-1] if history else {}
 
     pill_class = "ok" if health_state == "ON" else ("err" if health_state == "OFF" else "warn")
     pill_label = {"ON": "Kører fint", "OFF": "Fejl"}.get(health_state, health_state or "Ukendt")
@@ -816,13 +913,37 @@ def render_dashboard(conf, message=None, error=None):
     body += render_tile("🧠", "RAM", ram_val, level_for(stats["ram_percent"], 70, 90))
     body += render_tile("💾", "Disk", disk_val, level_for(stats["disk_percent"], 80, 93))
     body += render_tile("🌡️", "Temperatur", temp_val, level_for(stats["cpu_temp"], 65, 80))
-    load_1m = stats["loadavg"].split(" / ")[0]
-    body += render_tile("📈", "CPU load (1m)", load_1m)
+    body += render_tile("📈", "CPU", f'{live.get("cpu")}%' if live.get("cpu") is not None else stats["loadavg"].split(" / ")[0])
+    body += render_tile("🎮", "GPU", f'{live.get("gpu")}%' if live.get("gpu") is not None else "?")
+    body += render_tile("⚡", "CPU-frekvens", f'{live.get("cpu_mhz")} MHz' if live.get("cpu_mhz") is not None else "?")
+    body += render_tile("🌡️", "NVMe temperatur", f'{live.get("nvme_temp")}°C' if live.get("nvme_temp") is not None else "?")
+    body += render_tile("↕️", "Netværk", f'{live.get("network_kbps")} KiB/s' if live.get("network_kbps") is not None else "?")
     body += render_tile("🖥️", "Chrome", chrome_label, chrome_level)
     body += render_tile("🏷️", "Model", stats["model"])
     body += "</div>"
 
     body += f'<div class="status">{esc(health_detail)}</div>'
+    body += """
+<div class="charts">
+  <div class="chart-card"><div class="chart-title">CPU, RAM og GPU · seneste 60 minutter</div><canvas class="telemetry-chart" id="usageChart"></canvas></div>
+  <div class="chart-card"><div class="chart-title">CPU- og NVMe-temperatur · seneste 60 minutter</div><canvas class="telemetry-chart" id="temperatureChart"></canvas></div>
+  <div class="chart-card"><div class="chart-title">CPU-frekvens · seneste 60 minutter</div><canvas class="telemetry-chart" id="frequencyChart"></canvas></div>
+  <div class="chart-card"><div class="chart-title">Netværkstrafik · seneste 60 minutter</div><canvas class="telemetry-chart" id="networkChart"></canvas></div>
+</div>
+<script>
+function drawChart(id, rows, series, maxValue) {
+  const canvas=document.getElementById(id), ratio=window.devicePixelRatio||1, width=canvas.clientWidth, height=canvas.clientHeight;
+  canvas.width=width*ratio; canvas.height=height*ratio; const c=canvas.getContext('2d'); c.scale(ratio,ratio); c.clearRect(0,0,width,height);
+  c.strokeStyle='rgba(128,128,128,.22)'; c.lineWidth=1; for(let i=0;i<=4;i++){const y=8+(height-20)*i/4;c.beginPath();c.moveTo(0,y);c.lineTo(width,y);c.stroke();}
+  const visible=rows.slice(-360); if(visible.length<2)return;
+  const values=visible.flatMap(r=>series.map(s=>Number(r[s.key])).filter(Number.isFinite)); const top=maxValue||Math.max(1,...values)*1.12;
+  for(const s of series){c.strokeStyle=s.color;c.lineWidth=2;c.beginPath();let started=false;visible.forEach((r,i)=>{const v=Number(r[s.key]);if(!Number.isFinite(v))return;const x=i*width/(visible.length-1),y=height-8-Math.min(top,v)*(height-20)/top;if(!started){c.moveTo(x,y);started=true}else c.lineTo(x,y)});c.stroke();}
+  c.font='11px system-ui'; let x=8; for(const s of series){c.fillStyle=s.color;c.fillText(s.label,x,height-2);x+=c.measureText(s.label).width+16;}
+}
+async function updateTelemetry(){try{const r=await fetch('/api/telemetry',{cache:'no-store'});if(!r.ok)return;const rows=await r.json();drawChart('usageChart',rows,[{key:'cpu',label:'CPU',color:'#3b82f6'},{key:'ram',label:'RAM',color:'#8b5cf6'},{key:'gpu',label:'GPU',color:'#22c55e'}],100);drawChart('temperatureChart',rows,[{key:'cpu_temp',label:'CPU °C',color:'#ef4444'},{key:'nvme_temp',label:'NVMe °C',color:'#f59e0b'}],100);drawChart('frequencyChart',rows,[{key:'cpu_mhz',label:'MHz',color:'#06b6d4'}]);drawChart('networkChart',rows,[{key:'network_kbps',label:'KiB/s',color:'#a855f7'}]);}catch(_){}}
+updateTelemetry();setInterval(updateTelemetry,10000);addEventListener('resize',updateTelemetry);
+</script>
+"""
 
     body += PAGE_TAIL
     return body
@@ -1041,6 +1162,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._serve_screenshot()
         if parsed.path == "/api/update-status":
             return self._send_json(update_status())
+        if parsed.path == "/api/telemetry":
+            return self._send_json(telemetry_data())
         if parsed.path == "/vnc":
             return self._send_html(render_vnc(conf))
         if parsed.path == "/control":
@@ -1235,6 +1358,7 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 def main():
     os.makedirs(KIOSK_DIR, exist_ok=True)
     threading.Thread(target=background_update_checker, daemon=True).start()
+    threading.Thread(target=collect_telemetry, daemon=True).start()
     server = ThreadingHTTPServer((BIND_HOST, BIND_PORT), Handler)
     server.serve_forever()
 
