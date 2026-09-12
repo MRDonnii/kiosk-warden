@@ -442,6 +442,8 @@ PAGE_HEAD = """<!doctype html>
     border-radius:9px; border:1px solid rgba(128,128,128,.4); font-size: 1rem;
     background: rgba(128,128,128,.05); color: inherit;
   }}
+  select {{ width:100%; padding:.6rem .7rem; margin-top:.3rem; border-radius:9px;
+    border:1px solid rgba(128,128,128,.4); font-size:1rem; background:rgba(128,128,128,.05); color:inherit; }}
   input:focus {{ outline: 2px solid var(--accent); outline-offset: 1px; }}
   .row {{ display:flex; gap:.5rem; flex-wrap:wrap; margin-top: .7rem; }}
   button {{
@@ -505,6 +507,11 @@ PAGE_HEAD = """<!doctype html>
   .changelog ul {{ padding-left:1.3rem; margin:.3rem 0 0; }}
   .changelog li {{ margin:.3rem 0; }}
   .changelog p {{ opacity:.75; font-size:.85rem; margin:.2rem 0 .6rem; }}
+  .version-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.7rem; margin-bottom:1rem; }}
+  .version-card {{ border:1px solid rgba(128,128,128,.24); border-radius:14px; padding:1rem; background:rgba(128,128,128,.05); }}
+  .version-card span {{ display:block; opacity:.6; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; }}
+  .version-card strong {{ display:block; font-size:1.35rem; margin-top:.25rem; }}
+  .release-notes {{ border-left:4px solid var(--accent); padding:.2rem 0 .2rem 1rem; margin:1rem 0; }}
 </style>
 </head>
 <body>
@@ -550,7 +557,7 @@ def render_nav(active):
     items = [
         ("/", "🏠 Oversigt"),
         ("/vnc", "🖱️ Fjernstyring"),
-        ("/changelog", "📝 Nyheder"),
+        ("/updates", "⬇️ Opdateringer"),
         ("/settings", "⚙️ Indstillinger"),
     ]
     parts = []
@@ -596,21 +603,72 @@ def render_markdown_lite(text):
     return "\n".join(lines_out)
 
 
-def render_changelog(conf):
-    body = PAGE_HEAD.format(title_suffix=" — Nyheder")
+def render_updates(conf, message=None, error=None):
+    channel = read_file(UPDATE_CHANNEL_PATH, "stable")
+    latest = get_cached_latest_version()
+    if not isinstance(latest, dict):
+        try:
+            latest = check_latest_version()
+        except Exception:
+            latest = {}
+    installed = current_version()
+    latest_version = latest.get("latest_version", "ukendt")
+    prerelease = bool(latest.get("prerelease"))
+    release_url = latest.get("release_url", "")
+    release_summary = latest.get("release_summary", "Ingen release-noter tilgængelige.")
+    try:
+        backups = subprocess.run([os.path.join(KIOSK_DIR, "self-update.sh"), "list"],
+                                 capture_output=True, text=True, timeout=10).stdout.splitlines()
+    except Exception:
+        backups = []
+    versions = []
+    for name in backups:
+        match = re.match(r"^(\d+\.\d+\.\d+)-", name)
+        if match and match.group(1) not in versions:
+            versions.append(match.group(1))
+    rollback_options = "".join(f'<option value="{esc(v)}">{esc(v)}</option>' for v in versions)
+    update_ready = installed != "ukendt" and latest_version != "ukendt" and installed != latest_version
+    body = PAGE_HEAD.format(title_suffix=" — Opdateringer")
     body += f"""
 <div class="header-row">
   <div>
-    <h1>Nyheder</h1>
+    <h1>Opdateringer</h1>
     <div class="sub">{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</div>
   </div>
+  <span class="pill {'warn' if update_ready else 'ok'}">{'Ny version klar' if update_ready else 'Opdateret'}</span>
 </div>
 """
-    body += render_nav("/changelog")
+    body += render_nav("/updates")
+    body += render_message(message, error)
+    body += f"""
+<div class="version-grid">
+  <div class="version-card"><span>Installeret</span><strong>v{esc(installed)}</strong></div>
+  <div class="version-card"><span>Seneste på {esc(channel.title())}</span><strong>v{esc(latest_version)}</strong></div>
+</div>
+<fieldset>
+  <legend>Release-kanal og installation</legend>
+  <form method="post" action="/update">
+    <label>Opdateringskanal</label>
+    <select name="channel"><option value="stable"{' selected' if channel == 'stable' else ''}>Stable</option><option value="beta"{' selected' if channel == 'beta' else ''}>Beta</option></select>
+    <div class="row"><button type="submit" formaction="/update-channel">Gem kanal og tjek igen</button><button class="accent" type="submit"{' disabled' if not update_ready else ''}>⬇️ Installer v{esc(latest_version)}</button></div>
+  </form>
+  <div class="release-notes changelog"><strong>Seneste release{' · Beta' if prerelease else ''}</strong>{render_markdown_lite(release_summary)}</div>
+  {f'<a href="{esc(release_url)}" target="_blank" rel="noreferrer">Se hele releasen på GitHub</a>' if release_url else ''}
+</fieldset>
+<fieldset>
+  <legend>Gendan tidligere version</legend>
+  <form method="post" action="/rollback">
+    <label>Lokal snapshot</label>
+    <select name="version" {'disabled' if not versions else ''}>{rollback_options or '<option>Ingen snapshots endnu</option>'}</select>
+    <div class="row"><button type="submit" {'disabled' if not versions else ''} onclick="return confirm('Gendan den valgte version?');">Gendan valgt version</button></div>
+  </form>
+</fieldset>
+<fieldset><legend>Komplet changelog</legend>
+"""
     text = read_file(CHANGELOG_PATH, "Ingen changelog fundet endnu.")
-    body += '<div class="narrow changelog">'
+    body += '<div class="changelog">'
     body += render_markdown_lite(text)
-    body += "</div>"
+    body += "</div></fieldset>"
     body += PAGE_TAIL
     return body
 
@@ -690,23 +748,6 @@ def render_dashboard(conf, message=None, error=None):
 
 
 def render_settings(conf, message=None, error=None):
-    channel = read_file(UPDATE_CHANNEL_PATH, "stable")
-    latest = get_cached_latest_version()
-    latest_version = latest.get("latest_version", "ukendt") if isinstance(latest, dict) else "ukendt"
-    prerelease = bool(latest.get("prerelease")) if isinstance(latest, dict) else False
-    try:
-        backups = subprocess.run(
-            [os.path.join(KIOSK_DIR, "self-update.sh"), "list"], capture_output=True,
-            text=True, timeout=10
-        ).stdout.splitlines()
-    except Exception:
-        backups = []
-    versions = []
-    for name in backups:
-        match = re.match(r"^(\d+\.\d+\.\d+)-", name)
-        if match and match.group(1) not in versions:
-            versions.append(match.group(1))
-    rollback_options = "".join(f'<option value="{esc(v)}">{esc(v)}</option>' for v in versions)
     body = PAGE_HEAD.format(title_suffix=" — Indstillinger")
     body += f"""
 <div class="header-row">
@@ -767,21 +808,6 @@ def render_settings(conf, message=None, error=None):
   </fieldset>
 </form>
 
-<form method="post" action="/update">
-  <fieldset>
-    <legend>Software</legend>
-    <div class="sub">Installeret: {esc(current_version())} · Seneste: {esc(latest_version)}{' · Beta' if prerelease else ''}</div>
-    <label>Opdateringskanal</label>
-    <select name="channel">
-      <option value="stable"{' selected' if channel == 'stable' else ''}>Stable</option>
-      <option value="beta"{' selected' if channel == 'beta' else ''}>Beta</option>
-    </select>
-    <div class="row"><button type="submit" formaction="/update-channel">Gem kanal og tjek</button><button class="accent" type="submit">⬇️ Installer seneste release</button></div>
-    <label>Gendan tidligere version</label>
-    <select name="version" {'disabled' if not versions else ''}>{rollback_options or '<option>Ingen backups endnu</option>'}</select>
-    <div class="row"><button type="submit" formaction="/rollback" {'disabled' if not versions else ''}>Gendan valgt version</button></div>
-  </fieldset>
-</form>
 """
     body += "</div>"
     body += PAGE_TAIL
@@ -886,8 +912,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._serve_screenshot()
         if parsed.path == "/vnc":
             return self._send_html(render_vnc(conf))
-        if parsed.path == "/changelog":
-            return self._send_html(render_changelog(conf))
+        if parsed.path in ("/updates", "/changelog"):
+            return self._send_html(render_updates(conf))
         if parsed.path == "/settings":
             return self._send_html(render_settings(conf))
         if parsed.path in ("/", ""):
@@ -965,28 +991,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ok, msg = run_self_update(channel)
             trigger_update_check()
             if ok:
-                return self._send_html(render_settings(conf, message=msg))
-            return self._send_html(render_settings(conf, error=msg))
+                return self._send_html(render_updates(conf, message=msg))
+            return self._send_html(render_updates(conf, error=msg))
 
         if parsed.path == "/update-channel":
             channel = "beta" if fields.get("channel", ["stable"])[0] == "beta" else "stable"
             with open(UPDATE_CHANNEL_PATH, "w", encoding="utf-8") as handle:
                 handle.write(channel + "\n")
-            trigger_update_check()
-            return self._send_html(render_settings(conf, message=f"Opdateringskanal sat til {channel.title()}."))
+            try:
+                latest = check_latest_version()
+                with _update_lock:
+                    _update_cache["latest"] = latest
+                    _update_cache["checked_at"] = time.time()
+                    _update_cache["error"] = None
+            except Exception as exc:
+                return self._send_html(render_updates(conf, error=f"Kanalen blev gemt, men update-tjek fejlede: {exc}"))
+            return self._send_html(render_updates(conf, message=f"Opdateringskanal sat til {channel.title()}."))
 
         if parsed.path == "/rollback":
             version = fields.get("version", [""])[0]
             if not re.fullmatch(r"\d+\.\d+\.\d+", version):
-                return self._send_html(render_settings(conf, error="Ugyldig rollback-version."))
+                return self._send_html(render_updates(conf, error="Ugyldig rollback-version."))
             script = os.path.join(KIOSK_DIR, "self-update.sh")
             result = subprocess.run(["systemd-run", "--user", "--wait", "--pipe", "--collect",
                                      "--unit", f"kiosk-rollback-{int(time.time())}", script, "rollback", version],
                                     capture_output=True, text=True, timeout=90)
             output = (result.stdout or result.stderr).strip()
             if output.startswith("ROLLEDBACK"):
-                return self._send_html(render_settings(conf, message=f"Gendannet til {version}. Siden genstarter…"))
-            return self._send_html(render_settings(conf, error=output or "Rollback fejlede."))
+                return self._send_html(render_updates(conf, message=f"Gendannet til {version}. Siden genstarter…"))
+            return self._send_html(render_updates(conf, error=output or "Rollback fejlede."))
 
         if parsed.path == "/action":
             action = fields.get("do", [""])[0]
