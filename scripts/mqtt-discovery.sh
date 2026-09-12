@@ -144,6 +144,7 @@ select_entity window_mode "Kiosk" "state/window_mode" "command" "mdi:window-maxi
 select_entity theme "Theme" "state/theme" "set_theme" "mdi:theme-light-dark" "Dark" "Light" "Auto"
 text_entity
 select_entity page_zoom "Page Zoom" "state/page_zoom" "set_zoom" "mdi:magnify-plus" "50%" "75%" "90%" "100%" "110%" "125%" "150%" "175%" "200%"
+select_entity update_channel "Update Channel" "state/update_channel" "set_update_channel" "mdi:source-branch" "Stable" "Beta"
 number_entity volume "Volume" "state/volume" "set_volume" 0 100 1 "%" "mdi:volume-high"
 
 button reboot "Reboot" "reboot" "mdi:restart-alert"
@@ -164,10 +165,12 @@ mqtt_pub "$BASE_TOPIC/state/keyboard" "$(cat "$HOME/kiosk/keyboard_state" 2>/dev
 mqtt_pub "$BASE_TOPIC/state/theme" "$(cat "$HOME/kiosk/theme" 2>/dev/null || echo Dark)" -r
 mqtt_pub "$BASE_TOPIC/state/page_zoom" "$(cat "$HOME/kiosk/page_zoom" 2>/dev/null || echo 100)" -r
 mqtt_pub "$BASE_TOPIC/state/volume" "$(cat "$HOME/kiosk/volume" 2>/dev/null || echo 100)" -r
+mqtt_pub "$BASE_TOPIC/state/update_channel" "$(sed 's/.*/\u&/' "$HOME/kiosk/update_channel" 2>/dev/null || echo Stable)" -r
 mqtt_pub "$BASE_TOPIC/diagnostic/version" "$(cat "$HOME/kiosk/version" 2>/dev/null || echo 1.5.0)" -r
 
 mqtt_pub "$BASE_TOPIC/health/status" "$(cat "$HOME/kiosk/health_state" 2>/dev/null || echo ON)" -r
 mqtt_pub "$BASE_TOPIC/health/detail" "$(cat "$HOME/kiosk/health_detail" 2>/dev/null || echo Pending)" -r
 
-current_version="$(cat "$HOME/kiosk/.version" 2>/dev/null || echo unknown)"
-mqtt_pub "$BASE_TOPIC/update/state" "$(jq -cn --arg v "${current_version:0:7}" '{installed_version:$v, latest_version:$v}')" -r
+channel="$(cat "$HOME/kiosk/update_channel" 2>/dev/null || echo stable)"
+update_state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null || true)"
+[[ -n "$update_state" ]] && mqtt_pub "$BASE_TOPIC/update/state" "$update_state" -r

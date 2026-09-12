@@ -32,25 +32,18 @@ memory_size_gib() {
 }
 
 UPDATE_CHECK_INTERVAL=1800
-UPDATE_REPO_URL="${KIOSK_WARDEN_REPO:-https://github.com/MRDonnii/kiosk-warden.git}"
-VERSION_MARKER="$HOME/kiosk/.version"
 last_update_check=0
 
 check_for_update() {
-  local now latest current
+  local now state channel
   now="$(date +%s)"
   if (( now - last_update_check < UPDATE_CHECK_INTERVAL )); then
     return 0
   fi
   last_update_check="$now"
-  latest="$(git ls-remote "$UPDATE_REPO_URL" HEAD 2>/dev/null | awk '{print $1}')" || true
-  if [[ -z "$latest" ]]; then
-    return 0
-  fi
-  current="$(cat "$VERSION_MARKER" 2>/dev/null || echo unknown)"
-  mqtt_pub "$BASE_TOPIC/update/state" \
-    "$(jq -cn --arg inst "${current:0:7}" --arg lat "${latest:0:7}" '{installed_version:$inst, latest_version:$lat}')" \
-    -r || true
+  channel="$(cat "$HOME/kiosk/update_channel" 2>/dev/null || echo stable)"
+  state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null)" || return 0
+  mqtt_pub "$BASE_TOPIC/update/state" "$state" -r || true
 }
 
 prev="$(read_cpu_total_idle)"

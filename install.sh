@@ -108,7 +108,7 @@ sudo apt-get update -y
 sudo apt-get install -y \
   git mosquitto-clients jq bc curl xdotool wmctrl unclutter \
   x11-xserver-utils lm-sensors htop openssh-server dbus-x11 \
-  imagemagick gnome-screenshot python3 x11vnc novnc websockify onboard
+  imagemagick gnome-screenshot python3 python3-websocket x11vnc novnc websockify onboard
 
 if ! command -v google-chrome-stable >/dev/null 2>&1; then
   echo "== Installerer Google Chrome =="
@@ -122,7 +122,10 @@ fi
 echo "== Kopierer scripts til ~/kiosk =="
 mkdir -p "$HOME/kiosk/backups" "$HOME/kiosk/screenshots"
 cp "$SRC_DIR"/scripts/*.sh "$HOME/kiosk/"
-chmod +x "$HOME"/kiosk/*.sh
+cp "$SRC_DIR"/scripts/*.py "$HOME/kiosk/"
+chmod +x "$HOME"/kiosk/*.sh "$HOME"/kiosk/*.py
+cp "$SRC_DIR/VERSION" "$HOME/kiosk/version"
+[[ -f "$HOME/kiosk/update_channel" ]] || printf 'stable\n' > "$HOME/kiosk/update_channel"
 cp "$SRC_DIR/icon.svg" "$HOME/kiosk/icon.svg"
 cp "$SRC_DIR/CHANGELOG.md" "$HOME/kiosk/CHANGELOG.md" 2>/dev/null || true
 if command -v git >/dev/null 2>&1; then

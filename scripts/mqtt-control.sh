@@ -11,6 +11,8 @@ ZOOM_FILE="$HOME/kiosk/page_zoom"
 KEYBOARD_FILE="$HOME/kiosk/keyboard_state"
 VERSION_FILE="$HOME/kiosk/version"
 ERROR_FILE="$HOME/kiosk/errors"
+CHROME_LIFECYCLE="$HOME/kiosk/chrome-lifecycle.py"
+UPDATE_CHANNEL_FILE="$HOME/kiosk/update_channel"
 
 chrome_window() {
   wmctrl -lx | awk 'tolower($0) ~ /google-chrome|chromium/ {print $1; exit}'
@@ -29,6 +31,15 @@ restart_kiosk() {
 
 publish_state() {
   mqtt_pub "$BASE_TOPIC/state/$1" "$2" -r || true
+}
+
+set_update_channel() {
+  local channel="${1,,}" state
+  [[ "$channel" == beta ]] || channel=stable
+  printf '%s\n' "$channel" > "$UPDATE_CHANNEL_FILE"
+  publish_state update_channel "${channel^}"
+  state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null)" || return 0
+  mqtt_pub "$BASE_TOPIC/update/state" "$state" -r || true
 }
 
 set_conf_value() {
@@ -109,6 +120,7 @@ set_zoom() {
 }
 
 screen_on() {
+  "$CHROME_LIFECYCLE" active || true
   xset dpms force on || true
   xset s off || true
   xset s noblank || true
@@ -118,6 +130,7 @@ screen_on() {
 }
 
 screen_off() {
+  "$CHROME_LIFECYCLE" frozen || true
   xset +dpms || true
   xset dpms 0 0 1 || true
   xset dpms force off || true
@@ -241,11 +254,13 @@ publish_state keyboard "$(cat "$KEYBOARD_FILE" 2>/dev/null || echo OFF)"
 publish_state theme "$(cat "$THEME_FILE" 2>/dev/null || echo Dark)"
 publish_state page_zoom "$(cat "$ZOOM_FILE" 2>/dev/null || echo 100)"
 publish_state version "$(cat "$VERSION_FILE" 2>/dev/null || echo 1.5.0)"
+publish_state update_channel "$(sed 's/.*/\u&/' "$UPDATE_CHANNEL_FILE" 2>/dev/null || echo Stable)"
 
 listen_topic "$BASE_TOPIC/set_url" set_kiosk_url &
 listen_topic "$BASE_TOPIC/set_zoom" set_zoom &
 listen_topic "$BASE_TOPIC/set_theme" set_theme &
 listen_topic "$BASE_TOPIC/set_volume" set_volume &
+listen_topic "$BASE_TOPIC/set_update_channel" set_update_channel &
 listen_topic "$CODEX_REMOTE_TOPIC/command" handle_codex_remote_command &
 listen_topic "$BASE_TOPIC/update/install" handle_update_install &
 listen_topic "$BASE_TOPIC/command" handle_command

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.6.0 — 2026-09-13
+
+- **Automatic low-power screen state**: `screen_off` now freezes the Chrome page before DPMS powers down the monitor, while `screen_on` resumes it before the display returns. The persisted OFF state is restored after Chrome restarts.
+- **Stable and Beta update channels**: choose a channel in Home Assistant or Kiosk Warden. Stable follows GitHub's latest stable release; Beta follows the newest release including prereleases.
+- **Release-based updates**: update discovery now reports semantic versions, release notes and the GitHub release URL instead of raw commit hashes.
+- **Safe rollback**: every install creates a local snapshot first, and the web UI can restore a previously installed version.
+- **Complete update packaging**: Python helpers and the semantic `VERSION` file are now installed and updated with the shell scripts.
+
 ## v1.1.1 — 2026-09-05
 
 - **Fix: onboard-tastatur der forsvandt uden at komme frem igen**: v1.1.0's docking-indstillinger (`org.onboard.window docking-enabled`/`docking-edge`) viste sig at bringe onboard i en ødelagt tilstand på visse versioner — man kunne se ikonet, men et klik på det fik det til at forsvinde uden at vise tastaturet. Erstattet med at flytte/resize selve vinduet via `wmctrl`/`xdotool` (samme værktøjer kiosk-warden allerede bruger til Chrome-styring) i stedet for at stole på onboard's interne (versions-afhængige) indstillinger.
