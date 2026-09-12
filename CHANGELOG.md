@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.12.2 — 2026-09-13
+
+- **Race-free wake during restart**: a delayed OFF-state restore now rechecks the latest requested screen state before touching DPMS, so a simultaneous `screen_on` command always wins.
+
 ## v1.12.1 — 2026-09-13
 
 - **Reliable screen wake**: screen power saving now uses DPMS without freezing Chrome's renderer, preventing the kiosk from waking to a solid grey page.
