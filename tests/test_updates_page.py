@@ -39,6 +39,7 @@ class UpdatesPageTest(unittest.TestCase):
             self.assertIn("Tjek for updates", updates)
             self.assertIn("updateProgressFill", updates)
             self.assertIn("Genstart Kiosk Warden", updates)
+            self.assertLess(updates.index('id="restartWardenManual"'), updates.index('class="release-notes changelog"'))
             self.assertIn("Genstart maskinen", updates)
             self.assertIn("restart_warden", updates)
             self.assertIn("Genstarter om ${seconds} sekunder", updates)
@@ -49,6 +50,8 @@ class UpdatesPageTest(unittest.TestCase):
         updater = (ROOT / "scripts" / "self-update.sh").read_text()
         self.assertIn("systemd-run --user --collect --on-active=2s", updater)
         self.assertNotIn("sleep 2 && systemctl --user restart kiosk-webui.service", updater)
+        self.assertIn('er installeret og genstartet.', updater)
+        self.assertIn('complete false', updater)
 
 
 if __name__ == "__main__":
