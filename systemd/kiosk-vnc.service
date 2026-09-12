@@ -7,6 +7,7 @@ Wants=graphical-session.target
 Type=simple
 Environment=DISPLAY=:0
 ExecStart=/usr/bin/x11vnc -display :0 -auth %t/gdm/Xauthority -rfbauth %h/.vnc/passwd -forever -shared -rfbport 5900 -no6 -noxdamage -repeat -quiet
+SuccessExitStatus=2
 Restart=on-failure
 RestartSec=5
 
