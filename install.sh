@@ -43,6 +43,12 @@ ask() {
 echo "== Registrerer OS og display manager =="
 OS_ID="$(. /etc/os-release 2>/dev/null; echo "${ID:-unknown}")"
 OS_NAME="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}")"
+OS_LIKE="$(. /etc/os-release 2>/dev/null; echo "${ID_LIKE:-}")"
+ARCH="$(dpkg --print-architecture)"
+IS_RASPBERRY_PI=0
+if [[ "$OS_ID" == "raspbian" || -r /proc/device-tree/model && "$(tr -d '\0' </proc/device-tree/model)" == *"Raspberry Pi"* ]]; then
+  IS_RASPBERRY_PI=1
+fi
 
 DISPLAY_MANAGER="unknown"
 if [[ -f /etc/X11/default-display-manager ]]; then
@@ -55,7 +61,17 @@ if [[ "$DISPLAY_MANAGER" == "unknown" ]]; then
   [[ -f /etc/gdm3/custom.conf ]] && DISPLAY_MANAGER="gdm3"
   [[ -d /etc/lightdm ]] && DISPLAY_MANAGER="lightdm"
 fi
-echo "OS: $OS_NAME ($OS_ID) — display manager: $DISPLAY_MANAGER — desktop: ${XDG_CURRENT_DESKTOP:-ukendt}"
+echo "OS: $OS_NAME ($OS_ID) — arkitektur: $ARCH — display manager: $DISPLAY_MANAGER — desktop: ${XDG_CURRENT_DESKTOP:-ukendt}"
+
+if [[ "$IS_RASPBERRY_PI" -eq 1 ]]; then
+  echo "== Raspberry Pi OS: aktiverer X11/Openbox til Warden-skærmstyring og x11vnc =="
+  if command -v raspi-config >/dev/null 2>&1; then
+    sudo raspi-config nonint do_wayland W1
+    echo "Raspberry Pi OS skifter til X11 ved næste genstart."
+  else
+    echo "raspi-config mangler; X11 skal vælges manuelt før Chrome/VNC-styring virker." >&2
+  fi
+fi
 
 echo "== kiosk-warden install =="
 echo
@@ -105,19 +121,35 @@ CODEX_REMOTE_TOPIC="home/codex/${KIOSK_ID}/remote_control"
 echo
 echo "== Installerer apt-pakker =="
 sudo apt-get update -y
-sudo apt-get install -y \
-  git mosquitto-clients jq bc curl xdotool wmctrl unclutter \
-  x11-xserver-utils lm-sensors htop openssh-server dbus-x11 \
-  imagemagick gnome-screenshot python3 python3-websocket x11vnc novnc websockify onboard
+required_packages=(git mosquitto-clients jq bc curl gnupg xdotool wmctrl unclutter
+  x11-xserver-utils lm-sensors openssh-server dbus-x11 imagemagick python3
+  python3-websocket x11vnc novnc websockify)
+sudo apt-get install -y "${required_packages[@]}"
 
-if ! command -v google-chrome-stable >/dev/null 2>&1; then
+# Desktop conveniences and hardware telemetry differ between Ubuntu, Mint,
+# Debian and Raspberry Pi OS. Missing optional packages must not abort install.
+for package in htop gnome-screenshot onboard power-profiles-daemon linux-tools-common; do
+  apt-cache show "$package" >/dev/null 2>&1 && sudo apt-get install -y "$package" || true
+done
+
+if ! command -v google-chrome-stable >/dev/null 2>&1 && ! command -v google-chrome >/dev/null 2>&1 \
+   && ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
+  if [[ "$ARCH" == "amd64" ]]; then
   echo "== Installerer Google Chrome =="
   curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
   echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
     | sudo tee /etc/apt/sources.list.d/google-chrome.list >/dev/null
   sudo apt-get update -y
   sudo apt-get install -y google-chrome-stable
+  else
+    echo "== Installerer Chromium til $ARCH =="
+    sudo apt-get install -y chromium || sudo apt-get install -y chromium-browser
+  fi
 fi
+
+command -v google-chrome-stable >/dev/null 2>&1 || command -v google-chrome >/dev/null 2>&1 \
+  || command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 \
+  || { echo "Ingen kompatibel Chrome/Chromium-browser blev installeret." >&2; exit 1; }
 
 echo "== Kopierer scripts til ~/kiosk =="
 mkdir -p "$HOME/kiosk/backups" "$HOME/kiosk/screenshots"

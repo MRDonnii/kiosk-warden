@@ -2,8 +2,11 @@
 set -euo pipefail
 source "$HOME/kiosk/mqtt-lib.sh"
 
-device_json="$(jq -cn --arg id "$KIOSK_ID" --arg name "$KIOSK_NAME" \
-  '{identifiers:[$id], name:$name, manufacturer:"Ubuntu Kiosk", model:"i5-8400T 32GB"}')"
+hardware_model="$(cat /sys/devices/virtual/dmi/id/product_name 2>/dev/null || tr -d '\0' </proc/device-tree/model 2>/dev/null || uname -m)"
+os_name="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Linux}")"
+device_json="$(jq -cn --arg id "$KIOSK_ID" --arg name "$KIOSK_NAME" --arg manufacturer "Linux Kiosk" \
+  --arg model "$hardware_model" --arg sw "$os_name" \
+  '{identifiers:[$id], name:$name, manufacturer:$manufacturer, model:$model, sw_version:$sw}')"
 
 publish_config() {
   mqtt_pub "homeassistant/$1/${KIOSK_ID}/$2/config" "$3" -r

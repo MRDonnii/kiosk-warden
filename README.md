@@ -39,6 +39,15 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
 
 ## Install
 
+Supported desktop platforms include Ubuntu, Linux Mint, Debian-derived desktop
+systems, and Raspberry Pi OS Desktop on `amd64`, `arm64`, or `armhf`. The
+installer selects Google Chrome on `amd64` and Chromium on ARM. Raspberry Pi OS
+Bookworm and newer default to Wayland; Kiosk Warden switches Raspberry Pi OS to
+the X11/Openbox backend during installation because its DPMS, xdotool,
+screenshot, and x11vnc controls currently require X11. Reboot after installation
+to activate that change. Raspberry Pi OS Lite is not supported without first
+installing a desktop environment.
+
 On a fresh Ubuntu Desktop machine, logged in as the user that should run the
 kiosk:
 
