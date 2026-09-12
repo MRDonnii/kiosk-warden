@@ -83,6 +83,18 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("SuccessExitStatus=2", vnc)
         self.assertIn("SuccessExitStatus=143", novnc)
 
+    def test_installer_supports_arm_and_raspberry_pi_os(self):
+        installer = (ROOT / "install.sh").read_text()
+        discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
+        vnc = (ROOT / "systemd" / "kiosk-vnc.service").read_text()
+        self.assertIn('ARCH="$(dpkg --print-architecture)"', installer)
+        self.assertIn('raspi-config nonint do_wayland W1', installer)
+        self.assertIn('sudo apt-get install -y chromium', installer)
+        self.assertIn('required_packages=', installer)
+        self.assertIn('power-profiles-daemon', installer)
+        self.assertIn('-auth guess', vnc)
+        self.assertIn('/proc/device-tree/model', discovery)
+
     def test_updater_uses_independent_webui_restart_timer(self):
         updater = (ROOT / "scripts" / "self-update.sh").read_text()
         self.assertIn("systemd-run --user --collect --on-active=2s", updater)

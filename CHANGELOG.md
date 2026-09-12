@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.11.0 — 2026-09-13
+
+- **Cross-architecture browser install**: amd64 systems use Google Chrome while ARM systems, including Raspberry Pi OS, install Chromium.
+- **Portable dependency handling**: core runtime packages are mandatory while distro-specific desktop and telemetry helpers install opportunistically without breaking the whole installation.
+- **Raspberry Pi OS desktop support**: Raspberry Pi installs select the X11/Openbox backend required by Warden's DPMS, xdotool and x11vnc controls; a reboot activates it.
+- **Portable VNC and HA identity**: x11vnc discovers the active X authority instead of assuming GDM, and MQTT discovery reports the real hardware model and operating system.
+
 ## v1.10.0 — 2026-09-13
 
 - **Telemetry overview**: Overview now shows live CPU, RAM, Intel GPU activity, CPU frequency, CPU/NVMe temperatures and network throughput.
