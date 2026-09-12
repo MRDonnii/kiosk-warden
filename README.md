@@ -31,6 +31,9 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
   the display wakes, reducing idle power without reloading the page.
 - Uses GitHub Releases with selectable Stable/Beta channels, semantic
   versions, release notes, automatic pre-update snapshots, and rollback.
+- Provides a dedicated **Updates** page in the web UI with channel selection,
+  release details, install controls, snapshot history, rollback, and the full
+  changelog.
 
 ## Install
 

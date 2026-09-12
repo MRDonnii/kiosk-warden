@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.7.0 — 2026-09-13
+
+- **Dedicated Updates page**: Kiosk Warden now has a separate Updates navigation tab with installed/latest versions, Stable/Beta selection, release notes, installation controls, local snapshots, rollback and the complete changelog.
+- **Cleaner Settings page**: software update controls have moved out of general kiosk and MQTT settings.
+- **Compatible news link**: the former `/changelog` URL continues to work and opens the new Updates page.
+
 ## v1.6.3 — 2026-09-13
 
 - **Reliable failed-update reporting**: if release download, validation, backup or file replacement fails after installation starts, Home Assistant now receives a final `in_progress: false` state instead of leaving the update entity spinning.
