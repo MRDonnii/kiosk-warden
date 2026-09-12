@@ -59,7 +59,7 @@ os.environ.setdefault("XAUTHORITY", os.path.join(HOME, ".Xauthority"))
 CONF_ORDER = [
     "KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_PORT",
     "MQTT_USER", "MQTT_PASS", "BASE_TOPIC", "CODEX_REMOTE_TOPIC",
-    "STATS_INTERVAL", "WEBUI_PASSWORD_HASH",
+    "STATS_INTERVAL", "UI_LANGUAGE", "WEBUI_PASSWORD_HASH",
 ]
 
 DEFAULTS = {
@@ -73,8 +73,70 @@ DEFAULTS = {
     "BASE_TOPIC": "home/kiosk/kiosk",
     "CODEX_REMOTE_TOPIC": "home/codex/kiosk/remote_control",
     "STATS_INTERVAL": "10",
+    "UI_LANGUAGE": "en",
     "WEBUI_PASSWORD_HASH": "",
 }
+
+# The templates use Danish as their canonical fallback because this project
+# originated there. English is the product default; localisation happens once
+# at the response boundary so dynamic messages and every page follow the same
+# setting without duplicating templates or rebuilding the browser DOM.
+ENGLISH_TEXT = {
+    "Opsætning": "Setup",
+    "Velkommen til Kiosk Warden": "Welcome to Kiosk Warden",
+    "Sæt et password for at beskytte opsætningssiden, før du gør noget andet.": "Set a password to protect the setup page before doing anything else.",
+    "Sæt password": "Set password", "Gentag password": "Repeat password", "Gem password": "Save password",
+    "🏠 Oversigt": "🏠 Overview", "🖱️ Fjernstyring": "🖱️ Remote Control", "🎛️ Styring": "🎛️ Control",
+    "⬇️ Opdateringer": "⬇️ Updates", "⚙️ Indstillinger": "⚙️ Settings",
+    "Opdateringer": "Updates", "Ny version klar": "New version available", "Opdateret": "Up to date",
+    "Installeret": "Installed", "Seneste på": "Latest on", "Release-kanal og installation": "Release channel and installation",
+    "Opdateringskanal": "Update channel", "Tjek for updates": "Check for updates", "Gem kanal": "Save channel",
+    "Installer v": "Install v", "Forbereder…": "Preparing…", "Opdateringen er installeret.": "The update is installed.",
+    "Vælg hvad der skal genstartes, eller fortsæt uden genstart.": "Choose what to restart, or continue without restarting.",
+    "Genstart Kiosk Warden": "Restart Kiosk Warden", "Genstart maskinen": "Restart machine", "Senere": "Later",
+    "Seneste release": "Latest release", "Se hele releasen på GitHub": "View the full release on GitHub",
+    "Gendan tidligere version": "Restore previous version", "Lokal snapshot": "Local snapshot",
+    "Ingen snapshots endnu": "No snapshots yet", "Gendan valgt version": "Restore selected version",
+    "Komplet changelog": "Complete changelog", "Tjekker GitHub Releases…": "Checking GitHub Releases…",
+    "Starter opdateringen…": "Starting update…", "Arbejder…": "Working…", "Fejl": "Error",
+    "Genstarter om": "Restarting in", "sekunder…": "seconds…", "Kører fint": "Healthy", "Ukendt": "Unknown",
+    "Ny version tilgængelig": "New version available", "åbn Opdateringer": "open Updates", "Kører": "Running", "Stoppet": "Stopped",
+    "Temperatur": "Temperature", "CPU-frekvens": "CPU frequency", "NVMe temperatur": "NVMe temperature", "Netværk": "Network",
+    "seneste 60 minutter": "last 60 minutes", "CPU- og NVMe-temperatur": "CPU and NVMe temperature", "Netværkstrafik": "Network traffic",
+    "Styring": "Control", "Strømprofil": "Power profile", "Strømbesparelse": "Power Saver", "Balanceret": "Balanced", "Ydelse": "Performance",
+    "Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.": "Power Saver uses the least energy. Balanced and Performance progressively allow more CPU performance.",
+    "Aktiv profil": "Active profile", "Skift strømprofil": "Change power profile", "Kiosk og Warden": "Kiosk and Warden",
+    "Genindlæs side": "Reload page", "Genstart Chrome": "Restart Chrome", "Tag screenshot": "Take screenshot", "Backup config": "Back up config",
+    "Skærmbillede": "Screenshot", "Seneste billede af den aktive kiosk-skærm. Brug Tag screenshot ovenfor for at opdatere det.": "Latest image of the active kiosk screen. Use Take screenshot above to refresh it.",
+    "Seneste screenshot af kiosk-skærmen": "Latest screenshot of the kiosk screen", "Der er ikke taget et screenshot endnu.": "No screenshot has been taken yet.",
+    "Maskine": "Machine", "Genstart maskine": "Restart machine", "Sluk maskine": "Shut down machine", "Kiosk Warden genstarter…": "Kiosk Warden is restarting…",
+    "Indstillinger": "Settings", "Navn på kiosken": "Kiosk name", "bruges i MQTT-topics": "used in MQTT topics",
+    "URL kiosken skal vise": "URL displayed by the kiosk", "MQTT brugernavn": "MQTT username",
+    "MQTT password (tomt = behold nuværende)": "MQTT password (empty = keep current)", "Stats-interval (sekunder)": "Stats interval (seconds)",
+    "Gem og genstart": "Save and restart", "Skift password": "Change password", "Nyt password": "New password",
+    "Nyt VNC password": "New VNC password", "Gentag nyt VNC password": "Repeat new VNC password",
+    "Separat fra login på denne side. Klassisk VNC-password — kun de første 8 tegn bruges.": "Separate from this page's login. Classic VNC password — only the first 8 characters are used.",
+    "Fjernstyring": "Remote Control", "Fuld skærm": "Full screen", "Genopfrisk forbindelse": "Refresh connection",
+    "Kræver VNC-password (separat fra login på denne side) ved forbindelse.": "A VNC password (separate from this page's login) is required when connecting.",
+    "Brugerfladesprog": "Interface language", "Dansk": "Danish",
+    "Password skal være mindst 8 tegn og matche i begge felter.": "Password must be at least 8 characters and match in both fields.",
+    "VNC password skal være mindst 4 tegn og matche i begge felter.": "VNC password must be at least 4 characters and match in both fields.",
+    "Password skiftet.": "Password changed.", "VNC password skiftet.": "VNC password changed.",
+    "Ugyldig strømprofil.": "Invalid power profile.", "Kunne ikke skifte strømprofil": "Could not change power profile",
+    "Strømprofil sat til": "Power profile changed to", "Ugyldig rollback-version.": "Invalid rollback version.",
+    "Rollback fejlede.": "Rollback failed.", "Opdatering fejlede.": "Update failed.",
+    "Allerede på nyeste version": "Already on the latest version", "Siden genstarter om et par sekunder…": "The page will restart in a few seconds…",
+    "Kiosk-id må kun indeholde a-z, 0-9 og _.": "Kiosk ID may only contain a-z, 0-9 and _.",
+    "MQTT port skal være et tal.": "MQTT port must be a number.", "Stats-interval skal være et tal.": "Stats interval must be a number.",
+}
+
+
+def localize_html(body, language):
+    if language == "da":
+        return body.replace('<html lang="en">', '<html lang="da">')
+    for source in sorted(ENGLISH_TEXT, key=len, reverse=True):
+        body = body.replace(source, ENGLISH_TEXT[source])
+    return body
 
 
 def read_conf():
@@ -541,7 +603,7 @@ def esc(value):
 
 
 PAGE_HEAD = """<!doctype html>
-<html lang="da">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1022,6 +1084,8 @@ def render_settings(conf, message=None, error=None):
     <input type="password" name="MQTT_PASS" placeholder="••••••••">
     <label>Stats-interval (sekunder)</label>
     <input type="number" name="STATS_INTERVAL" value="{esc(conf.get('STATS_INTERVAL',''))}" required>
+    <label>Brugerfladesprog</label>
+    <select name="UI_LANGUAGE"><option value="en"{' selected' if conf.get('UI_LANGUAGE', 'en') == 'en' else ''}>English</option><option value="da"{' selected' if conf.get('UI_LANGUAGE') == 'da' else ''}>Dansk</option></select>
     <div class="row"><button class="primary" type="submit">Gem og genstart</button></div>
   </fieldset>
 </form>
@@ -1097,6 +1161,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
     def _send_html(self, body, status=200):
+        body = localize_html(body, read_conf().get("UI_LANGUAGE", "en"))
         data = body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -1105,6 +1170,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _send_json(self, payload, status=200):
+        language = read_conf().get("UI_LANGUAGE", "en")
+        if language == "en" and isinstance(payload, dict):
+            payload = {key: localize_html(value, "en") if isinstance(value, str) else value for key, value in payload.items()}
         data = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -1220,6 +1288,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             for key in ["KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL"]:
                 if key in fields:
                     conf[key] = fields[key][0].strip()
+            conf["UI_LANGUAGE"] = "da" if fields.get("UI_LANGUAGE", ["en"])[0] == "da" else "en"
             pw = fields.get("MQTT_PASS", [""])[0]
             if pw:
                 conf["MQTT_PASS"] = pw

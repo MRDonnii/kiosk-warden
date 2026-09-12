@@ -95,6 +95,18 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('-auth guess', vnc)
         self.assertIn('/proc/device-tree/model', discovery)
 
+    def test_english_is_default_and_danish_is_selectable(self):
+        conf = dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test")
+        settings = SERVER.localize_html(SERVER.render_settings(conf), "en")
+        control = SERVER.localize_html(SERVER.render_control(conf), "en")
+        self.assertEqual("en", SERVER.DEFAULTS["UI_LANGUAGE"])
+        self.assertIn("Interface language", settings)
+        self.assertIn('value="da"', settings)
+        self.assertIn("Power profile", control)
+        self.assertIn("Restart Kiosk Warden", control)
+        self.assertNotIn("Strømprofil", control)
+        self.assertIn('lang="da"', SERVER.localize_html(settings, "da"))
+
     def test_updater_uses_independent_webui_restart_timer(self):
         updater = (ROOT / "scripts" / "self-update.sh").read_text()
         self.assertIn("systemd-run --user --collect --on-active=2s", updater)
