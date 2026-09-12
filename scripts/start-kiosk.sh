@@ -46,6 +46,9 @@ if [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "OFF" ]]; th
     for _ in $(seq 1 20); do
       sleep 0.5
       if curl -fsS --max-time 1 http://127.0.0.1:9222/json/list >/dev/null 2>&1; then
+        # screen_on may have arrived while Chrome was starting. Never let this
+        # delayed restore overwrite the newer requested state.
+        [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "OFF" ]] || break
         xset +dpms >/dev/null 2>&1 || true
         xset dpms 0 0 1 >/dev/null 2>&1 || true
         xset dpms force off >/dev/null 2>&1 || true
