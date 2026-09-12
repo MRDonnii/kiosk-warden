@@ -14,16 +14,16 @@ class UpdatesPageTest(unittest.TestCase):
     def test_updates_are_on_a_dedicated_page(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
-            (root / "version").write_text("1.7.0\n")
+            (root / "version").write_text("1.8.0\n")
             (root / "update_channel").write_text("stable\n")
-            (root / "CHANGELOG.md").write_text("# Changelog\n\n## v1.7.0\n\n- Dedicated page\n")
+            (root / "CHANGELOG.md").write_text("# Changelog\n\n## v1.8.0\n\n- Update progress\n")
             SERVER.KIOSK_DIR = str(root)
             SERVER.VERSION_PATH = str(root / "version")
             SERVER.UPDATE_CHANNEL_PATH = str(root / "update_channel")
             SERVER.CHANGELOG_PATH = str(root / "CHANGELOG.md")
             SERVER._update_cache["latest"] = {
-                "latest_version": "1.7.0",
-                "release_url": "https://example.test/v1.7.0",
+                "latest_version": "1.8.0",
+                "release_url": "https://example.test/v1.8.0",
                 "release_summary": "## Highlights\n\n- Dedicated update page",
                 "prerelease": False,
             }
@@ -36,6 +36,10 @@ class UpdatesPageTest(unittest.TestCase):
             self.assertIn("Dedicated update page", updates)
             self.assertIn("Gendan tidligere version", updates)
             self.assertIn("Komplet changelog", updates)
+            self.assertIn("Tjek for updates", updates)
+            self.assertIn("updateProgressFill", updates)
+            self.assertIn("Genstart nu", updates)
+            self.assertIn("Genstarter om ${seconds} sekunder", updates)
             self.assertNotIn("Release-kanal og installation", settings)
             self.assertNotIn("Gendan tidligere version", settings)
 

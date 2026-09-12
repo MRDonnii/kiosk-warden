@@ -5,6 +5,7 @@ REPO_URL="${KIOSK_WARDEN_REPO:-https://github.com/${REPO_SLUG}.git}"
 KIOSK_DIR="$HOME/kiosk"
 CHANNEL_FILE="$KIOSK_DIR/update_channel"
 BACKUP_DIR="$KIOSK_DIR/backups/releases"
+STATUS_FILE="$KIOSK_DIR/update_status.json"
 ACTION="${1:-install}"
 CHANNEL="${2:-$(cat "$CHANNEL_FILE" 2>/dev/null || echo stable)}"
 [[ "$CHANNEL" == beta ]] || CHANNEL=stable
@@ -16,11 +17,21 @@ publish_update_json() {
   mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress} | with_entries(select(.value != null))' <<<"$1")" -r 2>/dev/null || true
 }
 
+write_status() {
+  local stage="$1" percent="$2" message="$3" result="${4:-running}" restart="${5:-false}"
+  local tmp="$STATUS_FILE.tmp"
+  jq -cn --arg stage "$stage" --argjson percent "$percent" --arg message "$message" \
+    --arg result "$result" --argjson restart_required "$restart" --arg updated_at "$(date -Iseconds)" \
+    '{stage:$stage,percent:$percent,message:$message,result:$result,restart_required:$restart_required,updated_at:$updated_at}' > "$tmp"
+  mv "$tmp" "$STATUS_FILE"
+}
+
 reset_progress_on_failure() {
   local code=$?
   trap - EXIT
   if (( code != 0 )) && [[ -n "${UPDATE_FAILURE_STATE:-}" ]]; then
     publish_update_json "$UPDATE_FAILURE_STATE"
+    write_status failed 100 "Opdateringen fejlede. Den tidligere version er fortsat aktiv." failed false
   fi
   exit "$code"
 }
@@ -79,27 +90,34 @@ restart_warden() {
 
 install_release() {
   local state tag expected installed workdir repo backup file
+  write_status checking 5 "Tjekker GitHub Releases…"
   state="$(check_release)" || return 1
   tag="$(jq -r .tag <<<"$state")"; expected="$(jq -r .latest_version <<<"$state")"; installed="$(jq -r .installed_version <<<"$state")"
-  version_newer "$expected" "$installed" || { echo "UPTODATE $installed"; return 0; }
+  version_newer "$expected" "$installed" || { write_status complete 100 "Kiosk Warden $installed er allerede opdateret." complete false; echo "UPTODATE $installed"; return 0; }
   UPDATE_FAILURE_STATE="$(jq -c '. + {in_progress:false}' <<<"$state")"
   trap reset_progress_on_failure EXIT
   publish_update_json "$(jq -c '. + {in_progress:true}' <<<"$state")"
+  write_status downloading 20 "Henter Kiosk Warden $tag…"
   workdir="$(mktemp -d)"; trap 'rm -rf "$workdir"' RETURN
   git clone --depth 1 --branch "$tag" "$REPO_URL" "$workdir/repo" -q || { echo 'ERROR release download failed'; return 1; }
   repo="$workdir/repo"
+  write_status validating 40 "Validerer release og versionsmetadata…"
   [[ "$(cat "$repo/VERSION" 2>/dev/null)" == "$expected" ]] || { echo 'ERROR release version validation failed'; return 1; }
   for file in scripts/self-update.sh scripts/mqtt-control.sh scripts/mqtt-stats.sh scripts/chrome-lifecycle.py webui/server.py; do [[ -f "$repo/$file" ]] || { echo "ERROR release missing $file"; return 1; }; done
+  write_status backup 55 "Opretter rollback-snapshot af den nuværende version…"
   backup="$(snapshot_current)" || { echo 'ERROR could not create pre-update backup'; return 1; }
+  write_status installing 70 "Installerer validerede releasefiler…"
   for file in "$repo"/scripts/*.sh "$repo"/scripts/*.py; do replace_atomic "$file" "$KIOSK_DIR/$(basename "$file")"; done
   replace_atomic "$repo/VERSION" "$KIOSK_DIR/version" 644; replace_atomic "$repo/icon.svg" "$KIOSK_DIR/icon.svg" 644; replace_atomic "$repo/CHANGELOG.md" "$KIOSK_DIR/CHANGELOG.md" 644
   mkdir -p "$KIOSK_DIR/webui" "$HOME/.config/systemd/user"
   for file in "$repo"/webui/*.py; do replace_atomic "$file" "$KIOSK_DIR/webui/$(basename "$file")"; done
   for file in "$repo"/systemd/*.service; do replace_atomic "$file" "$HOME/.config/systemd/user/$(basename "$file")" 644; done
   git -C "$repo" rev-parse HEAD > "$KIOSK_DIR/.version"
+  write_status services 90 "Genstarter Kiosk Warden-tjenester…"
   publish_update_json "$(jq -cn --arg version "$expected" --arg channel "$CHANNEL" '{installed_version:$version,latest_version:$version,title:"Kiosk Warden",channel:$channel,in_progress:false}')"
   trap - EXIT
   restart_warden
+  write_status complete 100 "Kiosk Warden $expected er installeret." complete true
   echo "UPDATED $expected backup=$backup"
 }
 
