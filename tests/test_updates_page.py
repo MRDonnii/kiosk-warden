@@ -38,10 +38,17 @@ class UpdatesPageTest(unittest.TestCase):
             self.assertIn("Komplet changelog", updates)
             self.assertIn("Tjek for updates", updates)
             self.assertIn("updateProgressFill", updates)
-            self.assertIn("Genstart nu", updates)
+            self.assertIn("Genstart Kiosk Warden", updates)
+            self.assertIn("Genstart maskinen", updates)
+            self.assertIn("restart_warden", updates)
             self.assertIn("Genstarter om ${seconds} sekunder", updates)
             self.assertNotIn("Release-kanal og installation", settings)
             self.assertNotIn("Gendan tidligere version", settings)
+
+    def test_updater_uses_independent_webui_restart_timer(self):
+        updater = (ROOT / "scripts" / "self-update.sh").read_text()
+        self.assertIn("systemd-run --user --collect --on-active=2s", updater)
+        self.assertNotIn("sleep 2 && systemctl --user restart kiosk-webui.service", updater)
 
 
 if __name__ == "__main__":

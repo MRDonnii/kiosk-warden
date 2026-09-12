@@ -681,7 +681,7 @@ def render_updates(conf, message=None, error=None):
     <div class="row"><button type="button" id="checkUpdates">Tjek for updates</button><button type="submit" formaction="/update-channel">Gem kanal</button><button class="accent" type="submit" id="installUpdate"{' disabled' if not update_ready else ''}>⬇️ Installer v{esc(latest_version)}</button></div>
   </form>
   <div class="progress-shell" id="updateProgress"><div class="progress-track"><div class="progress-fill" id="updateProgressFill"></div></div><div class="progress-meta"><span id="updateProgressText">Forbereder…</span><strong id="updateProgressPercent">0%</strong></div></div>
-  <div class="restart-choice" id="restartChoice"><strong>Opdateringen er installeret.</strong><p>Vil du genstarte maskinen nu eller senere?</p><div class="row"><button class="primary" type="button" id="restartNow">Genstart nu</button><button type="button" id="restartLater">Senere</button></div><div class="countdown" id="restartCountdown"></div></div>
+  <div class="restart-choice" id="restartChoice"><strong>Opdateringen er installeret.</strong><p>Vælg hvad der skal genstartes, eller fortsæt uden genstart.</p><div class="row"><button class="primary" type="button" id="restartWarden">Genstart Kiosk Warden</button><button type="button" id="restartMachine">Genstart maskinen</button><button type="button" id="restartLater">Senere</button></div><div class="countdown" id="restartCountdown"></div></div>
   <div class="release-notes changelog"><strong>Seneste release{' · Beta' if prerelease else ''}</strong>{render_markdown_lite(release_summary)}</div>
   {f'<a href="{esc(release_url)}" target="_blank" rel="noreferrer">Se hele releasen på GitHub</a>' if release_url else ''}
 </fieldset>
@@ -693,6 +693,7 @@ def render_updates(conf, message=None, error=None):
     <div class="row"><button type="submit" {'disabled' if not versions else ''} onclick="return confirm('Gendan den valgte version?');">Gendan valgt version</button></div>
   </form>
 </fieldset>
+<fieldset><legend>Vedligeholdelse</legend><p class="status">Genstarter Warden-tjenesterne og kiosk-Chrome uden at genstarte hele maskinen.</p><div class="row"><button type="button" id="restartWardenManual">Genstart Kiosk Warden</button></div><div class="countdown" id="manualRestartCountdown"></div></fieldset>
 <fieldset><legend>Komplet changelog</legend>
 """
     text = read_file(CHANGELOG_PATH, "Ingen changelog fundet endnu.")
@@ -730,11 +731,13 @@ document.getElementById('installUpdate').closest('form').addEventListener('submi
   pollTimer = setInterval(pollStatus, 800); setTimeout(pollStatus, 250);
 });
 document.getElementById('restartLater').addEventListener('click', async () => { const response = await fetch('/api/update-status', {cache:'no-store'}); const status = await response.json(); restartChoice.style.display = 'none'; localStorage.setItem('kiosk-restart-later', status.updated_at || '1'); });
-document.getElementById('restartNow').addEventListener('click', () => {
-  let seconds = 5; document.getElementById('restartNow').disabled = true;
-  const label = document.getElementById('restartCountdown'); label.textContent = `Genstarter om ${seconds} sekunder…`;
-  const timer = setInterval(async () => { seconds -= 1; label.textContent = `Genstarter om ${seconds} sekunder…`; if (seconds <= 0) { clearInterval(timer); await fetch('/action', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'do=reboot'}); } }, 1000);
-});
+function restartCountdown(action, button, label) {
+  let seconds = 5; button.disabled = true; label.textContent = `Genstarter om ${seconds} sekunder…`;
+  const timer = setInterval(async () => { seconds -= 1; label.textContent = `Genstarter om ${seconds} sekunder…`; if (seconds <= 0) { clearInterval(timer); await fetch('/action', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'do=' + encodeURIComponent(action)}); } }, 1000);
+}
+document.getElementById('restartWarden').addEventListener('click', event => restartCountdown('restart_warden', event.currentTarget, document.getElementById('restartCountdown')));
+document.getElementById('restartMachine').addEventListener('click', event => restartCountdown('reboot', event.currentTarget, document.getElementById('restartCountdown')));
+document.getElementById('restartWardenManual').addEventListener('click', event => restartCountdown('restart_warden', event.currentTarget, document.getElementById('manualRestartCountdown')));
 pollStatus();
 </script>
 """
@@ -1121,6 +1124,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 run(os.path.join(KIOSK_DIR, "take-screenshot.sh"), timeout=20)
             elif action == "backup":
                 run(os.path.join(KIOSK_DIR, "backup-kiosk.sh"), timeout=30)
+            elif action == "restart_warden":
+                unit = f"kiosk-warden-restart-{int(time.time())}"
+                subprocess.run(["systemd-run", "--user", "--collect", "--on-active=1s", "--unit", unit,
+                                "/usr/bin/systemctl", "--user", "restart",
+                                "kiosk-mqtt-stats.service", "kiosk-mqtt-control.service",
+                                "kiosk-watchdog.service", "kiosk-health.service",
+                                "kiosk-chrome.service", "kiosk-webui.service"],
+                               timeout=10, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             elif action == "reboot":
                 run_bg("sudo", "/sbin/reboot")
             elif action == "shutdown":
