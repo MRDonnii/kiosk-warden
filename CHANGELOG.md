@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.16.1 — 2026-09-13
+
+- **Fix: screen_off did not actually power down GNOME kiosks.** On GNOME
+  desktops, gsd-power (GNOME's own power daemon) was resetting DPMS state
+  back to on within about a minute of a manual force-off, so the screen
+  visually looked idle (Smartdash paused/blanked its own content) but the
+  physical monitor never powered down - a real burn-in risk overnight.
+  start-kiosk.sh now masks and stops gsd-power on GNOME kiosks at startup
+  (no-op elsewhere). screen_off()/screen_on() also now disable/restore the
+  X output directly via xrandr as a second, independent layer, in case DPMS
+  alone still gets overridden by some other desktop component in the future.
+
 ## v1.16.0 — 2026-09-13
 
 - **Clear HA Smartdash-only scope.** Control now states that Warden can pause
