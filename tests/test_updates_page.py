@@ -120,6 +120,13 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("restart_kiosk", screen_on)
         self.assertNotIn('CHROME_LIFECYCLE" frozen', screen_off)
 
+    def test_health_check_recovers_a_solid_grey_surface(self):
+        health = (ROOT / "scripts" / "health-check.sh").read_text()
+        self.assertIn("grey_surface()", health)
+        self.assertIn("colors <= 8", health)
+        self.assertIn("Blank or solid-grey Chrome surface", health)
+        self.assertIn('screen_state', health)
+
     def test_updater_uses_independent_webui_restart_timer(self):
         updater = (ROOT / "scripts" / "self-update.sh").read_text()
         self.assertIn("systemd-run --user --collect --on-active=2s", updater)
