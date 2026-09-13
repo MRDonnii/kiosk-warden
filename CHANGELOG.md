@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.12.5 — 2026-09-13
+
+- **Rate-limit-safe Stable checks**: when GitHub's unauthenticated API quota is exhausted, Warden discovers the current stable tag through GitHub's public latest-release redirect instead of showing a 403 error.
+- **No downgrade offers**: the Web UI and overview banner now require a semantically newer version before offering an installation, so stale cached metadata can never present an older release as an update.
+
 ## v1.12.4 — 2026-09-13
 
 - **No desktop flash on presence wake**: the monitor now remains physically off while the fresh Chrome renderer starts and is exposed only after the dashboard page is ready.

@@ -114,6 +114,23 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('er installeret og genstartet.', updater)
         self.assertIn('complete false', updater)
 
+    def test_stale_release_metadata_never_offers_a_downgrade(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "version").write_text("1.12.5\n")
+            (root / "update_channel").write_text("stable\n")
+            (root / "CHANGELOG.md").write_text("# Changelog\n")
+            SERVER.KIOSK_DIR = str(root)
+            SERVER.VERSION_PATH = str(root / "version")
+            SERVER.UPDATE_CHANNEL_PATH = str(root / "update_channel")
+            SERVER.CHANGELOG_PATH = str(root / "CHANGELOG.md")
+            SERVER._update_cache["latest"] = {"latest_version": "1.12.2"}
+            page = SERVER.render_updates({"KIOSK_NAME": "Test kiosk"})
+            self.assertFalse(SERVER.version_newer("1.12.2", "1.12.5"))
+            self.assertTrue(SERVER.version_newer("1.12.6", "1.12.5"))
+            self.assertIn('id="installUpdate" disabled', page)
+            self.assertNotIn("Ny version klar", page)
+
 
 if __name__ == "__main__":
     unittest.main()
