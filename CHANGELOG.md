@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.15.0 — 2026-09-13
+
+- **Optional Home Assistant connection**: a new "Home Assistant" section under
+  Indstillinger lets Warden read a sensor's state back from HA using a
+  Long-Lived Access Token, with a guided link straight to HA's token screen
+  and a live "Test forbindelse" check. The sensor to track is chosen from a
+  real dropdown of HA's own power/energy entities — never a free-text
+  entity_id to guess.
+- **Power on the Overview page**: when a Home Assistant connection and sensor
+  are configured, Oversigt gains an "Effekt" tile and a fifth telemetry chart
+  alongside CPU/RAM/GPU, temperature, frequency and network — reusing the
+  same 6-hour rolling telemetry buffer, no new dependency.
+- **Relayed back into Home Assistant**: the same reading is also published as
+  a `PC Power` sensor under this Kiosk Warden device via MQTT discovery, so
+  it groups with the machine's other diagnostics in HA. Entirely inert for
+  installs that never configure the connection - no extra network calls, no
+  empty entity left behind.
+
 ## v1.14.0 — 2026-09-13
 
 - **Visible automatic Smartdash link**: Control now shows whether HA Smartdash was detected, its active/idle state and build, with an on-demand refresh action.

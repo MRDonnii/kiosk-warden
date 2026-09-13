@@ -31,6 +31,22 @@ memory_size_gib() {
   awk '/^MemTotal:/ {printf "%.2f GiB", $2/1024/1024}' /proc/meminfo
 }
 
+# Optional: relay a power/energy reading FROM Home Assistant back into this
+# device's own sensors. Empty output whenever HA_URL/HA_TOKEN/HA_POWER_ENTITY
+# aren't all set - installs that never configure this pay no network cost.
+ha_power_reading() {
+  if [[ -z "${HA_URL:-}" || -z "${HA_TOKEN:-}" || -z "${HA_POWER_ENTITY:-}" ]]; then
+    return 0
+  fi
+  local json state
+  json="$(python3 "$HOME/kiosk/webui/ha_client.py" get_state "$HA_URL" "$HA_TOKEN" "$HA_POWER_ENTITY" 2>/dev/null)" || return 0
+  state="$(jq -r '.state // empty' <<<"$json" 2>/dev/null)" || return 0
+  if [[ "$state" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+    echo "$state"
+  fi
+  return 0
+}
+
 UPDATE_CHECK_INTERVAL=1800
 last_update_check=0
 
@@ -101,5 +117,7 @@ while true; do
   mqtt_pub "$BASE_TOPIC/diagnostic/heartbeat" "$heartbeat" || true
   mqtt_pub "$BASE_TOPIC/diagnostic/last_active" "$heartbeat" || true
   mqtt_pub "$BASE_TOPIC/diagnostic/version" "$(cat "$VERSION_FILE" 2>/dev/null || echo 1.5.0)" -r || true
+  ha_power="$(ha_power_reading)"
+  [[ -n "$ha_power" ]] && mqtt_pub "$BASE_TOPIC/stats/pc_power_w" "$ha_power" || true
   check_for_update
 done

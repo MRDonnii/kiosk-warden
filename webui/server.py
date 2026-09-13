@@ -22,6 +22,8 @@ import threading
 import time
 import urllib.parse
 
+import ha_client
+
 HOME = os.path.expanduser("~")
 KIOSK_DIR = os.path.join(HOME, "kiosk")
 CONF_PATH = os.path.join(KIOSK_DIR, "kiosk.conf")
@@ -61,6 +63,7 @@ CONF_ORDER = [
     "KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_PORT",
     "MQTT_USER", "MQTT_PASS", "BASE_TOPIC", "CODEX_REMOTE_TOPIC",
     "STATS_INTERVAL", "UI_LANGUAGE", "WEBUI_PASSWORD_HASH",
+    "HA_URL", "HA_TOKEN", "HA_POWER_ENTITY",
 ]
 
 DEFAULTS = {
@@ -76,6 +79,9 @@ DEFAULTS = {
     "STATS_INTERVAL": "10",
     "UI_LANGUAGE": "en",
     "WEBUI_PASSWORD_HASH": "",
+    "HA_URL": "",
+    "HA_TOKEN": "",
+    "HA_POWER_ENTITY": "",
 }
 
 # The templates use Danish as their canonical fallback because this project
@@ -132,6 +138,20 @@ ENGLISH_TEXT = {
     "Tilstand": "State", "Build": "Build", "Kontroller igen": "Check again",
     "Kiosk-id må kun indeholde a-z, 0-9 og _.": "Kiosk ID may only contain a-z, 0-9 and _.",
     "MQTT port skal være et tal.": "MQTT port must be a number.", "Stats-interval skal være et tal.": "Stats interval must be a number.",
+    "Valgfrit. Lader Kiosk Warden vise et strøm/energi-tal fra Home Assistant på Oversigt-siden.": "Optional. Lets Kiosk Warden show a power/energy reading from Home Assistant on the Overview page.",
+    "Home Assistant URL": "Home Assistant URL",
+    "Opret et Long-Lived Access Token i Home Assistant →": "Create a Long-Lived Access Token in Home Assistant →",
+    "Long-Lived Access Token (tomt ved gem = behold nuværende)": "Long-Lived Access Token (leave empty when saving to keep the current one)",
+    "Strøm/energi-måler": "Power/energy sensor",
+    "Ingen strøm- eller energi-målere fundet i Home Assistant.": "No power or energy sensors found in Home Assistant.",
+    "Gem og test forbindelsen ovenfor for at vælge måleren.": "Save and test the connection above to choose the sensor.",
+    "Gem og test forbindelse": "Save and test connection",
+    "Effekt (Home Assistant)": "Power (Home Assistant)",
+    "Effekt": "Power",
+    "URL og token skal begge udfyldes.": "URL and token must both be filled in.",
+    "Kunne ikke forbinde": "Could not connect",
+    "Forbindelse OK.": "Connection OK.",
+    "Home Assistant-forbindelse gemt.": "Home Assistant connection saved.",
 }
 
 
@@ -524,6 +544,28 @@ def read_gpu_usage():
     return None
 
 
+def read_ha_power():
+    """Current reading of the configured HA power/energy entity, or None.
+
+    None (not an error) whenever HA_TOKEN/HA_POWER_ENTITY are unset, so this
+    stays a no-op network call for installs that never set up the optional
+    Home Assistant connection.
+    """
+    conf = read_conf()
+    ha_url = conf.get("HA_URL", "")
+    token = conf.get("HA_TOKEN", "")
+    entity_id = conf.get("HA_POWER_ENTITY", "")
+    if not ha_url or not token or not entity_id:
+        return None
+    state = ha_client.get_state(ha_url, token, entity_id)
+    if not state:
+        return None
+    try:
+        return round(float(state.get("state")), 1)
+    except (TypeError, ValueError):
+        return None
+
+
 def collect_telemetry():
     sample_count = 0
     last_gpu = None
@@ -533,7 +575,8 @@ def collect_telemetry():
             last_gpu = gpu
         sample = {"time": int(time.time()), "cpu": read_cpu_usage(), "ram": read_ram_percent(),
                   "gpu": last_gpu, "cpu_temp": read_cpu_temp(), "nvme_temp": read_nvme_temp(),
-                  "cpu_mhz": read_cpu_frequency(), "network_kbps": read_network_rate()}
+                  "cpu_mhz": read_cpu_frequency(), "network_kbps": read_network_rate(),
+                  "ha_power": read_ha_power()}
         with _telemetry_lock:
             _telemetry.append(sample)
         sample_count += 1
@@ -1002,27 +1045,41 @@ def render_dashboard(conf, message=None, error=None):
     body += render_tile("↕️", "Netværk", f'{live.get("network_kbps")} KiB/s' if live.get("network_kbps") is not None else "?")
     body += render_tile("🖥️", "Chrome", chrome_label, chrome_level)
     body += render_tile("🏷️", "Model", stats["model"])
+    ha_power_configured = bool(conf.get("HA_TOKEN") and conf.get("HA_POWER_ENTITY"))
+    if ha_power_configured:
+        power_val = f'{live.get("ha_power")} W' if live.get("ha_power") is not None else "?"
+        body += render_tile("⚡", "Effekt", power_val)
     body += "</div>"
 
     body += f'<div class="status">{esc(health_detail)}</div>'
-    body += """
+    power_chart = (
+        '<div class="chart-card"><div class="chart-title">Effekt (Home Assistant) · seneste 60 minutter</div>'
+        '<canvas class="telemetry-chart" id="powerChart"></canvas></div>'
+        if ha_power_configured else ""
+    )
+    power_draw = (
+        "drawChart('powerChart',rows,[{key:'ha_power',label:'W',color:'#facc15'}]);"
+        if ha_power_configured else ""
+    )
+    body += f"""
 <div class="charts">
   <div class="chart-card"><div class="chart-title">CPU, RAM og GPU · seneste 60 minutter</div><canvas class="telemetry-chart" id="usageChart"></canvas></div>
   <div class="chart-card"><div class="chart-title">CPU- og NVMe-temperatur · seneste 60 minutter</div><canvas class="telemetry-chart" id="temperatureChart"></canvas></div>
   <div class="chart-card"><div class="chart-title">CPU-frekvens · seneste 60 minutter</div><canvas class="telemetry-chart" id="frequencyChart"></canvas></div>
   <div class="chart-card"><div class="chart-title">Netværkstrafik · seneste 60 minutter</div><canvas class="telemetry-chart" id="networkChart"></canvas></div>
+  {power_chart}
 </div>
 <script>
-function drawChart(id, rows, series, maxValue) {
+function drawChart(id, rows, series, maxValue) {{
   const canvas=document.getElementById(id), ratio=window.devicePixelRatio||1, width=canvas.clientWidth, height=canvas.clientHeight;
   canvas.width=width*ratio; canvas.height=height*ratio; const c=canvas.getContext('2d'); c.scale(ratio,ratio); c.clearRect(0,0,width,height);
-  c.strokeStyle='rgba(128,128,128,.22)'; c.lineWidth=1; for(let i=0;i<=4;i++){const y=8+(height-20)*i/4;c.beginPath();c.moveTo(0,y);c.lineTo(width,y);c.stroke();}
+  c.strokeStyle='rgba(128,128,128,.22)'; c.lineWidth=1; for(let i=0;i<=4;i++){{const y=8+(height-20)*i/4;c.beginPath();c.moveTo(0,y);c.lineTo(width,y);c.stroke();}}
   const visible=rows.slice(-360); if(visible.length<2)return;
   const values=visible.flatMap(r=>series.map(s=>Number(r[s.key])).filter(Number.isFinite)); const top=maxValue||Math.max(1,...values)*1.12;
-  for(const s of series){c.strokeStyle=s.color;c.lineWidth=2;c.beginPath();let started=false;visible.forEach((r,i)=>{const v=Number(r[s.key]);if(!Number.isFinite(v))return;const x=i*width/(visible.length-1),y=height-8-Math.min(top,v)*(height-20)/top;if(!started){c.moveTo(x,y);started=true}else c.lineTo(x,y)});c.stroke();}
-  c.font='11px system-ui'; let x=8; for(const s of series){c.fillStyle=s.color;c.fillText(s.label,x,height-2);x+=c.measureText(s.label).width+16;}
-}
-async function updateTelemetry(){try{const r=await fetch('/api/telemetry',{cache:'no-store'});if(!r.ok)return;const rows=await r.json();drawChart('usageChart',rows,[{key:'cpu',label:'CPU',color:'#3b82f6'},{key:'ram',label:'RAM',color:'#8b5cf6'},{key:'gpu',label:'GPU',color:'#22c55e'}],100);drawChart('temperatureChart',rows,[{key:'cpu_temp',label:'CPU °C',color:'#ef4444'},{key:'nvme_temp',label:'NVMe °C',color:'#f59e0b'}],100);drawChart('frequencyChart',rows,[{key:'cpu_mhz',label:'MHz',color:'#06b6d4'}]);drawChart('networkChart',rows,[{key:'network_kbps',label:'KiB/s',color:'#a855f7'}]);}catch(_){}}
+  for(const s of series){{c.strokeStyle=s.color;c.lineWidth=2;c.beginPath();let started=false;visible.forEach((r,i)=>{{const v=Number(r[s.key]);if(!Number.isFinite(v))return;const x=i*width/(visible.length-1),y=height-8-Math.min(top,v)*(height-20)/top;if(!started){{c.moveTo(x,y);started=true}}else c.lineTo(x,y)}});c.stroke();}}
+  c.font='11px system-ui'; let x=8; for(const s of series){{c.fillStyle=s.color;c.fillText(s.label,x,height-2);x+=c.measureText(s.label).width+16;}}
+}}
+async function updateTelemetry(){{try{{const r=await fetch('/api/telemetry',{{cache:'no-store'}});if(!r.ok)return;const rows=await r.json();drawChart('usageChart',rows,[{{key:'cpu',label:'CPU',color:'#3b82f6'}},{{key:'ram',label:'RAM',color:'#8b5cf6'}},{{key:'gpu',label:'GPU',color:'#22c55e'}}],100);drawChart('temperatureChart',rows,[{{key:'cpu_temp',label:'CPU °C',color:'#ef4444'}},{{key:'nvme_temp',label:'NVMe °C',color:'#f59e0b'}}],100);drawChart('frequencyChart',rows,[{{key:'cpu_mhz',label:'MHz',color:'#06b6d4'}}]);drawChart('networkChart',rows,[{{key:'network_kbps',label:'KiB/s',color:'#a855f7'}}]);{power_draw}}}catch(_){{}}}}
 updateTelemetry();setInterval(updateTelemetry,10000);addEventListener('resize',updateTelemetry);
 </script>
 """
@@ -1085,6 +1142,61 @@ document.getElementById('restartWardenManual').addEventListener('click', event =
     return body + PAGE_TAIL
 
 
+def render_ha_fieldset(conf):
+    """Optional 'connect to Home Assistant' section of Indstillinger.
+
+    HA_POWER_ENTITY is always a real <select> populated from HA's own
+    entity list once a token is saved - never a free-text field the user
+    has to guess an entity_id into.
+    """
+    ha_url = conf.get("HA_URL", "")
+    has_token = bool(conf.get("HA_TOKEN"))
+    current_entity = conf.get("HA_POWER_ENTITY", "")
+
+    link = ""
+    if ha_url:
+        link = (
+            f'<div class="sub"><a href="{esc(ha_url.rstrip("/"))}/profile/security" '
+            f'target="_blank" rel="noopener">Opret et Long-Lived Access Token i Home Assistant →</a></div>'
+        )
+
+    if has_token:
+        candidates = ha_client.list_entities(
+            ha_url, conf.get("HA_TOKEN", ""), domain="sensor", device_classes=("power", "energy")
+        )
+        known_ids = {item["entity_id"] for item in candidates}
+        if current_entity and current_entity not in known_ids:
+            candidates.append({"entity_id": current_entity, "name": current_entity})
+        if candidates:
+            options = "".join(
+                f'<option value="{esc(item["entity_id"])}"'
+                f'{" selected" if item["entity_id"] == current_entity else ""}>'
+                f'{esc(item["name"])} ({esc(item["entity_id"])})</option>'
+                for item in candidates
+            )
+            entity_field = f'<label>Strøm/energi-måler</label><select name="HA_POWER_ENTITY">{options}</select>'
+        else:
+            entity_field = '<div class="sub">Ingen strøm- eller energi-målere fundet i Home Assistant.</div>'
+    else:
+        entity_field = '<div class="sub">Gem og test forbindelsen ovenfor for at vælge måleren.</div>'
+
+    return f"""
+<form method="post" action="/save-ha">
+  <fieldset>
+    <legend>Home Assistant</legend>
+    <div class="sub">Valgfrit. Lader Kiosk Warden vise et strøm/energi-tal fra Home Assistant på Oversigt-siden.</div>
+    <label>Home Assistant URL</label>
+    <input type="text" name="HA_URL" value="{esc(ha_url)}" placeholder="http://homeassistant.local:8123">
+    {link}
+    <label>Long-Lived Access Token (tomt ved gem = behold nuværende)</label>
+    <input type="password" name="HA_TOKEN" placeholder="••••••••">
+    {entity_field}
+    <div class="row"><button type="submit">Gem og test forbindelse</button></div>
+  </fieldset>
+</form>
+"""
+
+
 def render_settings(conf, message=None, error=None):
     body = PAGE_HEAD.format(title_suffix=" — Indstillinger")
     body += f"""
@@ -1124,6 +1236,8 @@ def render_settings(conf, message=None, error=None):
     <div class="row"><button class="primary" type="submit">Gem og genstart</button></div>
   </fieldset>
 </form>
+
+{render_ha_fieldset(conf)}
 
 <form method="post" action="/change-password">
   <fieldset>
@@ -1340,6 +1454,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             run("systemctl", "--user", "restart", "kiosk-chrome.service", "kiosk-watchdog.service", "kiosk-health.service")
             run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
             return self._redirect("/settings")
+
+        if parsed.path == "/save-ha":
+            conf["HA_URL"] = fields.get("HA_URL", [""])[0].strip()
+            token = fields.get("HA_TOKEN", [""])[0]
+            if token:
+                conf["HA_TOKEN"] = token
+            if "HA_POWER_ENTITY" in fields:
+                conf["HA_POWER_ENTITY"] = fields["HA_POWER_ENTITY"][0].strip()
+            write_conf(conf)
+            if conf.get("HA_URL") and conf.get("HA_TOKEN"):
+                ok, msg = ha_client.test_connection(conf["HA_URL"], conf["HA_TOKEN"])
+                if ok:
+                    return self._send_html(render_settings(conf, message=f"Home Assistant-forbindelse gemt. {msg}"))
+                return self._send_html(render_settings(conf, error=msg))
+            return self._send_html(render_settings(conf, message="Home Assistant-forbindelse gemt."))
 
         if parsed.path == "/change-password":
             pw = fields.get("password", [""])[0]

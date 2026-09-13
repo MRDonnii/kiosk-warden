@@ -133,6 +133,15 @@ sensor heartbeat "Heartbeat" "diagnostic/heartbeat" "" "mdi:heart-pulse" "" "" "
 sensor screenshot "Screenshot" "state/screenshot" "" "mdi:image" "" "" "diagnostic"
 sensor version "Version" "diagnostic/version" "" "mdi:tag" "" "" "diagnostic"
 
+# Optional: relayed FROM Home Assistant (see mqtt-stats.sh's ha_power_reading).
+# Only advertised once a connection is actually configured, so installs that
+# never set it up don't get a permanently-empty entity.
+if [[ -n "${HA_TOKEN:-}" && -n "${HA_POWER_ENTITY:-}" ]]; then
+  sensor pc_power_w "PC Power" "stats/pc_power_w" "W" "mdi:flash" "power" "measurement"
+else
+  publish_config sensor pc_power_w ""
+fi
+
 sensor health_detail "Health Detail" "health/detail" "" "mdi:clipboard-pulse" "" "" "diagnostic"
 sensor last_recovery "Last Recovery" "diagnostic/last_recovery" "" "mdi:restore" "" "" "diagnostic"
 sensor screenshot_path "Screenshot Path" "diagnostic/screenshot_path" "" "mdi:file-image" "" "" "diagnostic"
