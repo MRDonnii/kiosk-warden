@@ -29,9 +29,11 @@ printf '%s\n' "$mode" > "$MODE_FILE"
 # screen_on path removes WAKE_FILE only after the dashboard page is ready.
 screen_state="$(cat "$SCREEN_FILE" 2>/dev/null || echo ON)"
 if [[ "$screen_state" != "OFF" ]]; then
+  xset +dpms || true
+  timeout 3s xset dpms force on || true
   xset s off || true
   xset s noblank || true
-  xset -dpms || true
+  xset dpms 0 0 0 || true
 fi
 pgrep -x unclutter >/dev/null || unclutter -idle 0.5 -root >/dev/null 2>&1 &
 

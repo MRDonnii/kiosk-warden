@@ -12,18 +12,26 @@ FAIL_COUNT_FILE="$HOME/kiosk/blank_fail_count"
 grey_surface() {
   [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "ON" ]] || return 1
   command -v identify >/dev/null 2>&1 || return 1
-  local shot colors
+  local shot colors result=1
   shot="$(mktemp --suffix=.png)"
-  trap 'rm -f "$shot"' RETURN
-  if command -v gnome-screenshot >/dev/null 2>&1; then
-    DISPLAY=:0 XAUTHORITY="$HOME/.Xauthority" gnome-screenshot -f "$shot" >/dev/null 2>&1 || return 1
-  elif command -v import >/dev/null 2>&1; then
-    DISPLAY=:0 XAUTHORITY="$HOME/.Xauthority" import -window root "$shot" >/dev/null 2>&1 || return 1
+  if command -v import >/dev/null 2>&1; then
+    DISPLAY=:0 XAUTHORITY="$HOME/.Xauthority" import -window root "$shot" >/dev/null 2>&1 || {
+      rm -f "$shot"
+      return 1
+    }
+  elif command -v gnome-screenshot >/dev/null 2>&1; then
+    DISPLAY=:0 XAUTHORITY="$HOME/.Xauthority" gnome-screenshot -f "$shot" >/dev/null 2>&1 || {
+      rm -f "$shot"
+      return 1
+    }
   else
+    rm -f "$shot"
     return 1
   fi
   colors="$(identify -format '%k' "$shot" 2>/dev/null || echo 999)"
-  [[ "$colors" =~ ^[0-9]+$ ]] && (( colors <= 8 ))
+  [[ "$colors" =~ ^[0-9]+$ ]] && (( colors <= 8 )) && result=0
+  rm -f "$shot"
+  return "$result"
 }
 
 chrome_json() {
