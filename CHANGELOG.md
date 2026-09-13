@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.12.9 — 2026-09-13
+
+- **Visual grey-screen watchdog**: while the display is logically ON, health checks inspect the actual X11 surface and detect a blank or solid-grey frame even when Chrome's process, title and URL look healthy.
+- **Automatic visual recovery**: the existing staged recovery first reloads and then restarts Chrome if the unusable surface persists.
+
 ## v1.12.8 — 2026-09-13
 
 - **Stable presence wake**: repeated `screen_on` commands are idempotent and preserve the Chrome PID whenever Chrome and its HTTP page are healthy.

@@ -9,6 +9,23 @@ ERROR_FILE="$HOME/kiosk/errors"
 LAST_RECOVERY_FILE="$HOME/kiosk/last_recovery"
 FAIL_COUNT_FILE="$HOME/kiosk/blank_fail_count"
 
+grey_surface() {
+  [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "ON" ]] || return 1
+  command -v identify >/dev/null 2>&1 || return 1
+  local shot colors
+  shot="$(mktemp --suffix=.png)"
+  trap 'rm -f "$shot"' RETURN
+  if command -v gnome-screenshot >/dev/null 2>&1; then
+    DISPLAY=:0 XAUTHORITY="$HOME/.Xauthority" gnome-screenshot -f "$shot" >/dev/null 2>&1 || return 1
+  elif command -v import >/dev/null 2>&1; then
+    DISPLAY=:0 XAUTHORITY="$HOME/.Xauthority" import -window root "$shot" >/dev/null 2>&1 || return 1
+  else
+    return 1
+  fi
+  colors="$(identify -format '%k' "$shot" 2>/dev/null || echo 999)"
+  [[ "$colors" =~ ^[0-9]+$ ]] && (( colors <= 8 ))
+}
+
 chrome_json() {
   curl -s --max-time 3 http://127.0.0.1:9222/json/list 2>/dev/null || true
 }
@@ -67,6 +84,9 @@ while true; do
   elif [[ -z "$title" || "$title" == "about:blank" || "$title" == "New Tab" ]]; then
     publish_health "OFF" "Blank-looking page: title='$title' url='$url'"
     recover "Blank-looking page: $title $url"
+  elif grey_surface; then
+    publish_health "OFF" "Chrome surface is blank or solid grey"
+    recover "Blank or solid-grey Chrome surface"
   else
     printf '0\n' > "$FAIL_COUNT_FILE"
     publish_health "ON" "OK: $title"
