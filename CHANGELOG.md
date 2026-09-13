@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.15.1 — 2026-09-13
+
+- **Fix: Smartdash auto-detection silently missing python3-websocket.**
+  `self-update.sh` only ever replaced script/webui files - it never re-ran
+  the apt package list from `install.sh`, so kiosks provisioned before
+  `python3-websocket` was added there (needed for Smartdash's local Chrome
+  debug-port check) could self-update forever without ever getting it,
+  always showing "Not detected" with no explanation. `self-update.sh` now
+  best-effort installs it during every update if missing (never blocks the
+  release install if apt/sudo isn't available non-interactively).
+- **Better Smartdash error reporting.** `chrome-lifecycle.py` now writes a
+  specific `error`/`error_message` to `smartdash_status.json` when it can't
+  run at all - missing `python3-websocket`, Chrome's debug port (9222) not
+  responding, or no visible page found - instead of leaving the status file
+  untouched. Styring's Smartdash-forbindelse panel and its "Kontroller igen"
+  button now show that specific reason instead of a generic "Ikke
+  registreret" for all three cases.
+
 ## v1.15.0 — 2026-09-13
 
 - **Optional Home Assistant connection**: a new "Home Assistant" section under

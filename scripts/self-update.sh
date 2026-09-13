@@ -96,6 +96,23 @@ version_newer() {
   [[ "$1" != "$2" && "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1)" == "$1" ]]
 }
 
+ensure_system_dependencies() {
+  # self-update only replaces script/webui files, never apt packages, so a
+  # kiosk provisioned before python3-websocket was added to install.sh's
+  # required_packages (Smartdash auto-detection) would silently keep missing
+  # it forever. Best-effort, non-interactive: never blocks or fails the
+  # release install if apt/sudo isn't cooperative.
+  if python3 -c 'import websocket' 2>/dev/null; then
+    return 0
+  fi
+  echo "python3-websocket mangler - forsøger automatisk installation…"
+  sudo -n apt-get install -y python3-websocket >/dev/null 2>&1 || true
+  if ! python3 -c 'import websocket' 2>/dev/null; then
+    echo "ADVARSEL: python3-websocket kunne ikke installeres automatisk. Kør: sudo apt-get install -y python3-websocket" >&2
+  fi
+  return 0
+}
+
 restart_warden() {
   systemctl --user daemon-reload
   systemctl --user restart kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-vnc.service kiosk-novnc.service || true
@@ -130,6 +147,8 @@ install_release() {
   for file in "$repo"/webui/*.py; do replace_atomic "$file" "$KIOSK_DIR/webui/$(basename "$file")"; done
   for file in "$repo"/systemd/*.service; do replace_atomic "$file" "$HOME/.config/systemd/user/$(basename "$file")" 644; done
   git -C "$repo" rev-parse HEAD > "$KIOSK_DIR/.version"
+  write_status dependencies 80 "Tjekker system-afhængigheder…"
+  ensure_system_dependencies
   write_status services 90 "Genstarter Kiosk Warden-tjenester…"
   publish_update_json "$(jq -cn --arg version "$expected" --arg channel "$CHANNEL" '{installed_version:$version,latest_version:$version,title:"Kiosk Warden",channel:$channel,in_progress:false}')"
   trap - EXIT
