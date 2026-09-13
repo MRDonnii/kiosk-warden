@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.16.0 — 2026-09-13
+
+- **Clear HA Smartdash-only scope.** Control now states that Warden can pause
+  animations, live cameras and rendering only when the kiosk shows HA
+  Smartdash. Physical DPMS screen control still works with other dashboards,
+  but their internal visual work cannot be paused by this bridge.
+- **Home Assistant MQTT control.** MQTT discovery adds `Smartdash Connection`
+  as a diagnostic connectivity entity with retained capability/build/state
+  attributes, plus an available-only `Smartdash Rendering` switch. Turning it
+  on sends `active`; turning it off sends `idle` through the same local Chrome
+  bridge used by automatic screen control.
+- **Live retained state.** Warden republishes Smartdash support, state, build,
+  release, URL and errors every 15 seconds and after automatic or HA-requested
+  state changes. Unsupported dashboards make the switch unavailable.
+- **Discovery after self-update.** New MQTT entities are registered during the
+  update without requiring a reinstall or shell access.
+
 ## v1.15.2 — 2026-09-13
 
 - **Update progress no longer freezes at 20%.** Submitting an update redirects

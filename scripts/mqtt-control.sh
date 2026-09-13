@@ -35,6 +35,37 @@ publish_state() {
   mqtt_pub "$BASE_TOPIC/state/$1" "$2" -r || true
 }
 
+publish_smartdash_state() {
+  local status_file="$HOME/kiosk/smartdash_status.json" payload supported state
+  "$CHROME_LIFECYCLE" status >/dev/null 2>&1 || true
+  payload="$(jq -c '.' "$status_file" 2>/dev/null)" || payload='{"supported":false,"error":"status_unavailable"}'
+  mqtt_pub "$BASE_TOPIC/smartdash/status" "$payload" -r || true
+  supported="$(jq -r '.supported // false' <<<"$payload")"
+  state="$(jq -r '.state // empty' <<<"$payload")"
+  if [[ "$supported" == true ]]; then
+    mqtt_pub "$BASE_TOPIC/smartdash/availability" "online" -r || true
+    [[ "$state" == active ]] && publish_state smartdash_rendering "ON" || publish_state smartdash_rendering "OFF"
+  else
+    mqtt_pub "$BASE_TOPIC/smartdash/availability" "offline" -r || true
+    mqtt_pub "$BASE_TOPIC/state/smartdash_rendering" "" -r || true
+  fi
+}
+
+set_smartdash_rendering() {
+  local requested="${1,,}"
+  case "$requested" in
+    active|on|1|true) requested=active ;;
+    idle|off|0|false) requested=idle ;;
+    *) return 0 ;;
+  esac
+  "$CHROME_LIFECYCLE" "$requested" >/dev/null 2>&1 || true
+  publish_smartdash_state
+}
+
+smartdash_status_loop() {
+  while true; do publish_smartdash_state; sleep 15; done
+}
+
 set_update_channel() {
   local channel="${1,,}" state
   [[ "$channel" == beta ]] || channel=stable
@@ -145,6 +176,7 @@ screen_on() {
   # Let a compatible dashboard resume expensive visual work. Repeated presence
   # ON events remain idempotent and never restart healthy Chrome.
   "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
+  publish_smartdash_state
   rm -f "$WAKE_FILE"
   xset +dpms || true
   timeout 3s xset dpms force on || true
@@ -167,6 +199,7 @@ screen_off() {
   # Keep Chrome responsive while a compatible dashboard pauses animations and
   # camera streams. Sites without the bridge simply ignore this message.
   "$CHROME_LIFECYCLE" idle >/dev/null 2>&1 || true
+  publish_smartdash_state
   printf 'OFF\n' > "$SCREEN_FILE"
   publish_state screen "OFF"
   xset +dpms || true
@@ -300,6 +333,8 @@ listen_topic "$BASE_TOPIC/set_theme" set_theme &
 listen_topic "$BASE_TOPIC/set_volume" set_volume &
 listen_topic "$BASE_TOPIC/set_update_channel" set_update_channel &
 listen_topic "$BASE_TOPIC/set_power_profile" set_power_profile &
+listen_topic "$BASE_TOPIC/set_smartdash_rendering" set_smartdash_rendering &
+smartdash_status_loop &
 listen_topic "$CODEX_REMOTE_TOPIC/command" handle_codex_remote_command &
 listen_topic "$BASE_TOPIC/update/install" handle_update_install &
 listen_topic "$BASE_TOPIC/command" handle_command
