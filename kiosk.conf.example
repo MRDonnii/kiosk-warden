@@ -9,3 +9,13 @@ BASE_TOPIC="home/kiosk/my_kiosk"
 CODEX_REMOTE_TOPIC="home/codex/my_kiosk/remote_control"
 STATS_INTERVAL=10
 WEBUI_PASSWORD_HASH=""
+
+# Optional: lets Kiosk Warden read data back FROM Home Assistant (e.g. a
+# smart-plug power/energy sensor that measures this kiosk), shown on the
+# "PC overblik" page and republished as a sensor under this Kiosk Warden
+# device. Leave HA_TOKEN empty to skip this entirely - nothing breaks.
+# Create a Long-Lived Access Token under your HA user profile's Security
+# tab, or use the guided link on the web UI's Indstillinger page.
+HA_URL=""
+HA_TOKEN=""
+HA_POWER_ENTITY=""
