@@ -126,6 +126,18 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("colors <= 8", health)
         self.assertIn("Blank or solid-grey Chrome surface", health)
         self.assertIn('screen_state', health)
+        self.assertLess(health.index('command -v import'), health.index('command -v gnome-screenshot'))
+        self.assertNotIn("trap 'rm -f", health)
+        self.assertIn('local shot colors result=1', health)
+
+    def test_mint_dpms_wake_order_keeps_dpms_enabled(self):
+        control = (ROOT / "scripts" / "mqtt-control.sh").read_text()
+        startup = (ROOT / "scripts" / "start-kiosk.sh").read_text()
+        on = control[control.index("screen_on() {"):control.index("\nscreen_off() {")]
+        self.assertLess(on.index("xset +dpms"), on.index("xset dpms force on"))
+        self.assertLess(on.index("xset dpms force on"), on.index("xset dpms 0 0 0"))
+        self.assertNotIn("xset -dpms", on)
+        self.assertIn("xset dpms 0 0 0", startup)
 
     def test_updater_uses_independent_webui_restart_timer(self):
         updater = (ROOT / "scripts" / "self-update.sh").read_text()

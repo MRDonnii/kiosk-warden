@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.12.10 — 2026-09-13
+
+- **Mint/Cinnamon HDMI wake**: DPMS is enabled before `force on`, then automatic timeouts are set to zero without `xset -dpms`, preventing Cinnamon from leaving an external HDMI monitor physically off.
+- **Invisible visual health checks**: ImageMagick `import -window root` is preferred over the flashing `gnome-screenshot` capture path.
+- **Crash-free temporary cleanup**: grey-surface checks explicitly remove their temporary image and no longer retain a `RETURN` trap that can reference an out-of-scope local variable under `set -u`.
+
 ## v1.12.9 — 2026-09-13
 
 - **Visual grey-screen watchdog**: while the display is logically ON, health checks inspect the actual X11 surface and detect a blank or solid-grey frame even when Chrome's process, title and URL look healthy.

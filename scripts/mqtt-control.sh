@@ -146,10 +146,11 @@ screen_on() {
   # events are idempotent and must never restart healthy Chrome.
   "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
   rm -f "$WAKE_FILE"
+  xset +dpms || true
+  timeout 3s xset dpms force on || true
   xset s off || true
   xset s noblank || true
-  xset -dpms || true
-  timeout 3s xset dpms force on || true
+  xset dpms 0 0 0 || true
   printf 'ON\n' > "$SCREEN_FILE"
   publish_state screen "ON"
 
