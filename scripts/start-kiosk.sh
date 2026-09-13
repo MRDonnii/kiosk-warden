@@ -38,9 +38,9 @@ fi
 wmctrl -c "Indstillinger" >/dev/null 2>&1 || true
 wmctrl -c "Settings" >/dev/null 2>&1 || true
 
-# A Chrome restart must preserve the physical OFF state. Do not freeze the
-# renderer: Chromium can acknowledge the later `active` transition without
-# repainting, leaving a physically awakened kiosk as a solid grey screen.
+# A Chrome restart must preserve both the physical OFF state and the frozen
+# renderer. screen_on starts a fresh renderer behind the powered-off monitor
+# before exposing it, so Chromium cannot leave a stale grey surface.
 if [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "OFF" ]]; then
   (
     for _ in $(seq 1 20); do
@@ -49,6 +49,7 @@ if [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "OFF" ]]; th
         # screen_on may have arrived while Chrome was starting. Never let this
         # delayed restore overwrite the newer requested state.
         [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "OFF" ]] || break
+        "$HOME/kiosk/chrome-lifecycle.py" frozen >/dev/null 2>&1 || continue
         xset +dpms >/dev/null 2>&1 || true
         xset dpms 0 0 1 >/dev/null 2>&1 || true
         xset dpms force off >/dev/null 2>&1 || true
