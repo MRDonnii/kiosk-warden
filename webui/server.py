@@ -962,12 +962,20 @@ const progressText = document.getElementById('updateProgressText');
 const progressPercent = document.getElementById('updateProgressPercent');
 const restartChoice = document.getElementById('restartChoice');
 let pollTimer = null;
+function ensureStatusPolling() {
+  if (!pollTimer) pollTimer = setInterval(pollStatus, 800);
+}
 function showStatus(status) {
   const percent = Math.max(0, Math.min(100, Number(status.percent || 0)));
   if (status.result !== 'idle') progress.style.display = 'block';
   fill.style.width = percent + '%'; progressPercent.textContent = percent + '%';
   progressText.textContent = status.message || status.stage || 'Arbejder…';
-  if (status.result === 'running') return;
+  // The install form redirects to /updates?started=1. That navigation tears
+  // down the interval started by the submitting page, so the fresh page must
+  // resume polling when its initial status read says the updater is running.
+  // Without this it commonly rendered the download stage (20%) forever even
+  // though self-update.sh continued and completed successfully in systemd.
+  if (status.result === 'running') { ensureStatusPolling(); return; }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   if (status.result === 'complete' && status.restart_required && localStorage.getItem('kiosk-restart-later') !== status.updated_at) restartChoice.style.display = 'block';
 }
@@ -982,7 +990,7 @@ document.getElementById('checkUpdates').addEventListener('click', async () => {
 document.getElementById('installUpdate').closest('form').addEventListener('submit', event => {
   if (event.submitter && event.submitter.id !== 'installUpdate') return;
   progress.style.display = 'block'; showStatus({percent:2,message:'Starter opdateringen…',result:'running'});
-  pollTimer = setInterval(pollStatus, 800); setTimeout(pollStatus, 250);
+  setTimeout(pollStatus, 250);
 });
 document.getElementById('restartLater').addEventListener('click', async () => { const response = await fetch('/api/update-status', {cache:'no-store'}); const status = await response.json(); restartChoice.style.display = 'none'; localStorage.setItem('kiosk-restart-later', status.updated_at || '1'); });
 function restartCountdown(action, button, label) {
