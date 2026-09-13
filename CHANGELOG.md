@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.12.4 — 2026-09-13
+
+- **No desktop flash on presence wake**: the monitor now remains physically off while the fresh Chrome renderer starts and is exposed only after the dashboard page is ready.
+- **Race-safe hidden startup**: a dedicated wake marker prevents startup recovery and newer screen-off commands from fighting over DPMS state.
+
 ## v1.12.3 — 2026-09-13
 
 - **Full low-power presence sleep**: presence-off freezes Chrome rendering and media before DPMS powers down the monitor, avoiding unnecessary background dashboard work.

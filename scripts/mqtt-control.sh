@@ -6,6 +6,7 @@ export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 
 MODE_FILE="$HOME/kiosk/window_mode"
 SCREEN_FILE="$HOME/kiosk/screen_state"
+WAKE_FILE="$HOME/kiosk/wake_pending"
 THEME_FILE="$HOME/kiosk/theme"
 ZOOM_FILE="$HOME/kiosk/page_zoom"
 KEYBOARD_FILE="$HOME/kiosk/keyboard_state"
@@ -141,11 +142,9 @@ set_zoom() {
 }
 
 screen_on() {
-  # Record the newer requested state first, so a delayed OFF restore from a
-  # concurrent Chrome start cannot win the race. Chromium 153 can acknowledge
-  # a thaw without repainting, so wake with a fresh renderer while DPMS remains
-  # off and expose the monitor only after a real page is available.
-  printf 'ON\n' > "$SCREEN_FILE"
+  # Keep the physical monitor off while the fresh renderer starts. The marker
+  # tells start-kiosk not to thaw the old OFF state or expose the desktop.
+  : > "$WAKE_FILE"
   restart_kiosk
   for _ in $(seq 1 40); do
     if curl -fsS --max-time 1 http://127.0.0.1:9222/json/list 2>/dev/null \
@@ -155,14 +154,19 @@ screen_on() {
     fi
     sleep 0.25
   done
+  # A newer screen_off request removes the marker and must win this race.
+  [[ -f "$WAKE_FILE" ]] || return 0
   xset s off || true
   xset s noblank || true
   xset -dpms || true
   timeout 3s xset dpms force on || true
+  printf 'ON\n' > "$SCREEN_FILE"
+  rm -f "$WAKE_FILE"
   publish_state screen "ON"
 }
 
 screen_off() {
+  rm -f "$WAKE_FILE"
   "$CHROME_LIFECYCLE" frozen || true
   printf 'OFF\n' > "$SCREEN_FILE"
   publish_state screen "OFF"
