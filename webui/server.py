@@ -135,6 +135,8 @@ ENGLISH_TEXT = {
     "Allerede på nyeste version": "Already on the latest version", "Siden genstarter om et par sekunder…": "The page will restart in a few seconds…",
     "Smartdash-forbindelse": "Smartdash connection", "Automatisk registrering": "Automatic detection", "Forbundet": "Connected", "Ikke registreret": "Not detected",
     "Warden registrerer automatisk Smartdash på den aktive kiosk-URL. Ingen MQTT- eller IP-kobling skal opsættes.": "Warden automatically detects Smartdash at the active kiosk URL. No MQTT or IP link needs configuration.",
+    'Gælder kun hvis denne kiosk viser <strong>HA Smartdash</strong>. Warden registrerer den automatisk på den aktive kiosk-URL via Chromes lokale debug-port - ingen MQTT- eller IP-kobling skal opsættes. Viser kiosken en anden dashboard-side, forbliver dette naturligt "Ikke registreret", og det er ikke en fejl.':
+        'Only applies if this kiosk shows <strong>HA Smartdash</strong>. Warden detects it automatically on the active kiosk URL via Chrome\'s local debug port - no MQTT or IP link needs configuration. If the kiosk shows a different dashboard page, this will naturally stay "Not detected", and that is not an error.',
     "Tilstand": "State", "Build": "Build", "Kontroller igen": "Check again",
     "Afhængighed mangler": "Dependency missing", "Kontakt fejlede": "Contact failed",
     "Python-modulet 'websocket' (python3-websocket) mangler. Kør installations- eller opdateringsscriptet igen.": "The 'websocket' Python module (python3-websocket) is missing. Run the install or update script again.",
@@ -1117,7 +1119,7 @@ def render_control(conf, message=None, error=None):
   <form method="post" action="/power-profile"><label>Aktiv profil</label><select name="profile">{options}</select><div class="row"><button class="primary" type="submit">Skift strømprofil</button></div></form>
 </fieldset>
 <fieldset><legend>Smartdash-forbindelse</legend>
-  <p class="status">Warden registrerer automatisk Smartdash på den aktive kiosk-URL. Ingen MQTT- eller IP-kobling skal opsættes.</p>
+  <p class="status">Gælder kun hvis denne kiosk viser <strong>HA Smartdash</strong>. Warden registrerer den automatisk på den aktive kiosk-URL via Chromes lokale debug-port - ingen MQTT- eller IP-kobling skal opsættes. Viser kiosken en anden dashboard-side, forbliver dette naturligt "Ikke registreret", og det er ikke en fejl.</p>
   <div class="grid"><div class="tile"><span>Automatisk registrering</span><strong id="smartdashDetected">{'Forbundet' if smartdash.get('supported') else ('Afhængighed mangler' if smartdash.get('error') == 'missing_dependency' else 'Kontakt fejlede' if smartdash.get('error') else 'Ikke registreret')}</strong></div><div class="tile"><span>Tilstand</span><strong id="smartdashState">{esc(smartdash.get('state') or '—')}</strong></div><div class="tile"><span>Build</span><strong id="smartdashBuild">{esc(smartdash.get('release') or smartdash.get('build') or '—')}</strong></div></div>
   {f'<p class="status" id="smartdashErrorDetail">{esc(smartdash.get("error_message"))}</p>' if smartdash.get('error') else '<p class="status" id="smartdashErrorDetail" style="display:none"></p>'}
   <div class="row"><button type="button" id="refreshSmartdash">Kontroller igen</button></div>
