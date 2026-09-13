@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Freeze or resume the kiosk page through Chrome DevTools Protocol."""
+"""Tell the kiosk page whether it should run actively or idle."""
 
 import json
 import sys
@@ -13,8 +13,8 @@ except ImportError:
 
 
 def main() -> int:
-    if len(sys.argv) != 2 or sys.argv[1] not in {"active", "frozen"}:
-        print(f"Usage: {sys.argv[0]} active|frozen", file=sys.stderr)
+    if len(sys.argv) != 2 or sys.argv[1] not in {"active", "idle"}:
+        print(f"Usage: {sys.argv[0]} active|idle", file=sys.stderr)
         return 2
     state = sys.argv[1]
     with urllib.request.urlopen("http://127.0.0.1:9222/json/list", timeout=3) as response:
@@ -30,17 +30,22 @@ def main() -> int:
         page["webSocketDebuggerUrl"], timeout=3, suppress_origin=True
     )
     try:
+        expression = (
+            "window.postMessage("
+            + json.dumps({"type": "kiosk-warden-power", "state": state})
+            + ", window.location.origin)"
+        )
         connection.send(json.dumps({
             "id": 1,
-            "method": "Page.setWebLifecycleState",
-            "params": {"state": state},
+            "method": "Runtime.evaluate",
+            "params": {"expression": expression},
         }))
         while True:
             result = json.loads(connection.recv())
             if result.get("id") == 1:
                 break
         if "error" in result:
-            print(result["error"].get("message", "Chrome lifecycle command failed"), file=sys.stderr)
+            print(result["error"].get("message", "Browser power-state command failed"), file=sys.stderr)
             return 1
     finally:
         connection.close()

@@ -142,8 +142,8 @@ set_zoom() {
 }
 
 screen_on() {
-  # Always release pages frozen by older Warden versions. Repeated presence ON
-  # events are idempotent and must never restart healthy Chrome.
+  # Let a compatible dashboard resume expensive visual work. Repeated presence
+  # ON events remain idempotent and never restart healthy Chrome.
   "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
   rm -f "$WAKE_FILE"
   xset +dpms || true
@@ -164,9 +164,9 @@ screen_on() {
 
 screen_off() {
   rm -f "$WAKE_FILE"
-  # Keep Chrome rendering. DPMS provides most display saving without risking
-  # a frozen grey surface when a person physically wakes the monitor.
-  "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
+  # Keep Chrome responsive while a compatible dashboard pauses animations and
+  # camera streams. Sites without the bridge simply ignore this message.
+  "$CHROME_LIFECYCLE" idle >/dev/null 2>&1 || true
   printf 'OFF\n' > "$SCREEN_FILE"
   publish_state screen "OFF"
   xset +dpms || true

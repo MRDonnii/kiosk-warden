@@ -119,6 +119,11 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("return 0", screen_on)
         self.assertIn("restart_kiosk", screen_on)
         self.assertNotIn('CHROME_LIFECYCLE" frozen', screen_off)
+        self.assertIn('CHROME_LIFECYCLE" idle', screen_off)
+        lifecycle = (ROOT / "scripts" / "chrome-lifecycle.py").read_text()
+        self.assertIn('"method": "Runtime.evaluate"', lifecycle)
+        self.assertIn('"type": "kiosk-warden-power"', lifecycle)
+        self.assertNotIn("Page.setWebLifecycleState", lifecycle)
 
     def test_health_check_recovers_a_solid_grey_surface(self):
         health = (ROOT / "scripts" / "health-check.sh").read_text()
