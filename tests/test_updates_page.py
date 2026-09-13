@@ -68,6 +68,8 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('id="frequencyChart"', dashboard)
         self.assertIn('id="networkChart"', dashboard)
         self.assertIn("/api/telemetry", dashboard)
+        self.assertIn("Smartdash-forbindelse", control)
+        self.assertIn("refreshSmartdash", control)
 
     def test_mqtt_exposes_power_profile_and_warden_restart(self):
         discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
@@ -122,8 +124,10 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('CHROME_LIFECYCLE" idle', screen_off)
         lifecycle = (ROOT / "scripts" / "chrome-lifecycle.py").read_text()
         self.assertIn('"method": "Runtime.evaluate"', lifecycle)
-        self.assertIn('"type": "kiosk-warden-power"', lifecycle)
+        self.assertIn("kiosk-warden-power", lifecycle)
         self.assertNotIn("Page.setWebLifecycleState", lifecycle)
+        self.assertIn('"active", "idle", "status"', lifecycle)
+        self.assertIn('window.BeastPower.setState', lifecycle)
 
     def test_health_check_recovers_a_solid_grey_surface(self):
         health = (ROOT / "scripts" / "health-check.sh").read_text()
