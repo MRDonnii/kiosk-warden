@@ -149,6 +149,7 @@ install_release() {
   git -C "$repo" rev-parse HEAD > "$KIOSK_DIR/.version"
   write_status dependencies 80 "Tjekker system-afhængigheder…"
   ensure_system_dependencies
+  "$KIOSK_DIR/mqtt-discovery.sh" >/dev/null 2>&1 || true
   write_status services 90 "Genstarter Kiosk Warden-tjenester…"
   publish_update_json "$(jq -cn --arg version "$expected" --arg channel "$CHANNEL" '{installed_version:$version,latest_version:$version,title:"Kiosk Warden",channel:$channel,in_progress:false}')"
   trap - EXIT

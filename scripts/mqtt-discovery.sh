@@ -63,6 +63,30 @@ binary_sensor_entity() {
   publish_config binary_sensor health "$payload"
 }
 
+smartdash_connection_entity() {
+  local payload
+  payload="$(jq -cn --arg name "Smartdash Connection" --arg uniq "${KIOSK_ID}_smartdash_connection" \
+    --arg stat "$BASE_TOPIC/smartdash/status" --arg av "$BASE_TOPIC/online/status" --argjson dev "$device_json" \
+    '{name:$name, unique_id:$uniq, state_topic:$stat,
+      value_template:"{{ \"ON\" if value_json.supported else \"OFF\" }}",
+      json_attributes_topic:$stat, payload_on:"ON", payload_off:"OFF", device_class:"connectivity",
+      availability_topic:$av, payload_available:"online", payload_not_available:"offline",
+      entity_category:"diagnostic", icon:"mdi:connection", device:$dev}')"
+  publish_config binary_sensor smartdash_connection "$payload"
+}
+
+smartdash_rendering_switch() {
+  local payload
+  payload="$(jq -cn --arg name "Smartdash Rendering" --arg uniq "${KIOSK_ID}_smartdash_rendering" \
+    --arg cmd "$BASE_TOPIC/set_smartdash_rendering" --arg stat "$BASE_TOPIC/state/smartdash_rendering" \
+    --arg av "$BASE_TOPIC/smartdash/availability" --argjson dev "$device_json" \
+    '{name:$name, unique_id:$uniq, command_topic:$cmd, state_topic:$stat,
+      payload_on:"active", payload_off:"idle", state_on:"ON", state_off:"OFF",
+      availability_topic:$av, payload_available:"online", payload_not_available:"offline",
+      icon:"mdi:animation-play", device:$dev}')"
+  publish_config switch smartdash_rendering "$payload"
+}
+
 update_entity() {
   local payload
   payload="$(jq -cn --arg name "Kiosk Warden Update" --arg uniq "${KIOSK_ID}_update" \
@@ -151,6 +175,8 @@ sensor backup_path "Backup Path" "diagnostic/backup_path" "" "mdi:folder-zip" ""
 light_entity
 image_entity
 binary_sensor_entity
+smartdash_connection_entity
+smartdash_rendering_switch
 update_entity
 switch_entity keyboard "Keyboard" "state/keyboard" "keyboard_on" "keyboard_off" "mdi:keyboard"
 select_entity window_mode "Kiosk" "state/window_mode" "command" "mdi:window-maximize" "Kiosk" "Fullscreen" "Windowed"

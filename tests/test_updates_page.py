@@ -72,7 +72,7 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("/api/telemetry", dashboard)
         self.assertIn("Smartdash-forbindelse", control)
         self.assertIn("refreshSmartdash", control)
-        self.assertIn("Gælder kun hvis denne kiosk viser", control)
+        self.assertIn("animationer, livekameraer og rendering virker kun", control)
 
     def test_mqtt_exposes_power_profile_and_warden_restart(self):
         discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
@@ -80,6 +80,13 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('select_entity power_profile', discovery)
         self.assertIn('button restart_warden', discovery)
         self.assertIn('listen_topic "$BASE_TOPIC/set_power_profile"', control)
+        self.assertIn('smartdash_connection_entity', discovery)
+        self.assertIn('smartdash_rendering_switch', discovery)
+        self.assertIn('$BASE_TOPIC/set_smartdash_rendering', discovery)
+        self.assertIn('listen_topic "$BASE_TOPIC/set_smartdash_rendering" set_smartdash_rendering', control)
+        self.assertIn('mqtt_pub "$BASE_TOPIC/smartdash/status" "$payload" -r', control)
+        self.assertIn('mqtt_pub "$BASE_TOPIC/smartdash/availability" "online" -r', control)
+        self.assertIn('smartdash_status_loop &', control)
         self.assertIn('restart_warden) restart_warden', control)
 
     def test_vnc_services_stop_cleanly_during_warden_restart(self):
@@ -131,6 +138,7 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertNotIn("Page.setWebLifecycleState", lifecycle)
         self.assertIn('"active", "idle", "status"', lifecycle)
         self.assertIn('window.BeastPower.setState', lifecycle)
+        self.assertIn("animationer, livekameraer og rendering virker kun", SERVER.render_control({"KIOSK_NAME": "Test kiosk"}))
 
     def test_health_check_recovers_a_solid_grey_surface(self):
         health = (ROOT / "scripts" / "health-check.sh").read_text()
