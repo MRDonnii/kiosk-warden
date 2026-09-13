@@ -136,6 +136,10 @@ ENGLISH_TEXT = {
     "Smartdash-forbindelse": "Smartdash connection", "Automatisk registrering": "Automatic detection", "Forbundet": "Connected", "Ikke registreret": "Not detected",
     "Warden registrerer automatisk Smartdash på den aktive kiosk-URL. Ingen MQTT- eller IP-kobling skal opsættes.": "Warden automatically detects Smartdash at the active kiosk URL. No MQTT or IP link needs configuration.",
     "Tilstand": "State", "Build": "Build", "Kontroller igen": "Check again",
+    "Afhængighed mangler": "Dependency missing", "Kontakt fejlede": "Contact failed",
+    "Python-modulet 'websocket' (python3-websocket) mangler. Kør installations- eller opdateringsscriptet igen.": "The 'websocket' Python module (python3-websocket) is missing. Run the install or update script again.",
+    "Chromes debug-port (127.0.0.1:9222) svarer ikke. Chrome kører muligvis ikke, eller blev startet uden --remote-debugging-port.": "Chrome's debug port (127.0.0.1:9222) is not responding. Chrome may not be running, or was started without --remote-debugging-port.",
+    "Chrome kører, men ingen synlig side blev fundet (flere faner/vinduer, eller siden er ikke indlæst endnu).": "Chrome is running, but no visible page was found (multiple tabs/windows, or the page hasn't loaded yet).",
     "Kiosk-id må kun indeholde a-z, 0-9 og _.": "Kiosk ID may only contain a-z, 0-9 and _.",
     "MQTT port skal være et tal.": "MQTT port must be a number.", "Stats-interval skal være et tal.": "Stats interval must be a number.",
     "Valgfrit. Lader Kiosk Warden vise et strøm/energi-tal fra Home Assistant på Oversigt-siden.": "Optional. Lets Kiosk Warden show a power/energy reading from Home Assistant on the Overview page.",
@@ -1114,7 +1118,8 @@ def render_control(conf, message=None, error=None):
 </fieldset>
 <fieldset><legend>Smartdash-forbindelse</legend>
   <p class="status">Warden registrerer automatisk Smartdash på den aktive kiosk-URL. Ingen MQTT- eller IP-kobling skal opsættes.</p>
-  <div class="grid"><div class="tile"><span>Automatisk registrering</span><strong id="smartdashDetected">{'Forbundet' if smartdash.get('supported') else 'Ikke registreret'}</strong></div><div class="tile"><span>Tilstand</span><strong id="smartdashState">{esc(smartdash.get('state') or '—')}</strong></div><div class="tile"><span>Build</span><strong id="smartdashBuild">{esc(smartdash.get('release') or smartdash.get('build') or '—')}</strong></div></div>
+  <div class="grid"><div class="tile"><span>Automatisk registrering</span><strong id="smartdashDetected">{'Forbundet' if smartdash.get('supported') else ('Afhængighed mangler' if smartdash.get('error') == 'missing_dependency' else 'Kontakt fejlede' if smartdash.get('error') else 'Ikke registreret')}</strong></div><div class="tile"><span>Tilstand</span><strong id="smartdashState">{esc(smartdash.get('state') or '—')}</strong></div><div class="tile"><span>Build</span><strong id="smartdashBuild">{esc(smartdash.get('release') or smartdash.get('build') or '—')}</strong></div></div>
+  {f'<p class="status" id="smartdashErrorDetail">{esc(smartdash.get("error_message"))}</p>' if smartdash.get('error') else '<p class="status" id="smartdashErrorDetail" style="display:none"></p>'}
   <div class="row"><button type="button" id="refreshSmartdash">Kontroller igen</button></div>
 </fieldset>
 <fieldset><legend>Kiosk og Warden</legend><div class="row">
@@ -1133,7 +1138,16 @@ def render_control(conf, message=None, error=None):
   <form method="post" action="/action" onsubmit="return confirm('Slukke maskinen nu?');"><input type="hidden" name="do" value="shutdown"><button class="danger" type="submit">⏻ Sluk maskine</button></form>
 </div></fieldset>
 <script>
-document.getElementById('refreshSmartdash').addEventListener('click', async () => {{ const response = await fetch('/api/smartdash-status', {{cache:'no-store'}}); const data = await response.json(); document.getElementById('smartdashDetected').textContent = data.supported ? 'Forbundet' : 'Ikke registreret'; document.getElementById('smartdashState').textContent = data.state || '—'; document.getElementById('smartdashBuild').textContent = data.release || data.build || '—'; }});
+document.getElementById('refreshSmartdash').addEventListener('click', async () => {{
+  const response = await fetch('/api/smartdash-status', {{cache:'no-store'}});
+  const data = await response.json();
+  const detected = data.supported ? 'Forbundet' : (data.error === 'missing_dependency' ? 'Afhængighed mangler' : (data.error ? 'Kontakt fejlede' : 'Ikke registreret'));
+  document.getElementById('smartdashDetected').textContent = detected;
+  document.getElementById('smartdashState').textContent = data.state || '—';
+  document.getElementById('smartdashBuild').textContent = data.release || data.build || '—';
+  const detail = document.getElementById('smartdashErrorDetail');
+  if (data.error_message) {{ detail.textContent = data.error_message; detail.style.display = ''; }} else {{ detail.style.display = 'none'; }}
+}});
 document.getElementById('restartWardenManual').addEventListener('click', event => {{
   let seconds = 5; const button = event.currentTarget; const label = document.getElementById('manualRestartCountdown'); button.disabled = true; label.textContent = `Genstarter om ${{seconds}} sekunder…`;
   const timer = setInterval(async () => {{ seconds -= 1; label.textContent = `Genstarter om ${{seconds}} sekunder…`; if (seconds <= 0) {{ clearInterval(timer); await fetch('/action', {{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'do=restart_warden'}}); label.textContent = 'Kiosk Warden genstarter…'; }} }}, 1000);
