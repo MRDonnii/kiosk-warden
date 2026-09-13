@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.13.0 — 2026-09-13
+
+- **Smartdash-aware idle mode**: screen-off sends a lightweight `idle` event to the current web page, allowing compatible dashboards to pause animations and close live camera sessions without stopping or freezing Chrome.
+- **Immediate wake response**: screen-on sends `active` before waking HDMI, so Smartdash can reconnect visible cameras while the monitor warms up.
+- **Safe compatibility**: ordinary web pages ignore the event, repeated screen commands preserve the Chrome process, and a kiosk restarted while OFF receives the idle state as soon as its page is ready.
+
 ## v1.12.10 — 2026-09-13
 
 - **Mint/Cinnamon HDMI wake**: DPMS is enabled before `force on`, then automatic timeouts are set to zero without `xset -dpms`, preventing Cinnamon from leaving an external HDMI monitor physically off.

@@ -54,6 +54,7 @@ if [[ "$screen_state" == "OFF" ]]; then
       sleep 0.5
       if curl -fsS --max-time 1 http://127.0.0.1:9222/json/list >/dev/null 2>&1; then
         [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "OFF" ]] || break
+        "$HOME/kiosk/chrome-lifecycle.py" idle >/dev/null 2>&1 || true
         xset +dpms >/dev/null 2>&1 || true
         xset dpms 0 0 1 >/dev/null 2>&1 || true
         xset dpms force off >/dev/null 2>&1 || true
