@@ -130,6 +130,18 @@ class UpdatesPageTest(unittest.TestCase):
             self.assertTrue(SERVER.version_newer("1.12.6", "1.12.5"))
             self.assertIn('id="installUpdate" disabled', page)
             self.assertNotIn("Ny version klar", page)
+            self.assertIn("button:disabled", page)
+
+    def test_completed_status_from_an_old_version_is_hidden(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "version").write_text("1.12.7\n")
+            (root / "update_status.json").write_text(
+                '{"stage":"complete","percent":100,"message":"Kiosk Warden 1.12.0 er installeret og genstartet.","result":"complete"}'
+            )
+            SERVER.VERSION_PATH = str(root / "version")
+            SERVER.UPDATE_STATUS_PATH = str(root / "update_status.json")
+            self.assertEqual("idle", SERVER.update_status()["result"])
 
 
 if __name__ == "__main__":

@@ -342,7 +342,13 @@ def update_status():
     try:
         with open(UPDATE_STATUS_PATH, encoding="utf-8") as handle:
             data = json.load(handle)
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return {}
+        if data.get("result") == "complete":
+            match = re.search(r"Kiosk Warden (\d+\.\d+\.\d+)", str(data.get("message", "")))
+            if match and match.group(1) != current_version():
+                return {"stage": "idle", "percent": 0, "message": "Klar til at tjekke efter opdateringer.", "result": "idle", "restart_required": False}
+        return data
     except (OSError, ValueError):
         return {"stage": "idle", "percent": 0, "message": "Klar til at tjekke efter opdateringer.", "result": "idle", "restart_required": False}
 
@@ -666,6 +672,9 @@ PAGE_HEAD = """<!doctype html>
     box-shadow: 0 4px 14px rgba(37,99,235,.35); }}
   button.accent {{ background: linear-gradient(135deg, #06b6d4, var(--accent-2)); color:#fff; border-color: transparent;
     box-shadow: 0 4px 14px rgba(124,58,237,.3); }}
+  button:disabled {{ cursor:not-allowed; opacity:.38; filter:grayscale(.75); box-shadow:none; }}
+  button:disabled:hover {{ filter:grayscale(.75); }}
+  button:disabled:active {{ transform:none; }}
   button.danger {{ background: linear-gradient(135deg, #ef4444, #b91c1c); color:#fff; border-color: transparent; }}
   .msg {{ padding:.7rem 1rem; border-radius:10px; margin-bottom:1rem; font-size:.9rem; font-weight:600; }}
   .msg.error {{ background:rgba(239,68,68,.15); color:#dc2626; }}
