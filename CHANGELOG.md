@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.12.6 — 2026-09-13
+
+- **Faster timed presence wake**: Warden holds DPMS off against Chrome's own X11 window activity, then starts monitor warm-up as soon as the dashboard HTTP page exists, overlapping the final rendering phase without exposing the desktop.
+- **Fresh fallback discovery**: rate-limit fallback checks bypass GitHub's short-lived latest-release redirect cache, so a newly published Stable version appears immediately.
+
 ## v1.12.5 — 2026-09-13
 
 - **Rate-limit-safe Stable checks**: when GitHub's unauthenticated API quota is exhausted, Warden discovers the current stable tag through GitHub's public latest-release redirect instead of showing a 403 error.

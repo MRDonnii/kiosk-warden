@@ -48,9 +48,11 @@ release_json() {
   # Stable discovery remains available when GitHub's unauthenticated API quota
   # for the public IP is exhausted. The public redirect does not use API quota.
   if [[ "$CHANNEL" == stable ]]; then
-    release_url="$(curl -fsSL --max-time 20 -o /dev/null -w '%{url_effective}' "https://github.com/$REPO_SLUG/releases/latest")" || return 1
+    release_url="$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' -o /dev/null -w '%{url_effective}' "https://github.com/$REPO_SLUG/releases/latest?warden_check=$(date +%s)")" || return 1
     tag="${release_url##*/}"
+    tag="${tag%%\?*}"
     [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    release_url="https://github.com/$REPO_SLUG/releases/tag/$tag"
     jq -cn --arg tag "$tag" --arg url "$release_url" '{tag_name:$tag,html_url:$url,body:"",prerelease:false}'
     return 0
   fi
