@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.15.2 — 2026-09-13
+
+- **Update progress no longer freezes at 20%.** Submitting an update redirects
+  to a fresh Updates page. That navigation discarded the polling timer from
+  the submitting page, while the fresh page only read status once — commonly
+  during the 20% download stage — even though the isolated updater continued
+  through validation, backup, installation and restart. A page that initially
+  reads a running update now resumes polling every 800 ms until it receives a
+  completed or failed status.
+- **No duplicate polling timer.** The submit path and redirected-page recovery
+  share one guarded polling starter, so a single page cannot accidentally run
+  multiple progress loops.
+
 ## v1.15.1 — 2026-09-13
 
 - **Fix: Smartdash auto-detection silently missing python3-websocket.**
