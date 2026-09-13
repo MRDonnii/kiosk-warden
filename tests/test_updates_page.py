@@ -158,6 +158,13 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('er installeret og genstartet.', updater)
         self.assertIn('complete false', updater)
 
+    def test_redirected_updates_page_resumes_progress_polling(self):
+        page = SERVER.render_updates({"KIOSK_NAME": "Test kiosk"})
+        self.assertIn("function ensureStatusPolling()", page)
+        self.assertIn("if (!pollTimer) pollTimer = setInterval(pollStatus, 800);", page)
+        self.assertIn("if (status.result === 'running') { ensureStatusPolling(); return; }", page)
+        self.assertNotIn("pollTimer = setInterval(pollStatus, 800); setTimeout", page)
+
     def test_stale_release_metadata_never_offers_a_downgrade(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
