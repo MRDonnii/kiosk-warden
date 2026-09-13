@@ -32,6 +32,7 @@ CHANGELOG_PATH = os.path.join(KIOSK_DIR, "CHANGELOG.md")
 VERSION_PATH = os.path.join(KIOSK_DIR, "version")
 UPDATE_CHANNEL_PATH = os.path.join(KIOSK_DIR, "update_channel")
 UPDATE_STATUS_PATH = os.path.join(KIOSK_DIR, "update_status.json")
+SMARTDASH_STATUS_PATH = os.path.join(KIOSK_DIR, "smartdash_status.json")
 REPO_URL = os.environ.get("KIOSK_WARDEN_REPO", "https://github.com/MRDonnii/kiosk-warden.git")
 
 FALLBACK_ICON_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -126,6 +127,9 @@ ENGLISH_TEXT = {
     "Strømprofil sat til": "Power profile changed to", "Ugyldig rollback-version.": "Invalid rollback version.",
     "Rollback fejlede.": "Rollback failed.", "Opdatering fejlede.": "Update failed.",
     "Allerede på nyeste version": "Already on the latest version", "Siden genstarter om et par sekunder…": "The page will restart in a few seconds…",
+    "Smartdash-forbindelse": "Smartdash connection", "Automatisk registrering": "Automatic detection", "Forbundet": "Connected", "Ikke registreret": "Not detected",
+    "Warden registrerer automatisk Smartdash på den aktive kiosk-URL. Ingen MQTT- eller IP-kobling skal opsættes.": "Warden automatically detects Smartdash at the active kiosk URL. No MQTT or IP link needs configuration.",
+    "Tilstand": "State", "Build": "Build", "Kontroller igen": "Check again",
     "Kiosk-id må kun indeholde a-z, 0-9 og _.": "Kiosk ID may only contain a-z, 0-9 and _.",
     "MQTT port skal være et tal.": "MQTT port must be a number.", "Stats-interval skal være et tal.": "Stats interval must be a number.",
 }
@@ -1028,6 +1032,15 @@ updateTelemetry();setInterval(updateTelemetry,10000);addEventListener('resize',u
 
 
 def render_control(conf, message=None, error=None):
+    try:
+        subprocess.run([os.path.join(KIOSK_DIR, "chrome-lifecycle.py"), "status"], timeout=4, check=False, capture_output=True)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        with open(SMARTDASH_STATUS_PATH, encoding="utf-8") as status_file:
+            smartdash = json.load(status_file)
+    except (OSError, ValueError):
+        smartdash = {}
     profile = current_power_profile()
     has_screenshot = os.path.exists(SCREENSHOT_PATH)
     options = "".join(
@@ -1041,6 +1054,11 @@ def render_control(conf, message=None, error=None):
 <fieldset><legend>Strømprofil</legend>
   <p class="status">Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.</p>
   <form method="post" action="/power-profile"><label>Aktiv profil</label><select name="profile">{options}</select><div class="row"><button class="primary" type="submit">Skift strømprofil</button></div></form>
+</fieldset>
+<fieldset><legend>Smartdash-forbindelse</legend>
+  <p class="status">Warden registrerer automatisk Smartdash på den aktive kiosk-URL. Ingen MQTT- eller IP-kobling skal opsættes.</p>
+  <div class="grid"><div class="tile"><span>Automatisk registrering</span><strong id="smartdashDetected">{'Forbundet' if smartdash.get('supported') else 'Ikke registreret'}</strong></div><div class="tile"><span>Tilstand</span><strong id="smartdashState">{esc(smartdash.get('state') or '—')}</strong></div><div class="tile"><span>Build</span><strong id="smartdashBuild">{esc(smartdash.get('release') or smartdash.get('build') or '—')}</strong></div></div>
+  <div class="row"><button type="button" id="refreshSmartdash">Kontroller igen</button></div>
 </fieldset>
 <fieldset><legend>Kiosk og Warden</legend><div class="row">
   <form method="post" action="/action"><input type="hidden" name="do" value="reload"><button type="submit">🔄 Genindlæs side</button></form>
@@ -1058,6 +1076,7 @@ def render_control(conf, message=None, error=None):
   <form method="post" action="/action" onsubmit="return confirm('Slukke maskinen nu?');"><input type="hidden" name="do" value="shutdown"><button class="danger" type="submit">⏻ Sluk maskine</button></form>
 </div></fieldset>
 <script>
+document.getElementById('refreshSmartdash').addEventListener('click', async () => {{ const response = await fetch('/api/smartdash-status', {{cache:'no-store'}}); const data = await response.json(); document.getElementById('smartdashDetected').textContent = data.supported ? 'Forbundet' : 'Ikke registreret'; document.getElementById('smartdashState').textContent = data.state || '—'; document.getElementById('smartdashBuild').textContent = data.release || data.build || '—'; }});
 document.getElementById('restartWardenManual').addEventListener('click', event => {{
   let seconds = 5; const button = event.currentTarget; const label = document.getElementById('manualRestartCountdown'); button.disabled = true; label.textContent = `Genstarter om ${{seconds}} sekunder…`;
   const timer = setInterval(async () => {{ seconds -= 1; label.textContent = `Genstarter om ${{seconds}} sekunder…`; if (seconds <= 0) {{ clearInterval(timer); await fetch('/action', {{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'do=restart_warden'}}); label.textContent = 'Kiosk Warden genstarter…'; }} }}, 1000);
@@ -1248,6 +1267,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_json(update_status())
         if parsed.path == "/api/telemetry":
             return self._send_json(telemetry_data())
+        if parsed.path == "/api/smartdash-status":
+            try:
+                result = subprocess.run([os.path.join(KIOSK_DIR, "chrome-lifecycle.py"), "status"], timeout=4, check=False, capture_output=True, text=True)
+                return self._send_json(json.loads(result.stdout) if result.stdout else {"supported": False})
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                return self._send_json({"supported": False})
         if parsed.path == "/vnc":
             return self._send_html(render_vnc(conf))
         if parsed.path == "/control":

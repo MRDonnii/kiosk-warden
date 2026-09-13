@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.14.0 — 2026-09-13
+
+- **Visible automatic Smartdash link**: Control now shows whether HA Smartdash was detected, its active/idle state and build, with an on-demand refresh action.
+- **Capability handshake**: Warden queries the active page and applies power state directly when Smartdash exposes its power API; no MQTT credentials, extra IP or manual pairing is required.
+
 ## v1.13.0 — 2026-09-13
 
 - **Smartdash-aware idle mode**: screen-off sends a lightweight `idle` event to the current web page, allowing compatible dashboards to pause animations and close live camera sessions without stopping or freezing Chrome.
