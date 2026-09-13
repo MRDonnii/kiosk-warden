@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.12.8 — 2026-09-13
+
+- **Stable presence wake**: repeated `screen_on` commands are idempotent and preserve the Chrome PID whenever Chrome and its HTTP page are healthy.
+- **No renderer freezing by default**: screen-off now uses monitor DPMS only and keeps Smartdash paintable, preventing grey screens after physical or automated wake.
+- **Targeted recovery only**: `screen_on` restarts Chrome only when the process or dashboard page is genuinely missing or unhealthy.
+
 ## v1.12.7 — 2026-09-13
 
 - **Truthful completed status**: stale success messages from an older installed version are automatically hidden instead of remaining at 100% indefinitely.

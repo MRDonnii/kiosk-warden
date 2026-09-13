@@ -45,18 +45,13 @@ fi
 wmctrl -c "Indstillinger" >/dev/null 2>&1 || true
 wmctrl -c "Settings" >/dev/null 2>&1 || true
 
-# A Chrome restart must preserve both the physical OFF state and the frozen
-# renderer. screen_on starts a fresh renderer behind the powered-off monitor
-# before exposing it, so Chromium cannot leave a stale grey surface.
-if [[ "$screen_state" == "OFF" && ! -f "$WAKE_FILE" ]]; then
+# Preserve physical OFF state across a real restart, but never freeze rendering.
+if [[ "$screen_state" == "OFF" ]]; then
   (
     for _ in $(seq 1 20); do
       sleep 0.5
       if curl -fsS --max-time 1 http://127.0.0.1:9222/json/list >/dev/null 2>&1; then
-        # screen_on may have arrived while Chrome was starting. Never let this
-        # delayed restore overwrite the newer requested state.
         [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "OFF" ]] || break
-        "$HOME/kiosk/chrome-lifecycle.py" frozen >/dev/null 2>&1 || continue
         xset +dpms >/dev/null 2>&1 || true
         xset dpms 0 0 1 >/dev/null 2>&1 || true
         xset dpms force off >/dev/null 2>&1 || true

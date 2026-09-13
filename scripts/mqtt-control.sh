@@ -142,37 +142,30 @@ set_zoom() {
 }
 
 screen_on() {
-  # Keep the physical monitor off while the fresh renderer starts. The marker
-  # tells start-kiosk not to thaw the old OFF state or expose the desktop.
-  : > "$WAKE_FILE"
-  restart_kiosk
-  # Mapping a new Chrome window is itself X11 activity and can wake DPMS before
-  # the page exists. Re-assert OFF after the process starts and while waiting.
-  xset +dpms || true
-  xset dpms 0 0 1 || true
-  timeout 1s xset dpms force off || true
-  for _ in $(seq 1 40); do
-    if curl -fsS --max-time 1 http://127.0.0.1:9222/json/list 2>/dev/null \
-      | jq -e '.[] | select(.type == "page" and (.url | startswith("http")))' >/dev/null; then
-      break
-    fi
-    timeout 0.3s xset dpms force off || true
-    sleep 0.25
-  done
-  # A newer screen_off request removes the marker and must win this race.
-  [[ -f "$WAKE_FILE" ]] || return 0
+  # Always release pages frozen by older Warden versions. Repeated presence ON
+  # events are idempotent and must never restart healthy Chrome.
+  "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
+  rm -f "$WAKE_FILE"
   xset s off || true
   xset s noblank || true
   xset -dpms || true
   timeout 3s xset dpms force on || true
   printf 'ON\n' > "$SCREEN_FILE"
-  rm -f "$WAKE_FILE"
   publish_state screen "ON"
+
+  if pgrep -f "$HOME/.config/chrome-kiosk" >/dev/null 2>&1 \
+     && curl -fsS --max-time 2 http://127.0.0.1:9222/json/list 2>/dev/null \
+       | jq -e '.[] | select(.type == "page" and (.url | startswith("http")))' >/dev/null; then
+    return 0
+  fi
+  restart_kiosk
 }
 
 screen_off() {
   rm -f "$WAKE_FILE"
-  "$CHROME_LIFECYCLE" frozen || true
+  # Keep Chrome rendering. DPMS provides most display saving without risking
+  # a frozen grey surface when a person physically wakes the monitor.
+  "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
   printf 'OFF\n' > "$SCREEN_FILE"
   publish_state screen "OFF"
   xset +dpms || true
