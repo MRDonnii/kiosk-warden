@@ -39,9 +39,22 @@ reset_progress_on_failure() {
 release_json() {
   local url="https://api.github.com/repos/$REPO_SLUG/releases/latest"
   [[ "$CHANNEL" == beta ]] && url="https://api.github.com/repos/$REPO_SLUG/releases?per_page=1"
-  local data
-  data="$(curl -fsSL --max-time 20 -H 'Accept: application/vnd.github+json' -H 'User-Agent: kiosk-warden' "$url")"
-  [[ "$CHANNEL" == beta ]] && jq '.[0]' <<<"$data" || printf '%s\n' "$data"
+  local data tag release_url
+  if data="$(curl -fsSL --max-time 20 -H 'Accept: application/vnd.github+json' -H 'User-Agent: kiosk-warden' "$url" 2>/dev/null)"; then
+    [[ "$CHANNEL" == beta ]] && jq '.[0]' <<<"$data" || printf '%s\n' "$data"
+    return 0
+  fi
+
+  # Stable discovery remains available when GitHub's unauthenticated API quota
+  # for the public IP is exhausted. The public redirect does not use API quota.
+  if [[ "$CHANNEL" == stable ]]; then
+    release_url="$(curl -fsSL --max-time 20 -o /dev/null -w '%{url_effective}' "https://github.com/$REPO_SLUG/releases/latest")" || return 1
+    tag="${release_url##*/}"
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    jq -cn --arg tag "$tag" --arg url "$release_url" '{tag_name:$tag,html_url:$url,body:"",prerelease:false}'
+    return 0
+  fi
+  return 1
 }
 
 check_release() {

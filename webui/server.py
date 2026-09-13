@@ -220,6 +220,13 @@ def current_version():
     return read_file(VERSION_PATH, "ukendt")
 
 
+def version_newer(candidate, installed):
+    pattern = r"^\d+\.\d+\.\d+$"
+    if not re.match(pattern, candidate or "") or not re.match(pattern, installed or ""):
+        return False
+    return tuple(map(int, candidate.split("."))) > tuple(map(int, installed.split(".")))
+
+
 POWER_PROFILES = {
     "power-saver": "Strømbesparelse",
     "balanced": "Balanceret",
@@ -841,7 +848,7 @@ def render_updates(conf, message=None, error=None):
         if match and match.group(1) not in versions:
             versions.append(match.group(1))
     rollback_options = "".join(f'<option value="{esc(v)}">{esc(v)}</option>' for v in versions)
-    update_ready = installed != "ukendt" and latest_version != "ukendt" and installed != latest_version
+    update_ready = version_newer(latest_version, installed)
     body = PAGE_HEAD.format(title_suffix=" — Opdateringer")
     body += f"""
 <div class="header-row">
@@ -954,7 +961,7 @@ def render_dashboard(conf, message=None, error=None):
     latest = get_cached_latest_version()
     current = current_version()
     latest_version = latest.get("latest_version") if isinstance(latest, dict) else None
-    if latest_version and current != "ukendt" and latest_version != current:
+    if latest_version and version_newer(latest_version, current):
         body += f"""
 <a href="/updates" style="text-decoration:none; color:inherit;">
   <div class="update-banner">🔔 Ny version tilgængelig ({esc(latest_version)}) — åbn Opdateringer</div>
