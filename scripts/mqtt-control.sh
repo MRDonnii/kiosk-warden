@@ -11,6 +11,7 @@ ZOOM_FILE="$HOME/kiosk/page_zoom"
 KEYBOARD_FILE="$HOME/kiosk/keyboard_state"
 VERSION_FILE="$HOME/kiosk/version"
 ERROR_FILE="$HOME/kiosk/errors"
+CHROME_LIFECYCLE="$HOME/kiosk/chrome-lifecycle.py"
 UPDATE_CHANNEL_FILE="$HOME/kiosk/update_channel"
 POWER_PROFILE_FILE="$HOME/kiosk/power_profile"
 
@@ -140,20 +141,34 @@ set_zoom() {
 }
 
 screen_on() {
-  xset dpms force on || true
+  # Record the newer requested state first, so a delayed OFF restore from a
+  # concurrent Chrome start cannot win the race. Chromium 153 can acknowledge
+  # a thaw without repainting, so wake with a fresh renderer while DPMS remains
+  # off and expose the monitor only after a real page is available.
+  printf 'ON\n' > "$SCREEN_FILE"
+  restart_kiosk
+  for _ in $(seq 1 40); do
+    if curl -fsS --max-time 1 http://127.0.0.1:9222/json/list 2>/dev/null \
+      | jq -e '.[] | select(.type == "page" and (.url | startswith("http")))' >/dev/null; then
+      sleep 1
+      break
+    fi
+    sleep 0.25
+  done
   xset s off || true
   xset s noblank || true
   xset -dpms || true
-  printf 'ON\n' > "$SCREEN_FILE"
+  timeout 3s xset dpms force on || true
   publish_state screen "ON"
 }
 
 screen_off() {
-  xset +dpms || true
-  xset dpms 0 0 1 || true
-  xset dpms force off || true
+  "$CHROME_LIFECYCLE" frozen || true
   printf 'OFF\n' > "$SCREEN_FILE"
   publish_state screen "OFF"
+  xset +dpms || true
+  xset dpms 0 0 1 || true
+  timeout 3s xset dpms force off || true
 }
 
 dock_onboard_bottom() {

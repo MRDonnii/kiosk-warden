@@ -35,12 +35,15 @@ def main() -> int:
             "method": "Page.setWebLifecycleState",
             "params": {"state": state},
         }))
-        result = json.loads(connection.recv())
+        while True:
+            result = json.loads(connection.recv())
+            if result.get("id") == 1:
+                break
+        if "error" in result:
+            print(result["error"].get("message", "Chrome lifecycle command failed"), file=sys.stderr)
+            return 1
     finally:
         connection.close()
-    if "error" in result:
-        print(result["error"].get("message", "Chrome lifecycle command failed"), file=sys.stderr)
-        return 1
     return 0
 
 

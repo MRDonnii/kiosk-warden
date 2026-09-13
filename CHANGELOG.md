@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.12.3 — 2026-09-13
+
+- **Full low-power presence sleep**: presence-off freezes Chrome rendering and media before DPMS powers down the monitor, avoiding unnecessary background dashboard work.
+- **Fresh renderer before wake**: presence-on starts Chrome cleanly behind the powered-off monitor, waits for the dashboard page and only then exposes the display, preventing the former grey wake screen.
+- **Bounded DPMS commands**: screen state is published before power-down and X11 power calls cannot block the MQTT control path indefinitely, keeping later presence wake commands responsive.
+
 ## v1.12.2 — 2026-09-13
 
 - **Race-free wake during restart**: a delayed OFF-state restore now rechecks the latest requested screen state before touching DPMS, so a simultaneous `screen_on` command always wins.
