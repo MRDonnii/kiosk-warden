@@ -17,6 +17,10 @@
   untouched. Styring's Smartdash-forbindelse panel and its "Kontroller igen"
   button now show that specific reason instead of a generic "Ikke
   registreret" for all three cases.
+- **Clarified: Smartdash-forbindelse is HA Smartdash-specific.** The panel
+  now states plainly that this only applies to kiosks running HA Smartdash -
+  other dashboards will naturally always show "Ikke registreret" here, which
+  is expected, not a bug.
 
 ## v1.15.0 — 2026-09-13
 
