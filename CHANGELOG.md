@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.12.7 — 2026-09-13
+
+- **Truthful completed status**: stale success messages from an older installed version are automatically hidden instead of remaining at 100% indefinitely.
+- **Clearly disabled update action**: when installed and latest versions match, the install button is both functionally disabled and visually muted.
+
 ## v1.12.6 — 2026-09-13
 
 - **Faster timed presence wake**: Warden holds DPMS off against Chrome's own X11 window activity, then starts monitor warm-up as soon as the dashboard HTTP page exists, overlapping the final rendering phase without exposing the desktop.
