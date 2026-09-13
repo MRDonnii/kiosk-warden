@@ -1,10 +1,12 @@
 import importlib.util
 import pathlib
+import sys
 import tempfile
 import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "webui"))
 SPEC = importlib.util.spec_from_file_location("warden_server", ROOT / "webui" / "server.py")
 SERVER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SERVER)
@@ -70,6 +72,7 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("/api/telemetry", dashboard)
         self.assertIn("Smartdash-forbindelse", control)
         self.assertIn("refreshSmartdash", control)
+        self.assertIn("Gælder kun hvis denne kiosk viser", control)
 
     def test_mqtt_exposes_power_profile_and_warden_restart(self):
         discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
