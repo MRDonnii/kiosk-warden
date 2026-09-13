@@ -146,12 +146,17 @@ screen_on() {
   # tells start-kiosk not to thaw the old OFF state or expose the desktop.
   : > "$WAKE_FILE"
   restart_kiosk
+  # Mapping a new Chrome window is itself X11 activity and can wake DPMS before
+  # the page exists. Re-assert OFF after the process starts and while waiting.
+  xset +dpms || true
+  xset dpms 0 0 1 || true
+  timeout 1s xset dpms force off || true
   for _ in $(seq 1 40); do
     if curl -fsS --max-time 1 http://127.0.0.1:9222/json/list 2>/dev/null \
       | jq -e '.[] | select(.type == "page" and (.url | startswith("http")))' >/dev/null; then
-      sleep 1
       break
     fi
+    timeout 0.3s xset dpms force off || true
     sleep 0.25
   done
   # A newer screen_off request removes the marker and must win this race.
