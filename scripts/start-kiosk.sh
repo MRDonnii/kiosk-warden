@@ -16,6 +16,17 @@ SCREEN_FILE="$HOME/kiosk/screen_state"
 WAKE_FILE="$HOME/kiosk/wake_pending"
 mkdir -p "$PROFILE_DIR"
 
+# On GNOME desktops gsd-power fights kiosk-warden's own xset dpms calls -
+# it resets DPMS state back to on/0-0-0 within roughly a minute of a manual
+# screen_off(), so the monitor visually blanks (dashboard idle state) but
+# never actually powers down, risking burn-in overnight. kiosk-warden owns
+# all screen scheduling via MQTT/HA already, so this GNOME daemon is pure
+# interference here. No-op (and harmless) on non-GNOME kiosks.
+if systemctl --user list-unit-files org.gnome.SettingsDaemon.Power.service >/dev/null 2>&1; then
+  systemctl --user mask org.gnome.SettingsDaemon.Power.service >/dev/null 2>&1 || true
+  systemctl --user kill org.gnome.SettingsDaemon.Power.service >/dev/null 2>&1 || true
+fi
+
 mode="$(cat "$MODE_FILE" 2>/dev/null || echo Kiosk)"
 case "$mode" in
   Kiosk|kiosk) chrome_mode=(--kiosk --start-fullscreen) ;;
