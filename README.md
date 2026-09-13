@@ -27,8 +27,9 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
   toggle.
 - Ships its own icon (`icon.svg`) — used as the browser favicon and as the
   icon for both desktop shortcuts.
-- Freezes dashboard rendering while the screen is off and resumes it before
-  the display wakes, reducing idle power without reloading the page.
+- Uses monitor DPMS for reliable presence-driven sleep while Smartdash remains
+  paintable. Repeated ON commands never restart a healthy Chrome process;
+  restart recovery is reserved for a missing process or dashboard page.
 - Uses GitHub Releases with selectable Stable/Beta channels, semantic
   versions, release notes, automatic pre-update snapshots, and rollback.
 - Provides a dedicated **Updates** page in the web UI with channel selection,

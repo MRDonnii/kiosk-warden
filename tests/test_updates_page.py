@@ -107,6 +107,19 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertNotIn("Strømprofil", control)
         self.assertIn('lang="da"', SERVER.localize_html(settings, "da"))
 
+    def test_screen_wake_is_idempotent_and_screen_off_does_not_freeze(self):
+        control = (ROOT / "scripts" / "mqtt-control.sh").read_text()
+        start = control.index("screen_on() {")
+        end = control.index("\nscreen_off() {", start)
+        screen_on = control[start:end]
+        off_end = control.index("\ndock_onboard_bottom()", end)
+        screen_off = control[end:off_end]
+        self.assertIn('CHROME_LIFECYCLE" active', screen_on)
+        self.assertIn('startswith("http")', screen_on)
+        self.assertIn("return 0", screen_on)
+        self.assertIn("restart_kiosk", screen_on)
+        self.assertNotIn('CHROME_LIFECYCLE" frozen', screen_off)
+
     def test_updater_uses_independent_webui_restart_timer(self):
         updater = (ROOT / "scripts" / "self-update.sh").read_text()
         self.assertIn("systemd-run --user --collect --on-active=2s", updater)
