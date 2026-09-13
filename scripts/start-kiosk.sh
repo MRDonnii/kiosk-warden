@@ -12,6 +12,8 @@ flock -n 9 || exit 0
 CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium || command -v chromium-browser)"
 PROFILE_DIR="$HOME/.config/chrome-kiosk"
 MODE_FILE="$HOME/kiosk/window_mode"
+SCREEN_FILE="$HOME/kiosk/screen_state"
+WAKE_FILE="$HOME/kiosk/wake_pending"
 mkdir -p "$PROFILE_DIR"
 
 mode="$(cat "$MODE_FILE" 2>/dev/null || echo Kiosk)"
@@ -23,9 +25,14 @@ case "$mode" in
 esac
 printf '%s\n' "$mode" > "$MODE_FILE"
 
-xset s off || true
-xset s noblank || true
-xset -dpms || true
+# Never expose the desktop while Chrome starts behind an OFF monitor. The
+# screen_on path removes WAKE_FILE only after the dashboard page is ready.
+screen_state="$(cat "$SCREEN_FILE" 2>/dev/null || echo ON)"
+if [[ "$screen_state" != "OFF" ]]; then
+  xset s off || true
+  xset s noblank || true
+  xset -dpms || true
+fi
 pgrep -x unclutter >/dev/null || unclutter -idle 0.5 -root >/dev/null 2>&1 &
 
 pkill -f "$PROFILE_DIR" >/dev/null 2>&1 || true
@@ -41,7 +48,7 @@ wmctrl -c "Settings" >/dev/null 2>&1 || true
 # A Chrome restart must preserve both the physical OFF state and the frozen
 # renderer. screen_on starts a fresh renderer behind the powered-off monitor
 # before exposing it, so Chromium cannot leave a stale grey surface.
-if [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "OFF" ]]; then
+if [[ "$screen_state" == "OFF" && ! -f "$WAKE_FILE" ]]; then
   (
     for _ in $(seq 1 20); do
       sleep 0.5
