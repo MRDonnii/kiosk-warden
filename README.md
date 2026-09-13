@@ -30,6 +30,13 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
 - Uses monitor DPMS for reliable presence-driven sleep while Smartdash remains
   paintable. Repeated ON commands never restart a healthy Chrome process;
   restart recovery is reserved for a missing process or dashboard page.
+- The animation, live-camera, and rendering pause bridge only works with **HA
+  Smartdash**. Screen DPMS control still works for other dashboards, but
+  Warden cannot pause their internal visual work.
+- Publishes retained `Smartdash Connection` diagnostics and an available-only
+  `Smartdash Rendering` MQTT switch in Home Assistant. The switch sends
+  `active`/`idle` through the same local Chrome bridge used by automatic screen
+  control.
 - Uses GitHub Releases with selectable Stable/Beta channels, semantic
   versions, release notes, automatic pre-update snapshots, and rollback.
 - Provides a dedicated **Updates** page in the web UI with channel selection,
