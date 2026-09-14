@@ -182,6 +182,7 @@ ENGLISH_TEXT = {
     "Chromes debug-port (127.0.0.1:9222) svarer ikke. Chrome kører muligvis ikke, eller blev startet uden --remote-debugging-port.": "Chrome's debug port (127.0.0.1:9222) is not responding. Chrome may not be running, or was started without --remote-debugging-port.",
     "Chrome kører, men ingen synlig side blev fundet (flere faner/vinduer, eller siden er ikke indlæst endnu).": "Chrome is running, but no visible page was found (multiple tabs/windows, or the page hasn't loaded yet).",
     "Kiosk-id må kun indeholde a-z, 0-9 og _.": "Kiosk ID may only contain a-z, 0-9 and _.",
+    "Base topic må kun indeholde a-z, 0-9, _ og - i hvert topic-led, adskilt af /": "Base topic may only use a-z, 0-9, _ and - in each topic segment, separated by /",
     "MQTT port skal være et tal.": "MQTT port must be a number.", "Stats-interval skal være et tal.": "Stats interval must be a number.",
     "Valgfrit. Lader Kiosk Warden vise et strøm/energi-tal fra Home Assistant på Oversigt-siden.": "Optional. Lets Kiosk Warden show a power/energy reading from Home Assistant on the Overview page.",
     "Home Assistant URL": "Home Assistant URL",
@@ -763,6 +764,7 @@ def webui_port_available(port):
 
 def validate_settings(fields):
     kiosk_id = fields.get("KIOSK_ID", [""])[0].strip()
+    base_topic = fields.get("BASE_TOPIC", [""])[0].strip()
     mqtt_port = fields.get("MQTT_PORT", [""])[0].strip()
     stats_interval = fields.get("STATS_INTERVAL", [""])[0].strip()
     webui_port = fields.get("KIOSK_WEBUI_PORT", [str(BIND_PORT)])[0].strip()
@@ -771,8 +773,10 @@ def validate_settings(fields):
     backend = fields.get("KIOSK_SCREEN_BACKEND", ["auto"])[0].strip()
     brightness_min = fields.get("KIOSK_BRIGHTNESS_MIN", ["15"])[0].strip()
     brightness_max = fields.get("KIOSK_BRIGHTNESS_MAX", ["100"])[0].strip()
-    if not re.match(r"^[a-z0-9_]+$", kiosk_id):
+    if not re.fullmatch(r"[a-z0-9_]+", kiosk_id):
         return "Kiosk-id må kun indeholde a-z, 0-9 og _."
+    if not re.fullmatch(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*", base_topic):
+        return "Base topic må kun indeholde a-z, 0-9, _ og - i hvert topic-led, adskilt af /"
     if not mqtt_port.isdigit():
         return "MQTT port skal være et tal."
     if not stats_interval.isdigit():
@@ -1535,6 +1539,8 @@ def render_settings(conf, message=None, error=None):
     <input type="text" name="KIOSK_NAME" value="{esc(conf.get('KIOSK_NAME',''))}" required>
     <label>Kiosk-id (a-z 0-9 _, bruges i MQTT-topics)</label>
     <input type="text" name="KIOSK_ID" value="{esc(conf.get('KIOSK_ID',''))}" required>
+    <label>Base topic (bruges af MQTT og Home Assistant)</label>
+    <input type="text" name="BASE_TOPIC" value="{esc(conf.get('BASE_TOPIC',''))}" required>
     <label>Web-UI port</label>
     <input type="number" name="KIOSK_WEBUI_PORT" min="1024" max="65535" value="{esc(conf.get('KIOSK_WEBUI_PORT', BIND_PORT))}" required>
     <div class="status">Når porten ændres, genstarter kun Web-UI'en, og browseren viderestilles automatisk.</div>
@@ -1824,7 +1830,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send_html(render_settings(conf, error=err))
             previous_conf = dict(conf)
             old_webui_port = int(conf.get("KIOSK_WEBUI_PORT", BIND_PORT))
-            for key in ["KIOSK_NAME", "KIOSK_ID", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT", "KIOSK_SCREEN_BACKEND", "KIOSK_BRIGHTNESS_MIN", "KIOSK_BRIGHTNESS_MAX"]:
+            for key in ["KIOSK_NAME", "KIOSK_ID", "BASE_TOPIC", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT", "KIOSK_SCREEN_BACKEND", "KIOSK_BRIGHTNESS_MIN", "KIOSK_BRIGHTNESS_MAX"]:
                 if key in fields:
                     conf[key] = fields[key][0].strip()
             conf["KIOSK_TOUCH_WAKE"] = "true" if fields.get("KIOSK_TOUCH_WAKE", ["false"])[0] == "true" else "false"
@@ -1834,7 +1840,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             pw = fields.get("MQTT_PASS", [""])[0]
             if pw:
                 conf["MQTT_PASS"] = pw
-            conf["BASE_TOPIC"] = f'home/kiosk/{conf["KIOSK_ID"]}'
+            if not conf.get("BASE_TOPIC"):
+                conf["BASE_TOPIC"] = f'home/kiosk/{conf["KIOSK_ID"]}'
             conf["CODEX_REMOTE_TOPIC"] = f'home/codex/{conf["KIOSK_ID"]}/remote_control'
             write_conf(conf)
             new_webui_port = int(conf["KIOSK_WEBUI_PORT"])

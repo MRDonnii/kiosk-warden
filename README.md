@@ -252,6 +252,10 @@ systemctl --user restart kiosk-chrome.service kiosk-mqtt-stats.service kiosk-mqt
 restarts a `codex-remote-control.service` unit if you happen to run one; it's
 a harmless no-op otherwise.
 
+Both `KIOSK_ID` and `BASE_TOPIC` can also be changed later from Settings.
+Changing `KIOSK_ID` updates the Codex remote topic; `BASE_TOPIC` stays exactly
+as entered, so custom MQTT layouts are preserved.
+
 ## MQTT topics
 
 Base topic: `home/kiosk/<KIOSK_ID>`

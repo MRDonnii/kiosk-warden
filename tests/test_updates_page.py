@@ -341,7 +341,7 @@ class UpdatesPageTest(unittest.TestCase):
 
     def test_webui_port_validation_rejects_invalid_and_occupied_ports(self):
         fields = {
-            "KIOSK_ID": ["test"],
+            "KIOSK_ID": ["test"], "BASE_TOPIC": ["home/kiosk/test"],
             "MQTT_PORT": ["1883"], "STATS_INTERVAL": ["10"],
         }
         fields["KIOSK_WEBUI_PORT"] = ["80"]
@@ -364,10 +364,28 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertNotIn('name="KIOSK_URL"', settings)
         self.assertNotIn("value=\"http://homeassistant.local:8123\" readonly", settings)
         fields = {
-            "KIOSK_ID": ["test"], "KIOSK_URL": ["http://example.test/ignored"],
+            "KIOSK_ID": ["test"], "BASE_TOPIC": ["home/kiosk/test"],
+            "KIOSK_URL": ["http://example.test/ignored"],
             "MQTT_PORT": ["1883"], "STATS_INTERVAL": ["10"],
         }
         self.assertIsNone(SERVER.validate_settings(fields))
+
+    def test_kiosk_id_and_base_topic_are_editable(self):
+        settings = SERVER.render_settings(dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test"))
+        self.assertIn('name="KIOSK_ID"', settings)
+        self.assertIn('name="BASE_TOPIC"', settings)
+        fields = {
+            "KIOSK_ID": ["test"], "BASE_TOPIC": ["custom/kiosk"],
+            "MQTT_PORT": ["1883"], "STATS_INTERVAL": ["10"],
+        }
+        self.assertIsNone(SERVER.validate_settings(fields))
+        fields["BASE_TOPIC"] = ["bad topic"]
+        self.assertIn("Base topic", SERVER.validate_settings(fields))
+
+    def test_base_topic_save_keeps_custom_value(self):
+        server = (ROOT / "webui" / "server.py").read_text()
+        self.assertIn('"BASE_TOPIC", "MQTT_HOST"', server)
+        self.assertIn("if not conf.get(\"BASE_TOPIC\"):", server)
 
     def test_redirected_updates_page_resumes_progress_polling(self):
         page = SERVER.render_updates({"KIOSK_NAME": "Test kiosk"})
