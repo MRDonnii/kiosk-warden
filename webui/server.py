@@ -62,7 +62,7 @@ os.environ.setdefault("XAUTHORITY", os.path.join(HOME, ".Xauthority"))
 CONF_ORDER = [
     "KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_PORT",
     "MQTT_USER", "MQTT_PASS", "BASE_TOPIC", "CODEX_REMOTE_TOPIC",
-    "STATS_INTERVAL", "UI_LANGUAGE", "WEBUI_PASSWORD_HASH",
+    "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "UI_LANGUAGE", "WEBUI_PASSWORD_HASH",
     "HA_URL", "HA_TOKEN", "HA_POWER_ENTITY",
 ]
 
@@ -77,6 +77,7 @@ DEFAULTS = {
     "BASE_TOPIC": "home/kiosk/kiosk",
     "CODEX_REMOTE_TOPIC": "home/codex/kiosk/remote_control",
     "STATS_INTERVAL": "10",
+    "KIOSK_WEBUI_PORT": "8080",
     "UI_LANGUAGE": "en",
     "WEBUI_PASSWORD_HASH": "",
     "HA_URL": "",

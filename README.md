@@ -78,6 +78,7 @@ when `CONFIGURE_NOW` isn't set):
 ```bash
 KIOSK_NAME="Kitchen" KIOSK_ID="kiosk_kitchen" KIOSK_URL="http://homeassistant.local:8123" \
 MQTT_HOST="192.168.1.10" MQTT_USER="local" MQTT_PASS="secret" \
+KIOSK_WEBUI_PORT="8081" \
 bash <(curl -fsSL https://raw.githubusercontent.com/MRDonnii/kiosk-warden/main/install.sh)
 ```
 
@@ -104,8 +105,9 @@ What it does:
 - Detects the display manager and sets up autologin for your user
   accordingly: GDM (Ubuntu/GNOME, X11 forced — touch/kiosk automation needs
   it) or LightDM (Linux Mint and others).
-- Installs the web UI (`~/kiosk/webui/server.py`) as a systemd user service
-  on port 8080.
+- Installs the web UI (`~/kiosk/webui/server.py`) as a systemd user service.
+  Port 8080 is used by default; if it is occupied, the interactive installer
+  asks for another port. Non-interactive installs set `KIOSK_WEBUI_PORT`.
 - Adds two desktop shortcuts: **Start Kiosk** (restarts Chrome + the
   watchdog) and **Kiosk Setup** (opens the web UI in a browser).
 

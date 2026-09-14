@@ -169,6 +169,19 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('er installeret og genstartet.', updater)
         self.assertIn('complete false', updater)
 
+    def test_installer_supports_a_conflict_checked_webui_port(self):
+        installer = (ROOT / "install.sh").read_text()
+        service = (ROOT / "systemd" / "kiosk-webui.service").read_text()
+        server = (ROOT / "webui" / "server.py").read_text()
+        self.assertIn("select_webui_port", installer)
+        self.assertIn("webui_port_in_use", installer)
+        self.assertIn('existing_webui_port=', installer)
+        self.assertIn("KIOSK_WEBUI_PORT=$KIOSK_WEBUI_PORT", installer)
+        self.assertIn('ufw allow "$KIOSK_WEBUI_PORT/tcp"', installer)
+        self.assertIn("http://localhost:$KIOSK_WEBUI_PORT", installer)
+        self.assertIn("EnvironmentFile=-%h/kiosk/kiosk.conf", service)
+        self.assertIn('"KIOSK_WEBUI_PORT": "8080"', server)
+
     def test_redirected_updates_page_resumes_progress_polling(self):
         page = SERVER.render_updates({"KIOSK_NAME": "Test kiosk"})
         self.assertIn("function ensureStatusPolling()", page)
