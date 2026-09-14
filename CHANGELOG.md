@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.18.16 — 2026-09-14
+
+- **Test Connections without guessing.** Connections now has dedicated MQTT
+  and Home Assistant test actions. MQTT performs a real authenticated publish;
+  HA uses the saved URL and token and reports when it is not configured.
+- **Protect every authenticated write.** Forms, background actions, VNC
+  heartbeats, and close beacons carry an HMAC-bound CSRF token. Missing or
+  altered tokens are rejected without running the requested action.
+- **Harden the local WebUI.** HTML and JSON responses include restrictive
+  browser security headers, and request bodies larger than 1 MiB are rejected
+  before parsing.
+
 ## v1.18.15 — 2026-09-14
 
 - **Complete the primary English WebUI.** Operational labels, explanations,
