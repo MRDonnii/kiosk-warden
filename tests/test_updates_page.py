@@ -256,6 +256,17 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("KIOSK_TOUCH_RELEASE_DELAY", guardian)
         self.assertIn("input-guardian.sh", service)
 
+    def test_vnc_uses_the_webui_login_without_a_separate_password(self):
+        service = (ROOT / "systemd" / "kiosk-vnc.service").read_text()
+        sync_script = (ROOT / "scripts" / "sync-vnc-password.sh").read_text()
+        conf = {"WEBUI_PASSWORD_HASH": "salt:abcdef1234567890"}
+        vnc_page = SERVER.render_vnc(conf)
+        self.assertIn("ExecStartPre=%h/kiosk/sync-vnc-password.sh", service)
+        self.assertIn("x11vnc -storepasswd", sync_script)
+        self.assertEqual("abcdef12", SERVER.vnc_password_from_conf(conf))
+        self.assertIn("#password=", vnc_page)
+        self.assertIn("VNC bruger automatisk dit Kiosk Warden-login", vnc_page)
+
     def test_profiles_offline_fallback_and_wayland_backends_are_shipped(self):
         profiles = (ROOT / "scripts" / "profile-manager.py").read_text()
         health = (ROOT / "scripts" / "health-check.sh").read_text()
@@ -306,7 +317,7 @@ class UpdatesPageTest(unittest.TestCase):
 
     def test_webui_port_validation_rejects_invalid_and_occupied_ports(self):
         fields = {
-            "KIOSK_ID": ["test"], "KIOSK_URL": ["http://example.test"],
+            "KIOSK_ID": ["test"],
             "MQTT_PORT": ["1883"], "STATS_INTERVAL": ["10"],
         }
         fields["KIOSK_WEBUI_PORT"] = ["80"]
@@ -321,6 +332,17 @@ class UpdatesPageTest(unittest.TestCase):
                 self.assertIn("allerede i brug", SERVER.validate_settings(fields))
             finally:
                 SERVER.BIND_HOST = original_host
+
+    def test_kiosk_url_is_owned_only_by_profiles(self):
+        conf = dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test")
+        settings = SERVER.localize_html(SERVER.render_settings(conf), "da")
+        self.assertIn("Kiosk Profiler under Styring", settings)
+        self.assertNotIn('name="KIOSK_URL"', settings)
+        fields = {
+            "KIOSK_ID": ["test"], "KIOSK_URL": ["http://example.test/ignored"],
+            "MQTT_PORT": ["1883"], "STATS_INTERVAL": ["10"],
+        }
+        self.assertIsNone(SERVER.validate_settings(fields))
 
     def test_redirected_updates_page_resumes_progress_polling(self):
         page = SERVER.render_updates({"KIOSK_NAME": "Test kiosk"})
