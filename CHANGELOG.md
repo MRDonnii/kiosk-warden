@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.18.17 — 2026-09-14
+
+- **VNC has no separate password workflow.** Fresh installs no longer ask for,
+  generate, or describe a second VNC password, and the obsolete WebUI handler
+  for changing it has been removed. VNC continues to derive its credential
+  automatically from the Kiosk Warden administrator login before each start.
+- **Readable touch calibration.** The normal 3×3 identity matrix is displayed
+  as Standard and a transformed matrix as Custom; raw matrix data remains
+  available through diagnostics instead of overflowing the status tile.
+- **Explain missing input timing.** If `xprintidle` is absent, Latest input now
+  says so explicitly rather than showing the ambiguous Unknown state.
+
 ## v1.18.16 — 2026-09-14
 
 - **Test Connections without guessing.** Connections now has dedicated MQTT

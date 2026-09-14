@@ -32,7 +32,6 @@ KIOSK_DIR = os.path.join(HOME, "kiosk")
 CONF_PATH = os.path.join(KIOSK_DIR, "kiosk.conf")
 SCREENSHOT_PATH = os.path.join(KIOSK_DIR, "screenshots", "latest.jpg")
 ICON_PATH = os.path.join(KIOSK_DIR, "icon.svg")
-VNC_PASSWD_PATH = os.path.join(HOME, ".vnc", "passwd")
 CHANGELOG_PATH = os.path.join(KIOSK_DIR, "CHANGELOG.md")
 VERSION_PATH = os.path.join(KIOSK_DIR, "version")
 UPDATE_CHANNEL_PATH = os.path.join(KIOSK_DIR, "update_channel")
@@ -183,10 +182,8 @@ ENGLISH_TEXT = {
     "URL kiosken skal vise": "URL displayed by the kiosk", "MQTT brugernavn": "MQTT username",
     "MQTT password (tomt = behold nuværende)": "MQTT password (empty = keep current)", "Stats-interval (sekunder)": "Stats interval (seconds)",
     "Gem og genstart": "Save and restart", "Skift password": "Change password", "Nyt password": "New password",
-    "Nyt VNC password": "New VNC password", "Gentag nyt VNC password": "Repeat new VNC password",
     "Fjernstyring": "Remote Control", "Fuld skærm": "Full screen", "Genopfrisk forbindelse": "Refresh connection",
     "Start VNC": "Start VNC", "VNC er startet. Prøv forbindelsen igen.": "VNC has started. Try the connection again.",
-    "Kræver VNC-password (separat fra login på denne side) ved forbindelse.": "A VNC password (separate from this page's login) is required when connecting.",
     "VNC bruger automatisk dit Kiosk Warden-login. Der skal ikke skrives et separat password.": "VNC uses your Kiosk Warden login automatically. No separate password is required.",
     "VNC-passworden styres automatisk af Kiosk Warden-login og skal ikke indtastes.": "The VNC password is managed automatically from your Kiosk Warden login and does not need to be entered.",
     "Brugerfladesprog": "Interface language", "Dansk": "Danish",
@@ -200,8 +197,8 @@ ENGLISH_TEXT = {
     "MQTT porten skal være mellem 1 og 65535.": "MQTT port must be between 1 and 65535.",
     "Stats-interval skal være mindst 1 sekund.": "Stats interval must be at least 1 second.",
     "Password skal være mindst 8 tegn og matche i begge felter.": "Password must be at least 8 characters and match in both fields.",
-    "VNC password skal være mindst 4 tegn og matche i begge felter.": "VNC password must be at least 4 characters and match in both fields.",
-    "Password skiftet.": "Password changed.", "VNC password skiftet.": "VNC password changed.",
+    "Password skiftet.": "Password changed.",
+    "Tilpasset": "Custom", "Ikke installeret (xprintidle)": "Not installed (xprintidle)",
     "Ugyldig strømprofil.": "Invalid power profile.", "Kunne ikke skifte strømprofil": "Could not change power profile",
     "Strømprofil sat til": "Power profile changed to", "Ugyldig rollback-version.": "Invalid rollback version.",
     "Rollback fejlede.": "Rollback failed.", "Opdatering fejlede.": "Update failed.",
@@ -356,24 +353,6 @@ def record_login_failure(client_ip):
 def clear_login_failures(client_ip):
     with _session_lock:
         _login_failures.pop(client_ip, None)
-
-
-def set_vnc_password(password):
-    vnc_dir = os.path.dirname(VNC_PASSWD_PATH)
-    os.makedirs(vnc_dir, exist_ok=True)
-    try:
-        result = subprocess.run(["x11vnc", "-storepasswd", password, VNC_PASSWD_PATH],
-                                 capture_output=True, text=True, timeout=10)
-    except Exception as exc:
-        return False, f"Kunne ikke sætte VNC password: {exc}"
-    if result.returncode != 0:
-        return False, (result.stderr or result.stdout or "Kunne ikke sætte VNC password.").strip()
-    try:
-        os.chmod(VNC_PASSWD_PATH, 0o600)
-    except OSError:
-        pass
-    run("systemctl", "--user", "restart", "kiosk-vnc.service")
-    return True, "VNC password skiftet."
 
 
 def vnc_password_from_conf(conf):
@@ -1178,6 +1157,17 @@ def touch_guardian_label(capabilities):
     }.get(reason, "Ikke tilgængelig")
 
 
+def calibration_label(raw_matrix):
+    try:
+        values = [float(value.strip()) for value in raw_matrix.split(",")]
+    except (AttributeError, ValueError):
+        return "Standard/ukendt"
+    identity = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+    if len(values) == 9 and all(abs(value - expected) < 0.000001 for value, expected in zip(values, identity)):
+        return "Standard"
+    return "Tilpasset"
+
+
 def render_page_header(title, conf, description, aside=""):
     return f"""
 <div class="header-row">
@@ -1478,15 +1468,18 @@ def render_control(conf, message=None, error=None):
         touch_id = re.search(r"id=(\d+)", touch_line)
         touch_props = subprocess.run(["xinput", "list-props", touch_id.group(1)], capture_output=True, text=True, timeout=3).stdout if touch_id else ""
         matrix = re.search(r"Coordinate Transformation Matrix[^:]*:\s*(.+)", touch_props)
-        touch_calibration = matrix.group(1).strip() if matrix else "Standard/ukendt"
+        touch_calibration = calibration_label(matrix.group(1)) if matrix else "Standard/ukendt"
     except (OSError, subprocess.TimeoutExpired):
         touch_name = "Ikke registreret"
         touch_calibration = "Ukendt"
-    try:
-        idle_ms = int(subprocess.run(["xprintidle"], capture_output=True, text=True, timeout=3).stdout.strip())
-        last_input = f"{idle_ms // 1000} sek. siden"
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        last_input = "Ukendt"
+    if not shutil.which("xprintidle"):
+        last_input = "Ikke installeret (xprintidle)"
+    else:
+        try:
+            idle_ms = int(subprocess.run(["xprintidle"], capture_output=True, text=True, timeout=3).stdout.strip())
+            last_input = f"{idle_ms // 1000} sek. siden"
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            last_input = "Ukendt"
     options = "".join(
         f'<option value="{key}"{" selected" if key == profile else ""}>{label}</option>'
         for key, label in POWER_PROFILES.items()
@@ -2120,16 +2113,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             run("systemctl", "--user", "restart", "kiosk-vnc.service")
             token = create_session(conf)
             return self._redirect("/settings", self._session_cookie(token))
-
-        if parsed.path == "/vnc-password":
-            pw = fields.get("password", [""])[0]
-            pw2 = fields.get("password2", [""])[0]
-            if len(pw) < 4 or pw != pw2:
-                return self._send_html(render_settings(conf, error="VNC password skal være mindst 4 tegn og matche i begge felter."))
-            ok, msg = set_vnc_password(pw)
-            if ok:
-                return self._send_html(render_settings(conf, message=msg))
-            return self._send_html(render_settings(conf, error=msg))
 
         if parsed.path == "/update":
             channel = fields.get("channel", [read_file(UPDATE_CHANNEL_PATH, "stable")])[0]
