@@ -283,6 +283,18 @@ set_profile() {
   publish_state url "$KIOSK_URL"
 }
 
+set_profile_url() {
+  "$HOME/kiosk/profile-manager.py" set-active-url "$1" >/dev/null 2>&1 || return 0
+  source "$HOME/kiosk/kiosk.conf"
+  publish_state url "$KIOSK_URL"
+}
+
+set_profile_zoom() {
+  "$HOME/kiosk/profile-manager.py" set-active-zoom "${1%%%}" >/dev/null 2>&1 || return 0
+  publish_state page_zoom "$(cat "$ZOOM_FILE" 2>/dev/null || echo 100)"
+  publish_state url "$(sed -n 's/^KIOSK_URL="\(.*\)"$/\1/p' "$HOME/kiosk/kiosk.conf")"
+}
+
 take_screenshot() {
   "$HOME/kiosk/take-screenshot.sh" >/dev/null 2>&1 || true
 }
@@ -353,6 +365,8 @@ publish_state update_channel "$(sed 's/.*/\u&/' "$UPDATE_CHANNEL_FILE" 2>/dev/nu
 case "$(powerprofilesctl get 2>/dev/null || true)" in power-saver) publish_state power_profile "Strømbesparelse" ;; balanced) publish_state power_profile "Balanceret" ;; performance) publish_state power_profile "Ydelse" ;; esac
 
 listen_topic "$BASE_TOPIC/set_url" set_kiosk_url &
+listen_topic "$BASE_TOPIC/set_profile_url" set_profile_url &
+listen_topic "$BASE_TOPIC/set_profile_zoom" set_profile_zoom &
 listen_topic "$BASE_TOPIC/set_zoom" set_zoom &
 listen_topic "$BASE_TOPIC/set_theme" set_theme &
 listen_topic "$BASE_TOPIC/set_volume" set_volume &

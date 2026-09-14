@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.18.1 — 2026-09-14
+## v1.18.2 — 2026-09-14
 
 - **Automatic VNC authentication.** noVNC now derives its access password from
   the Kiosk Warden WebUI login, so remote control no longer asks for a separate
@@ -9,6 +9,9 @@
   only by Kiosk Profiles. Settings shows the active URL read-only, ignores any
   direct URL submission, and MQTT URL changes only take effect when they match
   an existing profile.
+- **MQTT profile editing.** Home Assistant can now update the active profile's
+  URL and zoom with dedicated entities, and the kiosk navigates to the correct
+  URL even when the browser is idle.
 
 ## v1.18.0 — 2026-09-14
 
