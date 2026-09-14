@@ -433,6 +433,25 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("REMEMBER_TTL", server)
         self.assertIn('conf["WEBUI_AUTO_LOGOUT"]', server)
 
+    def test_mqtt_has_a_dedicated_page(self):
+        conf = dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test")
+        settings = SERVER.render_settings(conf)
+        mqtt = SERVER.render_mqtt(conf)
+        nav = SERVER.render_nav("/mqtt")
+        server = (ROOT / "webui" / "server.py").read_text()
+        self.assertIn('href="/mqtt"', nav)
+        self.assertIn("/mqtt", mqtt)
+        self.assertIn('name="MQTT_HOST"', mqtt)
+        self.assertIn('name="MQTT_PORT"', mqtt)
+        self.assertIn('name="MQTT_USER"', mqtt)
+        self.assertIn('name="MQTT_PASS"', mqtt)
+        self.assertIn('name="STATS_INTERVAL"', mqtt)
+        self.assertIn('action="/save-mqtt"', mqtt)
+        self.assertNotIn('name="MQTT_HOST"', settings)
+        self.assertNotIn('name="MQTT_PORT"', settings)
+        self.assertIn('parsed.path == "/mqtt"', server)
+        self.assertIn('parsed.path == "/save-mqtt"', server)
+
     def test_stale_release_metadata_never_offers_a_downgrade(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)

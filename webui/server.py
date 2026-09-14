@@ -156,6 +156,15 @@ ENGLISH_TEXT = {
     "VNC bruger automatisk dit Kiosk Warden-login. Der skal ikke skrives et separat password.": "VNC uses your Kiosk Warden login automatically. No separate password is required.",
     "VNC-passworden styres automatisk af Kiosk Warden-login og skal ikke indtastes.": "The VNC password is managed automatically from your Kiosk Warden login and does not need to be entered.",
     "Brugerfladesprog": "Interface language", "Dansk": "Danish",
+    "MQTT": "MQTT", "Broker": "Broker", "Broker host/IP": "Broker host/IP",
+    "Broker port": "Broker port", "Brugernavn": "Username",
+    "Password (tomt = behold nuværende)": "Password (empty = keep current)",
+    "Gem og genstart MQTT": "Save and restart MQTT",
+    "Base topic": "Base topic", "Kiosk-id": "Kiosk ID",
+    "MQTT-indstillingerne er gemt og services er genstartet.": "MQTT settings saved and services restarted.",
+    "MQTT host må ikke være tom.": "MQTT host cannot be empty.",
+    "MQTT porten skal være mellem 1 og 65535.": "MQTT port must be between 1 and 65535.",
+    "Stats-interval skal være mindst 1 sekund.": "Stats interval must be at least 1 second.",
     "Password skal være mindst 8 tegn og matche i begge felter.": "Password must be at least 8 characters and match in both fields.",
     "VNC password skal være mindst 4 tegn og matche i begge felter.": "VNC password must be at least 4 characters and match in both fields.",
     "Password skiftet.": "Password changed.", "VNC password skiftet.": "VNC password changed.",
@@ -1003,7 +1012,7 @@ def render_nav(active):
     items = [
         ("/", "🏠 Oversigt"),
         ("/vnc", "🖱️ Fjernstyring"),
-        ("/control", "🎛️ Styring"),
+        ("/control", "🎛️ Styring"), ("/mqtt", "📡 MQTT"),
         ("/updates", "⬇️ Opdateringer"),
         ("/settings", "⚙️ Indstillinger"),
         ("/logout", "↪ Log ud"),
@@ -1464,6 +1473,46 @@ def render_ha_fieldset(conf):
 """
 
 
+def render_mqtt(conf, message=None, error=None):
+    body = PAGE_HEAD.format(title_suffix=" — MQTT")
+    body += f"""
+<div class="header-row">
+  <div>
+    <h1>MQTT</h1>
+    <div class="sub">{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</div>
+  </div>
+</div>
+"""
+    body += render_nav("/mqtt") + render_message(message, error)
+    topic = f'home/kiosk/{conf.get("KIOSK_ID", "kiosk")}'
+    body += f"""
+<div class="narrow">
+<form method="post" action="/save-mqtt">
+  <fieldset>
+    <legend>Broker</legend>
+    <label>Broker host/IP</label>
+    <input type="text" name="MQTT_HOST" value="{esc(conf.get('MQTT_HOST',''))}" required>
+    <label>Broker port</label>
+    <input type="number" name="MQTT_PORT" value="{esc(conf.get('MQTT_PORT',''))}" required>
+    <label>Brugernavn</label>
+    <input type="text" name="MQTT_USER" value="{esc(conf.get('MQTT_USER',''))}">
+    <label>Password (tomt = behold nuværende)</label>
+    <input type="password" name="MQTT_PASS" placeholder="••••••••">
+    <label>Stats-interval (sekunder)</label>
+    <input type="number" name="STATS_INTERVAL" value="{esc(conf.get('STATS_INTERVAL',''))}" required>
+    <div class="row"><button class="primary" type="submit">Gem og genstart MQTT</button></div>
+  </fieldset>
+  <fieldset>
+    <legend>Home Assistant</legend>
+    <p class="status">Kiosk-id bestemmer topic'et og bruges af MQTT discovery.</p>
+    <div class="grid"><div class="tile"><span>Base topic</span><strong>{esc(topic)}</strong></div><div class="tile"><span>Kiosk-id</span><strong>{esc(conf.get('KIOSK_ID', 'kiosk'))}</strong></div></div>
+  </fieldset>
+</form>
+</div>
+"""
+    return body + PAGE_TAIL
+
+
 def render_settings(conf, message=None, error=None):
     body = PAGE_HEAD.format(title_suffix=" — Indstillinger")
     body += f"""
@@ -1481,21 +1530,11 @@ def render_settings(conf, message=None, error=None):
     body += f"""
 <form method="post" action="/save">
   <fieldset>
-    <legend>Kiosk &amp; MQTT</legend>
+    <legend>Kiosk</legend>
     <label>Navn på kiosken</label>
     <input type="text" name="KIOSK_NAME" value="{esc(conf.get('KIOSK_NAME',''))}" required>
     <label>Kiosk-id (a-z 0-9 _, bruges i MQTT-topics)</label>
     <input type="text" name="KIOSK_ID" value="{esc(conf.get('KIOSK_ID',''))}" required>
-    <label>MQTT broker host/IP</label>
-    <input type="text" name="MQTT_HOST" value="{esc(conf.get('MQTT_HOST',''))}" required>
-    <label>MQTT broker port</label>
-    <input type="number" name="MQTT_PORT" value="{esc(conf.get('MQTT_PORT',''))}" required>
-    <label>MQTT brugernavn</label>
-    <input type="text" name="MQTT_USER" value="{esc(conf.get('MQTT_USER',''))}">
-    <label>MQTT password (tomt = behold nuværende)</label>
-    <input type="password" name="MQTT_PASS" placeholder="••••••••">
-    <label>Stats-interval (sekunder)</label>
-    <input type="number" name="STATS_INTERVAL" value="{esc(conf.get('STATS_INTERVAL',''))}" required>
     <label>Web-UI port</label>
     <input type="number" name="KIOSK_WEBUI_PORT" min="1024" max="65535" value="{esc(conf.get('KIOSK_WEBUI_PORT', BIND_PORT))}" required>
     <div class="status">Når porten ændres, genstarter kun Web-UI'en, og browseren viderestilles automatisk.</div>
@@ -1711,6 +1750,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_html(render_updates(conf))
         if parsed.path == "/settings":
             return self._send_html(render_settings(conf))
+        if parsed.path == "/mqtt":
+            return self._send_html(render_mqtt(conf))
         if parsed.path in ("/", ""):
             return self._send_html(render_dashboard(conf))
         self.send_response(404)
@@ -1818,6 +1859,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self._send_html(render_settings(conf, error=result.stderr.strip() or "Kunne ikke genstarte Web-UI."))
                 return self._send_html(render_port_change(conf, new_webui_port))
             return self._redirect("/settings")
+
+        if parsed.path == "/save-mqtt":
+            host = fields.get("MQTT_HOST", [""])[0].strip()
+            port = fields.get("MQTT_PORT", [""])[0].strip()
+            interval = fields.get("STATS_INTERVAL", [""])[0].strip()
+            if not host:
+                return self._send_html(render_mqtt(conf, error="MQTT host må ikke være tom."))
+            if not port.isdigit() or not 1 <= int(port) <= 65535:
+                return self._send_html(render_mqtt(conf, error="MQTT porten skal være mellem 1 og 65535."))
+            if not interval.isdigit() or int(interval) < 1:
+                return self._send_html(render_mqtt(conf, error="Stats-interval skal være mindst 1 sekund."))
+            conf["MQTT_HOST"] = host
+            conf["MQTT_PORT"] = port
+            conf["MQTT_USER"] = fields.get("MQTT_USER", [""])[0].strip()
+            conf["STATS_INTERVAL"] = interval
+            password = fields.get("MQTT_PASS", [""])[0]
+            if password:
+                conf["MQTT_PASS"] = password
+            write_conf(conf)
+            run("systemctl", "--user", "restart", "kiosk-mqtt-stats.service", "kiosk-mqtt-control.service")
+            run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
+            return self._send_html(render_mqtt(read_conf(), message="MQTT-indstillingerne er gemt og services er genstartet."))
 
         if parsed.path == "/save-ha":
             conf["HA_URL"] = fields.get("HA_URL", [""])[0].strip()

@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.18.5 — 2026-09-14
+## v1.18.6 — 2026-09-14
 
 - **Automatic VNC authentication.** noVNC now derives its access password from
   the Kiosk Warden WebUI login, so remote control no longer asks for a separate
@@ -23,6 +23,8 @@
   has an editable URL and zoom.
 - **Reliable VNC start.** Starting VNC now wakes the kiosk display before
   reconnecting, so a sleeping screen no longer appears black.
+- **Dedicated MQTT page.** Broker address, credentials, discovery and stats
+  timing now live on a separate MQTT tab instead of the general Settings page.
 
 ## v1.18.0 — 2026-09-14
 
