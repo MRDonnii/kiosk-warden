@@ -363,7 +363,7 @@ def vnc_password_from_conf(conf):
     return password[:8]
 
 
-VNC_PAGE_IDLE_STOP = 3.0
+VNC_PAGE_IDLE_STOP = 5.0
 _vnc_last_seen = 0.0
 _vnc_watchdog_lock = threading.Lock()
 
@@ -400,6 +400,7 @@ def mark_vnc_activity():
 def stop_vnc_services():
     global _vnc_last_seen
     run("systemctl", "--user", "stop", "kiosk-novnc.service", "kiosk-vnc.service")
+    run("systemctl", "--user", "reset-failed", "kiosk-novnc.service", "kiosk-vnc.service")
     with _vnc_watchdog_lock:
         _vnc_last_seen = 0.0
 
@@ -1784,9 +1785,6 @@ def render_vnc(conf, message=None, error=None, active=None):
   }}
   heartbeat();
   setInterval(heartbeat, 1000);
-  const csrf = encodeURIComponent(document.querySelector('meta[name="warden-csrf"]').content);
-  window.addEventListener('pagehide', () => navigator.sendBeacon('/vnc/stop?csrf=' + csrf));
-  window.addEventListener('beforeunload', () => navigator.sendBeacon('/vnc/stop?csrf=' + csrf));
   startFrame();
 </script>
 """
@@ -2174,8 +2172,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_html(render_control(conf, error="Profilen kunne ikke aktiveres."))
 
         if parsed.path == "/vnc/start":
-            run("systemctl", "--user", "restart", "kiosk-vnc.service", "kiosk-novnc.service")
             mark_vnc_activity()
+            run("systemctl", "--user", "restart", "kiosk-vnc.service", "kiosk-novnc.service")
             return self._redirect("/vnc")
 
         if parsed.path == "/vnc/stop":

@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.18.18 — 2026-09-14
+
+- **Closing VNC cannot trigger kiosk lifecycle actions.** Browser unload no
+  longer sends duplicate stop requests. The existing heartbeat lease expires
+  after five seconds and then stops only `kiosk-novnc.service` and
+  `kiosk-vnc.service`.
+- **Preserve the kiosk and screen state.** Regression coverage proves the VNC
+  stop path contains no Warden state, Chrome, renderer, or screen command, so
+  an ON kiosk remains ON and an OFF kiosk remains OFF.
+- **Remove the VNC startup race.** The heartbeat lease is established before
+  systemd starts VNC, and a normal stop clears stale failure markers belonging
+  only to the VNC units.
+
 ## v1.18.17 — 2026-09-14
 
 - **VNC has no separate password workflow.** Fresh installs no longer ask for,
