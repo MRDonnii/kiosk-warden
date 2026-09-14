@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.18.9 — 2026-09-14
+
+- **Fix 404 after Start VNC.** The Start VNC action now redirects back to
+  Remote Control after restarting the VNC and browser bridge services,
+  instead of rendering the page directly as the POST response. Refreshing
+  the page after pressing Start VNC previously landed on a 404 because the
+  browser replayed the POST-only `/vnc/start` URL.
+
 ## v1.18.8 — 2026-09-14
 
 - **Editable MQTT identity.** Kiosk ID and Base topic can now both be changed
