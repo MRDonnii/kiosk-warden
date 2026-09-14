@@ -320,7 +320,9 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('action="/vnc/start"', vnc_off)
         self.assertIn("/vnc/heartbeat", vnc_page)
         self.assertIn("/vnc/status", vnc_page)
-        self.assertIn("navigator.sendBeacon('/vnc/stop?csrf=' + csrf)", vnc_page)
+        self.assertNotIn("sendBeacon", vnc_page)
+        self.assertNotIn("beforeunload", vnc_page)
+        self.assertNotIn("pagehide", vnc_page)
         self.assertIn("VNC er slukket", vnc_off)
         self.assertNotIn("#password=", vnc_off)
         installer = (ROOT / "install.sh").read_text()
@@ -328,6 +330,27 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertNotIn("ask VNC_PASSWORD", installer)
         self.assertNotIn('parsed.path == "/vnc-password"', server)
         self.assertNotIn("def set_vnc_password", server)
+
+    def test_vnc_stop_is_isolated_from_kiosk_and_screen_state(self):
+        calls = []
+        original_run = SERVER.run
+        SERVER.run = lambda *args, **kwargs: calls.append(args)
+        try:
+            SERVER.stop_vnc_services()
+        finally:
+            SERVER.run = original_run
+        self.assertEqual([
+            ("systemctl", "--user", "stop", "kiosk-novnc.service", "kiosk-vnc.service"),
+            ("systemctl", "--user", "reset-failed", "kiosk-novnc.service", "kiosk-vnc.service"),
+        ], calls)
+        source = (ROOT / "webui" / "server.py").read_text()
+        stop_body = source[source.index("def stop_vnc_services") : source.index("def vnc_page_watchdog")]
+        self.assertNotIn("warden-state", stop_body)
+        self.assertNotIn("kiosk-chrome", stop_body)
+        self.assertNotIn("screen", stop_body)
+        self.assertIn("VNC_PAGE_IDLE_STOP = 5.0", source)
+        start_body = source[source.index('if parsed.path == "/vnc/start"') : source.index('if parsed.path == "/vnc/stop"')]
+        self.assertLess(start_body.index("mark_vnc_activity()"), start_body.index('run("systemctl"'))
 
     def test_touch_calibration_is_presented_as_a_readable_state(self):
         identity = "1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000"

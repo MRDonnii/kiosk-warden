@@ -200,9 +200,9 @@ VNC password. VNC can connect while the physical display is OFF because
 `x11vnc` keeps polling the framebuffer with DPMS handling disabled.
 
 VNC is disabled by default. The Remote Control page starts both services only
-when you press **Start VNC**, switches the same button to **Stop VNC** while
-they are active, and sends a close beacon when the tab leaves or closes. A
-short heartbeat timeout also stops the services if that beacon is missed.
+when you press **Start VNC** and switches the same button to **Stop VNC** while
+they are active. A short heartbeat timeout stops only the two VNC services
+after the viewer closes; it never changes the kiosk, Chrome, or screen state.
 Services: `kiosk-vnc.service` (x11vnc) and `kiosk-novnc.service` (the web
 bridge on port 6080). Changing the WebUI login password also updates the VNC
 password.
