@@ -11,10 +11,17 @@ STATS_INTERVAL=10
 KIOSK_WEBUI_PORT=8080
 KIOSK_VNC_PORT=5900
 KIOSK_NOVNC_PORT=6080
-# auto, gnome-x11, cinnamon-x11, x11, raspberry-pi, ddc or cec
+# auto, gnome-x11, cinnamon-x11, x11, wayland-wlopm, wayland-kde,
+# raspberry-pi, ddc or cec
 KIOSK_SCREEN_BACKEND="auto"
 KIOSK_MIN_WIDTH=1024
 KIOSK_MIN_HEIGHT=600
+KIOSK_TOUCH_WAKE=true
+KIOSK_TOUCH_RELEASE_DELAY=1.2
+KIOSK_AUTO_BRIGHTNESS=false
+KIOSK_BRIGHTNESS_MIN=15
+KIOSK_BRIGHTNESS_MAX=100
+WEBUI_USERNAME="admin"
 WEBUI_PASSWORD_HASH=""
 
 # Optional: lets Kiosk Warden read data back FROM Home Assistant (e.g. a

@@ -85,6 +85,7 @@ while true; do
   fi
   volume="${volume:-$(cat "$HOME/kiosk/volume" 2>/dev/null || echo 100)}"
   heartbeat="$(date -Iseconds)"
+  capabilities="$(cat "$HOME/kiosk/capabilities.json" 2>/dev/null || echo '{}')"
 
   mqtt_pub "$BASE_TOPIC/online/status" "online" -r || true
   mqtt_pub "$BASE_TOPIC/stats/cpu_load" "$cpu_load" || true
@@ -111,6 +112,15 @@ while true; do
   mqtt_pub "$BASE_TOPIC/state/theme" "$(cat "$THEME_FILE" 2>/dev/null || echo Dark)" -r || true
   mqtt_pub "$BASE_TOPIC/state/page_zoom" "$(cat "$ZOOM_FILE" 2>/dev/null || echo 100)" -r || true
   mqtt_pub "$BASE_TOPIC/state/volume" "$volume" -r || true
+  mqtt_pub "$BASE_TOPIC/diagnostic/capabilities" "$capabilities" -r || true
+  brightness="$($HOME/kiosk/hardware-control.py brightness-get 2>/dev/null || true)"
+  microphone="$($HOME/kiosk/hardware-control.py microphone-get 2>/dev/null || true)"
+  illuminance="$($HOME/kiosk/hardware-control.py illuminance-get 2>/dev/null || true)"
+  battery="$($HOME/kiosk/hardware-control.py battery-get 2>/dev/null || true)"
+  [[ -n "$brightness" ]] && mqtt_pub "$BASE_TOPIC/state/brightness" "$brightness" -r || true
+  [[ -n "$microphone" ]] && mqtt_pub "$BASE_TOPIC/state/microphone" "$microphone" -r || true
+  [[ -n "$illuminance" ]] && mqtt_pub "$BASE_TOPIC/stats/illuminance" "$illuminance" || true
+  [[ -n "$battery" ]] && mqtt_pub "$BASE_TOPIC/stats/battery" "$battery" || true
   case "$(powerprofilesctl get 2>/dev/null || true)" in power-saver) power_profile="Strømbesparelse" ;; balanced) power_profile="Balanceret" ;; performance) power_profile="Ydelse" ;; *) power_profile="Ukendt" ;; esac
   mqtt_pub "$BASE_TOPIC/state/power_profile" "$power_profile" -r || true
   mqtt_pub "$BASE_TOPIC/diagnostic/errors" "$(cat "$ERROR_FILE" 2>/dev/null || echo 0)" || true

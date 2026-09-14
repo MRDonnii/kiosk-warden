@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Manage named kiosk URL/zoom profiles without exposing kiosk.conf secrets."""
+import json, pathlib, re, subprocess, sys
+HOME=pathlib.Path.home(); KIOSK=HOME/"kiosk"; PATH=KIOSK/"profiles.json"; CONF=KIOSK/"kiosk.conf"; ACTIVE=KIOSK/"active_profile"
+
+def config():
+    out={}
+    try:
+        for line in CONF.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k,v=line.split("=",1); out[k.strip()]=v.strip().strip('"')
+    except OSError: pass
+    return out
+def load():
+    try: data=json.loads(PATH.read_text())
+    except (OSError,ValueError): data={"profiles":[]}
+    if not data.get("profiles"):
+        data={"profiles":[{"name":"Default","url":config().get("KIOSK_URL","http://homeassistant.local:8123"),"zoom":100}]}; save(data)
+    return data
+def save(data):
+    tmp=PATH.with_suffix(".tmp"); tmp.write_text(json.dumps(data,indent=2)+"\n"); tmp.replace(PATH)
+ZOOMS={50:(5,"ctrl+minus"),75:(3,"ctrl+minus"),90:(1,"ctrl+minus"),100:(0,""),110:(1,"ctrl+plus"),125:(2,"ctrl+plus"),150:(4,"ctrl+plus"),175:(6,"ctrl+plus"),200:(7,"ctrl+plus")}
+def valid(name,url,zoom):
+    return bool(re.fullmatch(r"[A-Za-z0-9 ÆØÅæøå._-]{1,40}", name) and re.fullmatch(r"https?://[^\s\"'\\]+", url) and int(zoom) in ZOOMS)
+def set_conf_url(url):
+    lines=CONF.read_text().splitlines(); found=False; out=[]
+    for line in lines:
+        if line.startswith("KIOSK_URL="): out.append(f'KIOSK_URL="{url}"'); found=True
+        else: out.append(line)
+    if not found: out.append(f'KIOSK_URL="{url}"')
+    tmp=CONF.with_suffix(".tmp"); tmp.write_text("\n".join(out)+"\n"); tmp.chmod(0o600); tmp.replace(CONF)
+def switch(name):
+    item=next((x for x in load()["profiles"] if x["name"]==name),None)
+    if not item: return 1
+    set_conf_url(item["url"]); ACTIVE.write_text(name+"\n")
+    subprocess.run([str(KIOSK/"chrome-lifecycle.py"),"navigate",item["url"]],check=False)
+    zoom=int(item.get("zoom",100)); (KIOSK/"page_zoom").write_text(str(zoom)+"%\n")
+    subprocess.run(["xdotool","key","ctrl+0"],check=False)
+    count,key=ZOOMS[zoom]
+    for _ in range(count): subprocess.run(["xdotool","key",key],check=False)
+    return 0
+def main():
+    action=sys.argv[1] if len(sys.argv)>1 else "list"; data=load()
+    if action=="list": print(json.dumps(data)); return 0
+    if action=="status": print(ACTIVE.read_text().strip() if ACTIVE.exists() else data["profiles"][0]["name"]); return 0
+    if action=="add" and len(sys.argv)==5:
+        name,url,zoom=sys.argv[2],sys.argv[3],int(sys.argv[4])
+        if not valid(name,url,zoom): return 2
+        data["profiles"]=[x for x in data["profiles"] if x["name"]!=name]+[{"name":name,"url":url,"zoom":zoom}]; save(data); return 0
+    if action=="remove" and len(sys.argv)==3:
+        current=ACTIVE.read_text().strip() if ACTIVE.exists() else data["profiles"][0]["name"]
+        if len(data["profiles"])<=1 or current==sys.argv[2]: return 2
+        data["profiles"]=[x for x in data["profiles"] if x["name"]!=sys.argv[2]]; save(data); return 0
+    if action=="switch" and len(sys.argv)==3: return switch(sys.argv[2])
+    print("Usage: profile-manager.py list|status|add NAME URL ZOOM|remove NAME|switch NAME",file=sys.stderr); return 2
+if __name__=="__main__": raise SystemExit(main())

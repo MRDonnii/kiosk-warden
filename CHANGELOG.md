@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.18.0 — 2026-09-14
+
+- **Session-based WebUI login.** The Basic Auth prompt is replaced by a real
+  first-run administrator setup and an expiring `HttpOnly` session cookie.
+  Existing installations keep their password and migrate to the `admin`
+  username automatically.
+- **Platform capability probing.** Warden detects usable X11/Wayland, sysfs/
+  DDC/CEC display control, touch-event access, ambient-light sensors, battery
+  telemetry, audio input/output, and capture tools without changing hardware.
+  MQTT entities are published only for proven capabilities.
+- **Capability-gated hardware control.** Brightness and microphone controls
+  exist only when their backend and current permissions work. Optional
+  adaptive brightness is opt-in and bounded by configured minimum/maximum
+  values.
+- **Safe touch-to-wake.** While the screen is OFF, a supported touch input is
+  briefly grabbed so the wake gesture cannot pass through to the dashboard.
+  Input is released after a configured delay and only after a verified wake.
+- **Named kiosk profiles.** Control pages and MQTT can switch between named
+  URL/zoom profiles. If the primary dashboard is unreachable, Warden shows a
+  local offline page and returns automatically when the primary URL recovers.
+- **Portable display and low-resolution support.** `wlopm` and KDE Wayland
+  DPMS backends are available alongside X11, and Raspberry Pi wake geometry
+  thresholds are configurable.
+- **Update and diagnostics integration.** New services, capabilities, and
+  scripts are installed, enabled, restarted, validated, and included in
+  diagnostics. The offline fallback no longer blocks recovery when Chrome is
+  dead.
+
 ## v1.17.0 — 2026-09-14
 
 - **Deterministic kiosk state machine.** Screen and renderer transitions move

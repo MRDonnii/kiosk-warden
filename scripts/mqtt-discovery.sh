@@ -7,6 +7,9 @@ os_name="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Linux}")"
 device_json="$(jq -cn --arg id "$KIOSK_ID" --arg name "$KIOSK_NAME" --arg manufacturer "Linux Kiosk" \
   --arg model "$hardware_model" --arg sw "$os_name" \
   '{identifiers:[$id], name:$name, manufacturer:$manufacturer, model:$model, sw_version:$sw}')"
+CAPABILITIES_FILE="$HOME/kiosk/capabilities.json"
+[[ -f "$CAPABILITIES_FILE" ]] || "$HOME/kiosk/capability-probe.py" >/dev/null 2>&1 || true
+capabilities="$(cat "$CAPABILITIES_FILE" 2>/dev/null || echo '{}')"
 
 publish_config() {
   mqtt_pub "homeassistant/$1/${KIOSK_ID}/$2/config" "$3" -r
@@ -40,11 +43,21 @@ button() {
 
 
 light_entity() {
-  local payload
+  local payload brightness
+  brightness="$(jq -r '.display.brightness // false' <<<"$capabilities")"
   payload="$(jq -cn --arg name "Screen" --arg uniq "${KIOSK_ID}_screen_light" --arg cmd "$BASE_TOPIC/command" \
-    --arg stat "$BASE_TOPIC/state/screen" --arg av "$BASE_TOPIC/online/status" --argjson dev "$device_json" \
-    '{name:$name, unique_id:$uniq, command_topic:$cmd, state_topic:$stat, payload_on:"ON", payload_off:"OFF", availability_topic:$av, payload_available:"online", payload_not_available:"offline", icon:"mdi:monitor", device:$dev}')"
+    --arg stat "$BASE_TOPIC/state/screen" --arg brightness_cmd "$BASE_TOPIC/set_brightness" --arg brightness_stat "$BASE_TOPIC/state/brightness" \
+    --arg av "$BASE_TOPIC/online/status" --argjson dev "$device_json" --argjson brightness "$brightness" \
+    '{name:$name, unique_id:$uniq, command_topic:$cmd, state_topic:$stat, payload_on:"ON", payload_off:"OFF", availability_topic:$av, payload_available:"online", payload_not_available:"offline", icon:"mdi:monitor", device:$dev}
+    + (if $brightness then {brightness_command_topic:$brightness_cmd,brightness_state_topic:$brightness_stat,brightness_scale:100,supported_color_modes:["brightness"]} else {supported_color_modes:["onoff"]} end)')"
   publish_config light screen "$payload"
+}
+
+capabilities_entity() {
+  local payload
+  payload="$(jq -cn --arg name "Capabilities" --arg uniq "${KIOSK_ID}_capabilities" --arg stat "$BASE_TOPIC/diagnostic/capabilities" --arg av "$BASE_TOPIC/online/status" --argjson dev "$device_json" \
+    '{name:$name,unique_id:$uniq,state_topic:$stat,value_template:"{{ value_json.platform.model | default(\"Unknown\") }}",json_attributes_topic:$stat,availability_topic:$av,payload_available:"online",payload_not_available:"offline",entity_category:"diagnostic",icon:"mdi:list-status",device:$dev}')"
+  publish_config sensor capabilities "$payload"
 }
 
 image_entity() {
@@ -156,6 +169,10 @@ sensor errors "Errors" "diagnostic/errors" "" "mdi:alert-circle" "" "" "diagnost
 sensor heartbeat "Heartbeat" "diagnostic/heartbeat" "" "mdi:heart-pulse" "" "" "diagnostic"
 sensor screenshot "Screenshot" "state/screenshot" "" "mdi:image" "" "" "diagnostic"
 sensor version "Version" "diagnostic/version" "" "mdi:tag" "" "" "diagnostic"
+capabilities_entity
+
+if jq -e '.sensors.illuminance == true' <<<"$capabilities" >/dev/null; then sensor illuminance "Illuminance" "stats/illuminance" "lx" "mdi:brightness-5" "illuminance" "measurement"; else publish_config sensor illuminance ""; fi
+if jq -e '.sensors.battery == true' <<<"$capabilities" >/dev/null; then sensor battery "Battery" "stats/battery" "%" "mdi:battery" "battery" "measurement"; else publish_config sensor battery ""; fi
 
 # Optional: relayed FROM Home Assistant (see mqtt-stats.sh's ha_power_reading).
 # Only advertised once a connection is actually configured, so installs that
@@ -185,7 +202,14 @@ text_entity
 select_entity page_zoom "Page Zoom" "state/page_zoom" "set_zoom" "mdi:magnify-plus" "50%" "75%" "90%" "100%" "110%" "125%" "150%" "175%" "200%"
 select_entity update_channel "Update Channel" "state/update_channel" "set_update_channel" "mdi:source-branch" "Stable" "Beta"
 select_entity power_profile "Power Profile" "state/power_profile" "set_power_profile" "mdi:speedometer" "Strømbesparelse" "Balanceret" "Ydelse"
-number_entity volume "Volume" "state/volume" "set_volume" 0 100 1 "%" "mdi:volume-high"
+mapfile -t profile_names < <("$HOME/kiosk/profile-manager.py" list 2>/dev/null | jq -r '.profiles[].name')
+if (( ${#profile_names[@]} > 1 )); then
+  select_entity kiosk_profile "Kiosk Profile" "state/kiosk_profile" "set_profile" "mdi:view-carousel" "${profile_names[@]}"
+else
+  publish_config select kiosk_profile ""
+fi
+if jq -e '.audio.output == true' <<<"$capabilities" >/dev/null; then number_entity volume "Volume" "state/volume" "set_volume" 0 100 1 "%" "mdi:volume-high"; else publish_config number volume ""; fi
+if jq -e '.audio.microphone == true' <<<"$capabilities" >/dev/null; then number_entity microphone "Microphone" "state/microphone" "set_microphone" 0 100 1 "%" "mdi:microphone"; else publish_config number microphone ""; fi
 
 button reboot "Reboot" "reboot" "mdi:restart-alert"
 button refresh "Refresh" "refresh" "mdi:web-refresh"
@@ -210,6 +234,7 @@ mqtt_pub "$BASE_TOPIC/stats/web_ui_url" "${KIOSK_WEBUI_SCHEME:-http}://$(hostnam
 mqtt_pub "$BASE_TOPIC/state/update_channel" "$(sed 's/.*/\u&/' "$HOME/kiosk/update_channel" 2>/dev/null || echo Stable)" -r
 case "$(powerprofilesctl get 2>/dev/null || true)" in power-saver) mqtt_pub "$BASE_TOPIC/state/power_profile" "Strømbesparelse" -r ;; balanced) mqtt_pub "$BASE_TOPIC/state/power_profile" "Balanceret" -r ;; performance) mqtt_pub "$BASE_TOPIC/state/power_profile" "Ydelse" -r ;; esac
 mqtt_pub "$BASE_TOPIC/diagnostic/version" "$(cat "$HOME/kiosk/version" 2>/dev/null || echo 1.5.0)" -r
+mqtt_pub "$BASE_TOPIC/state/kiosk_profile" "$("$HOME/kiosk/profile-manager.py" status 2>/dev/null || echo Default)" -r
 
 mqtt_pub "$BASE_TOPIC/health/status" "$(cat "$HOME/kiosk/health_state" 2>/dev/null || echo ON)" -r
 mqtt_pub "$BASE_TOPIC/health/detail" "$(cat "$HOME/kiosk/health_detail" 2>/dev/null || echo Pending)" -r

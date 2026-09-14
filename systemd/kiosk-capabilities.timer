@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh Kiosk Warden hardware capabilities
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=6h
+Unit=kiosk-capabilities.service
+
+[Install]
+WantedBy=timers.target

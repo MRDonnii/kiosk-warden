@@ -35,10 +35,11 @@ wait_geometry() {
 }
 
 verify_page() {
-  local page url
+  local page url fallback
   page="$(chrome_page_json)"; [[ -n "$page" ]] || return 1
   url="$(jq -r '.url // ""' <<<"$page")"
-  [[ "$url" == "$KIOSK_URL"* ]] || return 1
+  fallback="${KIOSK_WEBUI_SCHEME:-http}://127.0.0.1:${KIOSK_WEBUI_PORT:-8080}/offline"
+  [[ "$url" == "$KIOSK_URL"* || ( -f "$KIOSK_DIR/fallback_active" && "$url" == "$fallback"* ) ]] || return 1
   "$CHROME_LIFECYCLE" verify >/dev/null
 }
 
@@ -82,7 +83,8 @@ recover_staged() {
 }
 
 wake() {
-  write_state WAKING "wake requested"; touch "$WAKE_FILE"
+  local source="${1:-command}"
+  write_state WAKING "wake requested by $source"; touch "$WAKE_FILE"
   screen_prepare_on || true
   wait_geometry || true
   "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
@@ -111,7 +113,7 @@ status() {
 exec 9>"$LOCK_FILE"
 flock -w 30 9 || { echo 'State transition already in progress' >&2; exit 75; }
 case "${1:-status}" in
-  on|wake) wake ;;
+  on|wake) wake "${2:-command}" ;;
   off|sleep) sleep_screen ;;
   recover) recover_staged "${2:-manual recovery}" && screen_show && write_state ON "recovery verified" ;;
   verify) verify_wake ;;

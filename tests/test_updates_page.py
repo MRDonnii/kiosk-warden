@@ -1,8 +1,14 @@
 import importlib.util
+import http.client
+import json
+import os
 import pathlib
 import socket
+import subprocess
 import sys
 import tempfile
+import threading
+import urllib.parse
 import unittest
 
 
@@ -229,6 +235,75 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("KIOSK_VNC_PORT", vnc)
         self.assertIn("KIOSK_NOVNC_PORT", novnc)
 
+    def test_capabilities_gate_optional_hardware_entities(self):
+        probe = (ROOT / "scripts" / "capability-probe.py").read_text()
+        hardware = (ROOT / "scripts" / "hardware-control.py").read_text()
+        discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
+        for capability in ("brightness", "illuminance", "battery", "microphone", "guardian"):
+            self.assertIn(capability, probe)
+        self.assertIn('brightness_backend', hardware)
+        self.assertIn(".display.brightness // false", discovery)
+        self.assertIn(".audio.microphone == true", discovery)
+        self.assertIn(".sensors.illuminance == true", discovery)
+        self.assertIn(".sensors.battery == true", discovery)
+
+    def test_touch_guardian_consumes_wake_gesture_and_has_bounded_grab(self):
+        guardian = (ROOT / "scripts" / "input-guardian.sh").read_text()
+        service = (ROOT / "systemd" / "kiosk-input-guardian.service").read_text()
+        self.assertIn("evtest --grab", guardian)
+        self.assertIn("timeout 2s", guardian)
+        self.assertIn("warden-state.sh\" on touch", guardian)
+        self.assertIn("KIOSK_TOUCH_RELEASE_DELAY", guardian)
+        self.assertIn("input-guardian.sh", service)
+
+    def test_profiles_offline_fallback_and_wayland_backends_are_shipped(self):
+        profiles = (ROOT / "scripts" / "profile-manager.py").read_text()
+        health = (ROOT / "scripts" / "health-check.sh").read_text()
+        lifecycle = (ROOT / "scripts" / "chrome-lifecycle.py").read_text()
+        backend = (ROOT / "scripts" / "screen-backend.sh").read_text()
+        server = (ROOT / "webui" / "server.py").read_text()
+        self.assertIn("profiles.json", profiles)
+        self.assertIn("active_profile", profiles)
+        self.assertIn("fallback_active", health)
+        self.assertLess(health.index('chrome_running" != "on"'), health.index('[[ -f "$FALLBACK_FILE" ]]'))
+        self.assertIn('navigate_url', lifecycle)
+        self.assertIn('parsed.path == "/offline"', server)
+        self.assertIn("wayland-wlopm", backend)
+        self.assertIn("wayland-kde", backend)
+
+    def test_adaptive_brightness_is_opt_in_and_bounded(self):
+        adaptive = (ROOT / "scripts" / "adaptive-brightness.sh").read_text()
+        example = (ROOT / "kiosk.conf.example").read_text()
+        self.assertIn('KIOSK_AUTO_BRIGHTNESS:-false', adaptive)
+        self.assertIn('KIOSK_BRIGHTNESS_MIN', adaptive)
+        self.assertIn('KIOSK_BRIGHTNESS_MAX', adaptive)
+        self.assertIn('KIOSK_AUTO_BRIGHTNESS=false', example)
+
+    def test_profile_manager_persists_valid_profiles_and_rejects_unsafe_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kiosk = pathlib.Path(tmp) / "kiosk"
+            kiosk.mkdir()
+            script = ROOT / "scripts" / "profile-manager.py"
+            (kiosk / "kiosk.conf").write_text('KIOSK_URL="http://example.test/default"\n')
+            env = dict(os.environ, HOME=tmp)
+            initial = subprocess.run([script, "list"], env=env, capture_output=True, text=True, check=True)
+            self.assertEqual("Default", json.loads(initial.stdout)["profiles"][0]["name"])
+            subprocess.run([script, "add", "Night", "http://example.test/night", "75"], env=env, check=True)
+            profiles = json.loads(subprocess.run([script, "list"], env=env, capture_output=True, text=True, check=True).stdout)
+            self.assertEqual(["Default", "Night"], [item["name"] for item in profiles["profiles"]])
+            unsafe = subprocess.run([script, "add", "Bad", "javascript:alert(1)", "100"], env=env)
+            self.assertEqual(2, unsafe.returncode)
+
+    def test_capability_probe_stdout_is_valid_and_non_mutating(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = dict(os.environ, HOME=tmp)
+            result = subprocess.run([ROOT / "scripts" / "capability-probe.py", "--stdout"], env=env, capture_output=True, text=True, check=True)
+            data = json.loads(result.stdout)
+            self.assertEqual(1, data["schema"])
+            self.assertIn("platform", data)
+            self.assertIn("display", data)
+            self.assertFalse((pathlib.Path(tmp) / "kiosk" / "capabilities.json").exists())
+
     def test_webui_port_validation_rejects_invalid_and_occupied_ports(self):
         fields = {
             "KIOSK_ID": ["test"], "KIOSK_URL": ["http://example.test"],
@@ -253,6 +328,54 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("if (!pollTimer) pollTimer = setInterval(pollStatus, 800);", page)
         self.assertIn("if (status.result === 'running') { ensureStatusPolling(); return; }", page)
         self.assertNotIn("pollTimer = setInterval(pollStatus, 800); setTimeout", page)
+
+    def test_real_login_page_replaces_basic_auth_and_uses_session_cookie(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_dir, original_path = SERVER.KIOSK_DIR, SERVER.CONF_PATH
+            SERVER.KIOSK_DIR = tmp
+            SERVER.CONF_PATH = str(pathlib.Path(tmp) / "kiosk.conf")
+            conf = dict(SERVER.DEFAULTS, WEBUI_USERNAME="warden", WEBUI_PASSWORD_HASH=SERVER.hash_password("correct-horse"))
+            SERVER.write_conf(conf)
+            SERVER._sessions.clear()
+            SERVER._login_failures.clear()
+            server = SERVER.ThreadingHTTPServer(("127.0.0.1", 0), SERVER.Handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                conn = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+                conn.request("GET", "/settings")
+                response = conn.getresponse()
+                self.assertEqual(303, response.status)
+                self.assertTrue(response.getheader("Location").startswith("/login?"))
+                self.assertIsNone(response.getheader("WWW-Authenticate"))
+                response.read()
+
+                body = urllib.parse.urlencode({"username": "warden", "password": "correct-horse", "next": "/settings"})
+                conn.request("POST", "/login", body, {"Content-Type": "application/x-www-form-urlencoded"})
+                response = conn.getresponse()
+                self.assertEqual(303, response.status)
+                cookie = response.getheader("Set-Cookie")
+                self.assertIn("warden_session=", cookie)
+                self.assertIn("HttpOnly", cookie)
+                self.assertIn("SameSite=Strict", cookie)
+                response.read()
+
+                conn.request("GET", "/settings", headers={"Cookie": cookie.split(";", 1)[0]})
+                response = conn.getresponse()
+                self.assertEqual(200, response.status)
+                self.assertIn("Sign out", response.read().decode())
+                conn.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+                SERVER.KIOSK_DIR, SERVER.CONF_PATH = original_dir, original_path
+
+    def test_first_run_creates_username_and_password(self):
+        page = SERVER.render_first_run()
+        self.assertIn('name="username"', page)
+        self.assertIn('autocomplete="new-password"', page)
+        self.assertIn("Opret login", page)
 
     def test_stale_release_metadata_never_offers_a_downgrade(self):
         with tempfile.TemporaryDirectory() as tmp:

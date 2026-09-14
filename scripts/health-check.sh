@@ -8,6 +8,17 @@ DETAIL_FILE="$HOME/kiosk/health_detail"
 ERROR_FILE="$HOME/kiosk/errors"
 LAST_RECOVERY_FILE="$HOME/kiosk/last_recovery"
 FAIL_COUNT_FILE="$HOME/kiosk/blank_fail_count"
+FALLBACK_FILE="$HOME/kiosk/fallback_active"
+
+fallback_url() { printf '%s://127.0.0.1:%s/offline\n' "${KIOSK_WEBUI_SCHEME:-http}" "${KIOSK_WEBUI_PORT:-8080}"; }
+
+activate_fallback() {
+  "$HOME/kiosk/chrome-lifecycle.py" navigate "$(fallback_url)" >/dev/null 2>&1 || return 1
+  date -Iseconds >"$FALLBACK_FILE"
+  return 0
+}
+
+primary_available() { curl -fsS -o /dev/null --max-time 5 "$KIOSK_URL"; }
 
 grey_surface() {
   [[ "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" == "ON" ]] || return 1
@@ -59,7 +70,9 @@ recover() {
   failures=$((failures + 1))
   printf '%s\n' "$failures" > "$FAIL_COUNT_FILE"
 
-  "$HOME/kiosk/warden-state.sh" recover "$reason" >/dev/null 2>&1 || true
+  if ! "$HOME/kiosk/warden-state.sh" recover "$reason" >/dev/null 2>&1; then
+    activate_fallback || true
+  fi
   (( failures >= 2 )) && printf '0\n' > "$FAIL_COUNT_FILE"
 
   date -Iseconds > "$LAST_RECOVERY_FILE"
@@ -76,6 +89,13 @@ while true; do
   if [[ "$chrome_running" != "on" ]]; then
     publish_health "OFF" "Chrome is not running"
     recover "Chrome not running"
+  elif [[ -f "$FALLBACK_FILE" ]]; then
+    if primary_available; then
+      "$HOME/kiosk/chrome-lifecycle.py" navigate "$KIOSK_URL" >/dev/null 2>&1 || true
+      rm -f "$FALLBACK_FILE"; sleep 5
+    else
+      publish_health "OFF" "Fallback active; primary dashboard unavailable"
+    fi
   elif [[ -z "$url" ]]; then
     publish_health "OFF" "Chrome has no debuggable page"
     recover "No Chrome page"
