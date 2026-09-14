@@ -866,8 +866,6 @@ def webui_port_available(port):
 def validate_settings(fields):
     kiosk_id = fields.get("KIOSK_ID", [""])[0].strip()
     base_topic = fields.get("BASE_TOPIC", [""])[0].strip()
-    mqtt_port = fields.get("MQTT_PORT", [""])[0].strip()
-    stats_interval = fields.get("STATS_INTERVAL", [""])[0].strip()
     webui_port = fields.get("KIOSK_WEBUI_PORT", [str(BIND_PORT)])[0].strip()
     vnc_port = fields.get("KIOSK_VNC_PORT", ["5900"])[0].strip()
     novnc_port = fields.get("KIOSK_NOVNC_PORT", ["6080"])[0].strip()
@@ -878,10 +876,6 @@ def validate_settings(fields):
         return "Kiosk-id må kun indeholde a-z, 0-9 og _."
     if not re.fullmatch(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*", base_topic):
         return "Base topic må kun indeholde a-z, 0-9, _ og - i hvert topic-led, adskilt af /"
-    if not mqtt_port.isdigit():
-        return "MQTT port skal være et tal."
-    if not stats_interval.isdigit():
-        return "Stats-interval skal være et tal."
     if not webui_port.isdigit() or not 1024 <= int(webui_port) <= 65535:
         return "Porten skal være mellem 1024 og 65535."
     if int(webui_port) != BIND_PORT and not webui_port_available(int(webui_port)):

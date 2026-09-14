@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.18.28 — 2026-09-14
+
+- Fix System saves incorrectly requiring MQTT port and stats fields that live on the separate Connections page.
+- Add a regression test proving System settings can be saved without any MQTT form fields.
+
 ## v1.18.27 — 2026-09-14
 
 - Run the legacy screenshot cleanup from the freshly installed discovery script, so a kiosk upgrading with an older in-memory updater removes the old script and files on its first update.
