@@ -21,7 +21,12 @@ if "$KIOSK_DIR/warden-state.sh" off; then
 else record dpms_off false "backend failed"; fi
 sleep 1
 before="$(screen_geometry)"
-if "$KIOSK_DIR/warden-state.sh" on; then record wake true verified; else record wake false "state/recovery failed"; fi
+if "$KIOSK_DIR/warden-state.sh" on; then
+  record wake true verified
+else
+  wake_detail="$(jq -r '(.stage // "unknown") + ": " + (.detail // "verification failed")' "$KIOSK_DIR/wake_verification.json" 2>/dev/null || echo 'state/recovery failed')"
+  record wake false "$wake_detail"
+fi
 after="$(screen_geometry)"
 if jq -e --argjson minw "${KIOSK_MIN_WIDTH:-1024}" --argjson minh "${KIOSK_MIN_HEIGHT:-600}" '.width >= $minw and .height >= $minh' <<<"$after" >/dev/null; then
   record resolution true "$(jq -r '"\(.width)x\(.height)@\(.refresh_hz)"' <<<"$after")"

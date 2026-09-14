@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.18.25 — 2026-09-14
+
+- Verify wake from Chrome's rendered surface while the physical panel remains off, avoiding false blank-screen failures on internal laptop displays.
+- Record the exact failed wake stage in diagnostics instead of the generic `state/recovery failed` result.
+- Keep the desktop screenshot as a compatibility fallback for older/non-CDP browser setups.
+
 ## v1.18.24 — 2026-09-14
 
 - **Stops the Chrome restart storm found on Cinnamon kiosks.** GNOME's power
