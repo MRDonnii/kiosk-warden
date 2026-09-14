@@ -1,0 +1,12 @@
+[Unit]
+Description=Kiosk profile cycle and schedule automation
+After=kiosk-chrome.service
+
+[Service]
+Type=simple
+ExecStart=%h/kiosk/profile-scheduler.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

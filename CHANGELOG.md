@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.19.0 — 2026-09-14
+
+- Add persistent automatic profile switching on the Kiosk profile page.
+- Cycle mode rotates through profiles in their displayed order at a configurable 1–1440 minute interval.
+- Schedule mode selects profiles at configured local times each day and restores the correct scheduled profile after a service or machine restart.
+- Manual profile selection resets the cycle timer; removing a profile also removes its schedule entries.
+
 ## v1.18.28 — 2026-09-14
 
 - Fix System saves incorrectly requiring MQTT port and stats fields that live on the separate Connections page.

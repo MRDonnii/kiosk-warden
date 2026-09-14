@@ -442,6 +442,23 @@ class UpdatesPageTest(unittest.TestCase):
             unsafe = subprocess.run([script, "add", "Bad", "javascript:alert(1)", "100"], env=env)
             self.assertEqual(2, unsafe.returncode)
 
+    def test_profiles_support_cycle_and_daily_schedule_automation(self):
+        manager = (ROOT / "scripts" / "profile-manager.py").read_text()
+        scheduler = (ROOT / "scripts" / "profile-scheduler.py").read_text()
+        service = (ROOT / "systemd" / "kiosk-profile-scheduler.service").read_text()
+        control = SERVER.render_control(dict(SERVER.DEFAULTS, KIOSK_NAME="Test", KIOSK_ID="test"))
+        self.assertIn('action="/profile-automation"', control)
+        self.assertIn("Cycle mode", control)
+        self.assertIn("Bestemte tidspunkter", control)
+        self.assertIn("Automatic profile switching", SERVER.localize_html(control, "en"))
+        self.assertIn('action=="automation"', manager)
+        self.assertIn('action=="switch"', manager)
+        self.assertIn('ZOOM_FILE=KIOSK/"page_zoom"', manager)
+        self.assertIn('mode=="cycle"', scheduler)
+        self.assertIn('mode=="schedule"', scheduler)
+        self.assertIn("profile-manager.py\"),\"switch\"", scheduler)
+        self.assertIn("profile-scheduler.py", service)
+
     def test_mqtt_updates_the_active_kiosk_profile(self):
         control = (ROOT / "scripts" / "mqtt-control.sh").read_text()
         discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()

@@ -102,7 +102,8 @@ snapshot_current() {
   owned=(kiosk/version kiosk/.version kiosk/CHANGELOG.md kiosk/icon.svg kiosk/webui)
   for file in "$KIOSK_DIR"/*.sh "$KIOSK_DIR"/*.py; do [[ -f "$file" ]] && owned+=("kiosk/$(basename "$file")"); done
   for file in "$HOME"/.config/systemd/user/kiosk-capabilities.service "$HOME"/.config/systemd/user/kiosk-capabilities.timer \
-    "$HOME"/.config/systemd/user/kiosk-input-guardian.service "$HOME"/.config/systemd/user/kiosk-adaptive-brightness.service; do
+    "$HOME"/.config/systemd/user/kiosk-input-guardian.service "$HOME"/.config/systemd/user/kiosk-adaptive-brightness.service \
+    "$HOME"/.config/systemd/user/kiosk-profile-scheduler.service; do
     [[ -f "$file" ]] && owned+=(".config/systemd/user/$(basename "$file")")
   done
   tar -czf "$archive" -C "$HOME" --ignore-failed-read "${owned[@]}" \
@@ -144,7 +145,7 @@ restart_warden() {
   systemctl --user daemon-reload
   systemctl --user restart kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service || true
   systemctl --user disable --now kiosk-vnc.service kiosk-novnc.service >/dev/null 2>&1 || true
-  systemctl --user enable --now kiosk-capabilities.timer kiosk-input-guardian.service kiosk-adaptive-brightness.service >/dev/null 2>&1 || true
+  systemctl --user enable --now kiosk-capabilities.timer kiosk-input-guardian.service kiosk-adaptive-brightness.service kiosk-profile-scheduler.service >/dev/null 2>&1 || true
   systemctl --user start kiosk-capabilities.service >/dev/null 2>&1 || true
   systemctl --user restart kiosk-chrome.service || true
   systemd-run --user --collect --on-active=2s \
