@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tell the kiosk page whether it should run actively or idle."""
 
+import base64
 import json
 import pathlib
 import sys
@@ -48,11 +49,15 @@ except ImportError:
 
 
 def main() -> int:
-    if len(sys.argv) not in {2, 3} or sys.argv[1] not in {"active", "idle", "status", "verify", "reload", "navigate"}:
-        print(f"Usage: {sys.argv[0]} active|idle|status|verify|reload|navigate URL", file=sys.stderr)
+    if len(sys.argv) not in {2, 3} or sys.argv[1] not in {"active", "idle", "status", "verify", "reload", "navigate", "capture"}:
+        print(f"Usage: {sys.argv[0]} active|idle|status|verify|reload|navigate URL|capture FILE", file=sys.stderr)
         return 2
     state = sys.argv[1]
     navigate_url = sys.argv[2] if state == "navigate" and len(sys.argv) == 3 else ""
+    capture_path = pathlib.Path(sys.argv[2]) if state == "capture" and len(sys.argv) == 3 else None
+    if state == "capture" and capture_path is None:
+        print("Capture needs an output file", file=sys.stderr)
+        return 2
     if state == "navigate" and not navigate_url.startswith(("http://", "https://", "file://")):
         print("Navigation URL must use http, https, or file", file=sys.stderr)
         return 2
@@ -88,9 +93,28 @@ def main() -> int:
             print(json.dumps(error_details))
         return 1
     connection = websocket.create_connection(
-        page["webSocketDebuggerUrl"], timeout=3, suppress_origin=True
+        page["webSocketDebuggerUrl"], timeout=10 if state == "capture" else 3, suppress_origin=True
     )
     try:
+        if state == "capture":
+            connection.send(json.dumps({
+                "id": 1,
+                "method": "Page.captureScreenshot",
+                "params": {"format": "png", "fromSurface": True, "captureBeyondViewport": False},
+            }))
+            while True:
+                result = json.loads(connection.recv())
+                if result.get("id") == 1:
+                    break
+            encoded = result.get("result", {}).get("data", "")
+            if not encoded:
+                print(result.get("error", {}).get("message", "Chrome screenshot failed"), file=sys.stderr)
+                return 1
+            capture_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = capture_path.with_name(capture_path.name + ".tmp")
+            temp_path.write_bytes(base64.b64decode(encoded, validate=True))
+            temp_path.replace(capture_path)
+            return 0
         requested = json.dumps(state)
         destination = json.dumps(navigate_url or _conf_url())
         expression = f"""(() => {{

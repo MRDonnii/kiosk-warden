@@ -9,6 +9,14 @@ LOCK_FILE="$KIOSK_DIR/warden-state.lock"
 CHROME_LIFECYCLE="$KIOSK_DIR/chrome-lifecycle.py"
 SCREEN_FILE="$KIOSK_DIR/screen_state"
 WAKE_FILE="$KIOSK_DIR/wake_pending"
+VERIFY_FILE="$KIOSK_DIR/wake_verification.json"
+
+write_verification() {
+  local ok="$1" stage="$2" detail="${3:-}"
+  jq -cn --argjson ok "$ok" --arg stage "$stage" --arg detail "$detail" --arg at "$(date -Iseconds)" \
+    '{ok:$ok,stage:$stage,detail:$detail,checked_at:$at}' >"$VERIFY_FILE.tmp"
+  mv "$VERIFY_FILE.tmp" "$VERIFY_FILE"
+}
 
 write_state() {
   local state="$1" reason="${2:-}" tmp="$STATE_FILE.tmp"
@@ -46,7 +54,12 @@ verify_page() {
 verify_screenshot() {
   local shot colors
   shot="$(mktemp --suffix=.png)"
-  if command -v import >/dev/null; then
+  # A compositor screenshot can be solid black while an internal laptop panel
+  # is DPMS-off. Chrome's own surface capture verifies the page without showing
+  # an unfinished dashboard and does not depend on the display backend.
+  if "$CHROME_LIFECYCLE" capture "$shot" >/dev/null 2>&1; then
+    :
+  elif command -v import >/dev/null; then
     import -window root "$shot" >/dev/null 2>&1 || { rm -f "$shot"; return 1; }
   elif command -v gnome-screenshot >/dev/null; then
     gnome-screenshot -f "$shot" >/dev/null 2>&1 || { rm -f "$shot"; return 1; }
@@ -62,7 +75,12 @@ verify_screenshot() {
   rm -f "$shot"
 }
 
-verify_wake() { wait_geometry && verify_page && verify_screenshot; }
+verify_wake() {
+  wait_geometry || { write_verification false geometry "display is below the configured minimum"; return 1; }
+  verify_page || { write_verification false page "Chrome URL, document or renderer is not ready"; return 1; }
+  verify_screenshot || { write_verification false screenshot "Chrome surface is blank or could not be captured"; return 1; }
+  write_verification true complete "geometry, page, renderer and Chrome surface verified"
+}
 
 wait_verify_wake() {
   local tries="${KIOSK_WAKE_VERIFY_TRIES:-8}"

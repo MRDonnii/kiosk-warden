@@ -253,6 +253,17 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('Chrome is starting', health)
         self.assertIn('WAKING', health)
 
+    def test_wake_uses_chrome_surface_capture_while_display_is_off(self):
+        lifecycle = (ROOT / "scripts" / "chrome-lifecycle.py").read_text()
+        state = (ROOT / "scripts" / "warden-state.sh").read_text()
+        self_test = (ROOT / "scripts" / "kiosk-self-test.sh").read_text()
+        self.assertIn('"Page.captureScreenshot"', lifecycle)
+        self.assertIn('base64.b64decode(encoded, validate=True)', lifecycle)
+        self.assertIn('CHROME_LIFECYCLE" capture "$shot"', state)
+        self.assertLess(state.index('CHROME_LIFECYCLE" capture "$shot"'), state.index('command -v import'))
+        self.assertIn('wake_verification.json', state)
+        self.assertIn('wake_verification.json', self_test)
+
     def test_installer_supports_a_conflict_checked_webui_port(self):
         installer = (ROOT / "install.sh").read_text()
         service = (ROOT / "systemd" / "kiosk-webui.service").read_text()
