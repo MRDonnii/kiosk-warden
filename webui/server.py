@@ -180,6 +180,11 @@ ENGLISH_TEXT = {
     "MQTT password (tomt = behold nuværende)": "MQTT password (empty = keep current)", "Stats-interval (sekunder)": "Stats interval (seconds)",
     "Gem og genstart": "Save and restart", "Skift password": "Change password", "Nyt password": "New password",
     "Fjernstyring": "Remote Control", "Fuld skærm": "Full screen", "Genopfrisk forbindelse": "Refresh connection",
+    "Automatisk profilskift": "Automatic profile switching", "Aktivér automatisk profilskift": "Enable automatic profile switching",
+    "Automatiktype": "Automation mode", "Bestemte tidspunkter": "Specific times", "Skift hvert antal minutter (cycle mode)": "Switch every number of minutes (cycle mode)",
+    "Tidsplan (én linje pr. skift: TT:MM=Profilnavn)": "Schedule (one switch per line: HH:MM=Profile name)",
+    "Cycle følger profilernes rækkefølge. Tidsplanen gentages hver dag og bruger maskinens lokale tid.": "Cycle follows the profile order. The schedule repeats daily and uses the machine's local time.",
+    "Gem automatisk profilskift": "Save automatic profile switching",
     "Start VNC": "Start VNC", "VNC er startet. Prøv forbindelsen igen.": "VNC has started. Try the connection again.",
     "VNC bruger automatisk dit Kiosk Warden-login. Der skal ikke skrives et separat password.": "VNC uses your Kiosk Warden login automatically. No separate password is required.",
     "VNC-passworden styres automatisk af Kiosk Warden-login og skal ikke indtastes.": "The VNC password is managed automatically from your Kiosk Warden login and does not need to be entered.",
@@ -1448,10 +1453,12 @@ def render_control(conf, message=None, error=None):
         capabilities = {}
     try:
         profile_script = os.path.join(KIOSK_DIR, "profile-manager.py")
-        profiles = json.loads(subprocess.run([profile_script, "list"], capture_output=True, text=True, timeout=3).stdout).get("profiles", [])
+        profile_data = json.loads(subprocess.run([profile_script, "list"], capture_output=True, text=True, timeout=3).stdout)
+        profiles = profile_data.get("profiles", [])
+        profile_automation = profile_data.get("automation", {})
         active_profile = subprocess.run([profile_script, "status"], capture_output=True, text=True, timeout=3).stdout.strip()
     except (OSError, ValueError, subprocess.TimeoutExpired):
-        profiles, active_profile = [], ""
+        profiles, active_profile, profile_automation = [], "", {}
     try:
         touch_output = subprocess.run(["xinput", "list"], capture_output=True, text=True, timeout=3).stdout
         touch_line = next((line.strip() for line in touch_output.splitlines() if "touch" in line.lower()), "")
@@ -1506,6 +1513,16 @@ def render_control(conf, message=None, error=None):
   <div class="row">{''.join(f'<form method="post" action="/profile-switch"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><button class="{"primary" if item.get("name")==active_profile else ""}" type="submit">{esc(item.get("name","Profil"))} · {esc(item.get("zoom",100))}%</button></form><form method="post" action="/profile-remove"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><button type="submit" title="Fjern profil">×</button></form>' for item in profiles)}</div>
   {''.join(f'<form method="post" action="/profile-add"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><label>{esc(item.get("name","Profil"))} URL</label><input type="text" name="url" value="{esc(item.get("url",""))}" required><label>Zoom</label><select name="zoom">{render_zoom_options(item.get("zoom",100))}</select><div class="row"><button type="submit">Opdatér profil</button></div></form>' for item in profiles)}
   <form method="post" action="/profile-add"><label>Nyt profilnavn</label><input type="text" name="name" required maxlength="40"><label>URL</label><input type="text" name="url" required placeholder="https://..."><label>Zoom</label><select name="zoom">{render_zoom_options()}</select><div class="row"><button type="submit">Tilføj profil</button></div></form>
+  <form method="post" action="/profile-automation">
+    <fieldset><legend>Automatisk profilskift</legend>
+      <label><input type="checkbox" name="enabled" value="true"{' checked' if profile_automation.get('enabled') else ''}> Aktivér automatisk profilskift</label>
+      <label>Automatiktype</label><select name="mode"><option value="cycle"{' selected' if profile_automation.get('mode','cycle') == 'cycle' else ''}>Cycle mode</option><option value="schedule"{' selected' if profile_automation.get('mode') == 'schedule' else ''}>Bestemte tidspunkter</option></select>
+      <label>Skift hvert antal minutter (cycle mode)</label><input type="number" name="cycle_minutes" min="1" max="1440" value="{esc(profile_automation.get('cycle_minutes',15))}" required>
+      <label>Tidsplan (én linje pr. skift: TT:MM=Profilnavn)</label><textarea name="schedule" rows="6" placeholder="07:00=Morgen&#10;18:00=Aften">{esc(chr(10).join(f'{entry.get("time","")}={entry.get("profile","")}' for entry in profile_automation.get('schedule',[])))}</textarea>
+      <p class="status">Cycle følger profilernes rækkefølge. Tidsplanen gentages hver dag og bruger maskinens lokale tid.</p>
+      <div class="row"><button class="primary" type="submit">Gem automatisk profilskift</button></div>
+    </fieldset>
+  </form>
 </fieldset>
 <fieldset><legend>Strømprofil</legend>
   <p class="status">Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.</p>
@@ -2154,6 +2171,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send_html(render_control(read_conf(), message=f"Skiftet til profilen {name}."))
             return self._send_html(render_control(conf, error="Profilen kunne ikke aktiveres."))
 
+        if parsed.path == "/profile-automation":
+            enabled = "true" if fields.get("enabled", ["false"])[0] == "true" else "false"
+            mode = fields.get("mode", ["cycle"])[0]
+            minutes = fields.get("cycle_minutes", ["15"])[0].strip()
+            schedule = []
+            try:
+                if not minutes.isdigit() or not 1 <= int(minutes) <= 1440:
+                    raise ValueError
+                for raw in fields.get("schedule", [""])[0].splitlines():
+                    if not raw.strip():
+                        continue
+                    clock, profile = (part.strip() for part in raw.split("=", 1))
+                    if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", clock):
+                        raise ValueError
+                    schedule.append({"time": clock, "profile": profile})
+            except (ValueError, TypeError):
+                return self._send_html(render_control(conf, error="Tidsplanen skal bruge formatet TT:MM=Profilnavn."))
+            result = subprocess.run([os.path.join(KIOSK_DIR, "profile-manager.py"), "automation", enabled, mode, minutes, json.dumps(schedule)], timeout=10)
+            if result.returncode != 0:
+                return self._send_html(render_control(conf, error="Automatisk profilskift kunne ikke gemmes. Kontroller profilnavnene."))
+            run("systemctl", "--user", "restart", "kiosk-profile-scheduler.service")
+            return self._send_html(render_control(read_conf(), message="Automatisk profilskift er gemt."))
+
         if parsed.path == "/vnc/start":
             mark_vnc_activity()
             run("systemctl", "--user", "restart", "kiosk-vnc.service", "kiosk-novnc.service")
@@ -2220,6 +2260,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                 "kiosk-watchdog.service", "kiosk-health.service",
                                 "kiosk-vnc.service", "kiosk-novnc.service",
                                 "kiosk-capabilities.service", "kiosk-input-guardian.service", "kiosk-adaptive-brightness.service",
+                                "kiosk-profile-scheduler.service",
                                 "kiosk-chrome.service", "kiosk-webui.service"],
                                timeout=10, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             elif action == "reboot":

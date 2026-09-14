@@ -280,13 +280,13 @@ systemctl --user daemon-reload
 systemctl --user enable kiosk-chrome.service kiosk-mqtt-stats.service \
   kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-webui.service \
   kiosk-input-guardian.service \
-  kiosk-adaptive-brightness.service kiosk-capabilities.timer
+  kiosk-adaptive-brightness.service kiosk-profile-scheduler.service kiosk-capabilities.timer
 loginctl enable-linger "$USER" || true
 systemctl --user start kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-webui.service || true
 systemctl --user disable --now kiosk-vnc.service kiosk-novnc.service >/dev/null 2>&1 || true
 if [[ -n "${DISPLAY:-}" ]]; then
   systemctl --user start kiosk-capabilities.service kiosk-capabilities.timer kiosk-chrome.service kiosk-watchdog.service kiosk-health.service \
-    kiosk-input-guardian.service kiosk-adaptive-brightness.service || true
+    kiosk-input-guardian.service kiosk-adaptive-brightness.service kiosk-profile-scheduler.service || true
 else
   echo "Ingen grafisk session lige nu — Chrome-relaterede services starter ved næste login/reboot."
 fi

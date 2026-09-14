@@ -57,6 +57,8 @@ Warden cannot pause their internal visual work.
   control.
 - Uses GitHub Releases with selectable Stable/Beta channels, semantic
   versions, release notes, automatic pre-update snapshots, and rollback.
+- Supports automatic profile rotation by interval (Cycle mode) or a repeating
+  daily timetable using the kiosk machine's local time.
 - Provides a dedicated **Updates** page in the web UI with channel selection,
   release details, install controls, snapshot history, rollback, and the full
   changelog.
