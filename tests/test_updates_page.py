@@ -483,6 +483,16 @@ class UpdatesPageTest(unittest.TestCase):
             finally:
                 SERVER.BIND_HOST = original_host
 
+    def test_system_save_does_not_require_fields_from_connections_page(self):
+        fields = {
+            "KIOSK_ID": ["test"], "BASE_TOPIC": ["home/kiosk/test"],
+            "KIOSK_WEBUI_PORT": ["8080"], "KIOSK_VNC_PORT": ["5900"],
+            "KIOSK_NOVNC_PORT": ["6080"], "KIOSK_SCREEN_BACKEND": ["auto"],
+            "KIOSK_BRIGHTNESS_MIN": ["15"], "KIOSK_BRIGHTNESS_MAX": ["100"],
+        }
+        self.assertIsNone(SERVER.validate_settings(fields))
+        self.assertNotIn('name="MQTT_PORT"', SERVER.render_settings(dict(SERVER.DEFAULTS)))
+
     def test_kiosk_url_is_owned_only_by_profiles(self):
         control = SERVER.render_control(dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test"))
         settings = SERVER.render_settings(dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test"))
