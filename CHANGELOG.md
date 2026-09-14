@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.19.1 — 2026-09-14
+
+- Enable the new profile scheduler during the first update even when that update was started by an older updater process.
+- Includes cycle mode, daily scheduled profile switching, and the manual profile-switch repair from v1.19.0.
+
 ## v1.19.0 — 2026-09-14
 
 - Add persistent automatic profile switching on the Kiosk profile page.

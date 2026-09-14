@@ -458,6 +458,8 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('mode=="schedule"', scheduler)
         self.assertIn("profile-manager.py\"),\"switch\"", scheduler)
         self.assertIn("profile-scheduler.py", service)
+        discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
+        self.assertIn("enable --now kiosk-profile-scheduler.service", discovery)
 
     def test_mqtt_updates_the_active_kiosk_profile(self):
         control = (ROOT / "scripts" / "mqtt-control.sh").read_text()
