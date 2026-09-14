@@ -333,6 +333,50 @@ def vnc_password_from_conf(conf):
     return password[:8]
 
 
+VNC_PAGE_IDLE_STOP = 3.0
+_vnc_last_seen = 0.0
+_vnc_watchdog_lock = threading.Lock()
+
+
+def vnc_is_active():
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "is-active", "--quiet",
+             "kiosk-vnc.service", "kiosk-novnc.service"],
+            capture_output=True, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def mark_vnc_activity():
+    global _vnc_last_seen
+    with _vnc_watchdog_lock:
+        _vnc_last_seen = time.monotonic()
+
+
+def stop_vnc_services():
+    global _vnc_last_seen
+    run("systemctl", "--user", "stop", "kiosk-novnc.service", "kiosk-vnc.service")
+    with _vnc_watchdog_lock:
+        _vnc_last_seen = 0.0
+
+
+def vnc_page_watchdog():
+    while True:
+        time.sleep(1)
+        if not vnc_is_active():
+            continue
+        with _vnc_watchdog_lock:
+            last_seen = _vnc_last_seen
+        if not last_seen or time.monotonic() - last_seen > VNC_PAGE_IDLE_STOP:
+            stop_vnc_services()
+
+
+threading.Thread(target=vnc_page_watchdog, name="vnc-page-watchdog", daemon=True).start()
+
+
 def run(*args, timeout=15):
     try:
         subprocess.run(list(args), timeout=timeout, check=False,
@@ -1604,7 +1648,7 @@ def render_port_change(conf, new_port):
     return body
 
 
-def render_vnc(conf, message=None, error=None):
+def render_vnc(conf, message=None, error=None, active=None):
     body = PAGE_HEAD.format(title_suffix=" — Fjernstyring")
     body += f"""
 <div class="header-row">
@@ -1614,21 +1658,23 @@ def render_vnc(conf, message=None, error=None):
   </div>
 </div>
 """
+    active = vnc_is_active() if active is None else active
     body += render_nav("/vnc")
     body += render_message(message, error)
-    body += f"""
+    if active:
+        body += f"""
 <div class="row">
   <button class="primary" type="button" onclick="document.getElementById('vncframe').requestFullscreen()">Fuld skærm</button>
   <button type="button" onclick="reloadFrame()">Genopfrisk forbindelse</button>
-  <form method="post" action="/vnc/start" style="display:inline">
-    <button type="submit">Start VNC</button>
+  <form method="post" action="/vnc/stop" style="display:inline">
+    <button type="submit">Stop VNC</button>
   </form>
 </div>
 <div style="margin-top:.8rem; border-radius:14px; overflow:hidden; border:1px solid rgba(128,128,128,.3);">
   <iframe id="vncframe" allowfullscreen
     style="width:100%; height:calc(100vh - 190px); min-height:420px; border:0; display:block; background:#000;"></iframe>
 </div>
-<div class="status">VNC bruger automatisk dit Kiosk Warden-login. Der skal ikke skrives et separat password.</div>
+<div class="status">VNC er aktiv og lukker automatisk, når siden lukkes.</div>
 <script>
   const vncPassword = "{esc(vnc_password_from_conf(conf))}";
   function vncUrl() {{
@@ -1639,8 +1685,27 @@ def render_vnc(conf, message=None, error=None):
   function reloadFrame() {{
     document.getElementById('vncframe').src = vncUrl();
   }}
+  function heartbeat() {{
+    fetch('/vnc/heartbeat', {{method: 'POST', cache: 'no-store', keepalive: true}});
+  }}
+  heartbeat();
+  setInterval(heartbeat, 1000);
+  window.addEventListener('pagehide', () => navigator.sendBeacon('/vnc/stop'));
+  window.addEventListener('beforeunload', () => navigator.sendBeacon('/vnc/stop'));
   reloadFrame();
 </script>
+"""
+    else:
+        body += """
+<div class="row">
+  <form method="post" action="/vnc/start" style="display:inline">
+    <button class="primary" type="submit">Start VNC</button>
+  </form>
+</div>
+<div style="margin-top:.8rem; border-radius:14px; min-height:420px; display:grid; place-items:center;
+  border:1px solid rgba(128,128,128,.3); background:rgba(128,128,128,.06);">
+  <div class="status">VNC er slukket. Tryk på Start VNC for at forbinde.</div>
+</div>
 """
     body += PAGE_TAIL
     return body
@@ -1990,7 +2055,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/vnc/start":
             run("systemctl", "--user", "restart", "kiosk-vnc.service", "kiosk-novnc.service")
+            mark_vnc_activity()
             return self._redirect("/vnc")
+
+        if parsed.path == "/vnc/stop":
+            stop_vnc_services()
+            return self._redirect("/vnc")
+
+        if parsed.path == "/vnc/heartbeat":
+            mark_vnc_activity()
+            return self._send_json({"active": vnc_is_active()})
 
         if parsed.path == "/rollback":
             version = fields.get("version", [""])[0]

@@ -123,7 +123,8 @@ ensure_system_dependencies() {
 
 restart_warden() {
   systemctl --user daemon-reload
-  systemctl --user restart kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-vnc.service kiosk-novnc.service || true
+  systemctl --user restart kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service || true
+  systemctl --user disable --now kiosk-vnc.service kiosk-novnc.service >/dev/null 2>&1 || true
   systemctl --user enable --now kiosk-capabilities.timer kiosk-input-guardian.service kiosk-adaptive-brightness.service >/dev/null 2>&1 || true
   systemctl --user start kiosk-capabilities.service >/dev/null 2>&1 || true
   systemctl --user restart kiosk-chrome.service || true
