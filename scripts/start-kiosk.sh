@@ -22,9 +22,10 @@ mkdir -p "$PROFILE_DIR"
 # never actually powers down, risking burn-in overnight. kiosk-warden owns
 # all screen scheduling via MQTT/HA already, so this GNOME daemon is pure
 # interference here. No-op (and harmless) on non-GNOME kiosks.
-if systemctl --user list-unit-files org.gnome.SettingsDaemon.Power.service >/dev/null 2>&1; then
-  systemctl --user mask org.gnome.SettingsDaemon.Power.service >/dev/null 2>&1 || true
-  systemctl --user kill org.gnome.SettingsDaemon.Power.service >/dev/null 2>&1 || true
+if [[ ":${XDG_CURRENT_DESKTOP:-}:" == *":GNOME:"* ]] && \
+   systemctl --user list-unit-files org.gnome.SettingsDaemon.Power.service --no-legend 2>/dev/null | grep -q '^org\.gnome\.SettingsDaemon\.Power\.service'; then
+  timeout 3s systemctl --user mask org.gnome.SettingsDaemon.Power.service >/dev/null 2>&1 || true
+  timeout 3s systemctl --user kill org.gnome.SettingsDaemon.Power.service >/dev/null 2>&1 || true
 fi
 
 mode="$(cat "$MODE_FILE" 2>/dev/null || echo Kiosk)"
