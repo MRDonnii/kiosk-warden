@@ -94,10 +94,8 @@ set_power_profile() {
 
 restart_warden() {
   systemd-run --user --collect --on-active=1s --unit="kiosk-warden-restart-$(date +%s)" \
-    /usr/bin/systemctl --user restart kiosk-mqtt-stats.service kiosk-mqtt-control.service \
-    kiosk-watchdog.service kiosk-health.service kiosk-vnc.service kiosk-novnc.service \
-    kiosk-capabilities.service kiosk-input-guardian.service kiosk-adaptive-brightness.service \
-    kiosk-chrome.service kiosk-webui.service >/dev/null 2>&1 || true
+    /bin/sh -c 'systemctl --user restart kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-capabilities.service kiosk-input-guardian.service kiosk-adaptive-brightness.service kiosk-chrome.service kiosk-webui.service; systemctl --user disable --now kiosk-vnc.service kiosk-novnc.service' \
+    >/dev/null 2>&1 || true
 }
 
 set_conf_value() {

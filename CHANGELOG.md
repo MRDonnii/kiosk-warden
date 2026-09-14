@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.18.11 — 2026-09-14
+
+- **On-demand VNC sessions.** VNC and noVNC are now disabled by default and
+  only start when you press **Start VNC**. The same button becomes **Stop VNC**
+  while the session is active.
+- **VNC closes with the page.** The active page sends a close beacon on
+  `pagehide`/`beforeunload` and a short heartbeat timeout stops the services
+  if the close beacon is missed.
+
 ## v1.18.10 — 2026-09-14
 
 - **Fix black, unresponsive VNC iframe on Remote Control.** The page's inline

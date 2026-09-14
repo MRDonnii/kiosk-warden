@@ -43,7 +43,8 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
   terminal needed after the first install.
 - Bundles browser-based **VNC remote control** (x11vnc + noVNC): click
   directly on the kiosk's screen from the web UI, including a fullscreen
-  toggle.
+  toggle. VNC only runs after you press **Start VNC**, and it stops when the
+  remote-control page is closed.
 - Ships its own icon (`icon.svg`) — used as the browser favicon and as the
   icon for both desktop shortcuts.
 - Uses monitor DPMS for reliable presence-driven sleep while Smartdash remains
@@ -191,9 +192,15 @@ the browser with `noVNC` + `websockify`:
 The VNC password is managed automatically from your Kiosk Warden login. The
 WebUI embeds noVNC with that password, so you do not have to enter a separate
 VNC password. VNC can connect while the physical display is OFF because
-`x11vnc` keeps polling the framebuffer with DPMS handling disabled. Services:
-`kiosk-vnc.service` (x11vnc) and `kiosk-novnc.service` (the web bridge on port
-6080). Changing the WebUI login password also updates the VNC password.
+`x11vnc` keeps polling the framebuffer with DPMS handling disabled.
+
+VNC is disabled by default. The Remote Control page starts both services only
+when you press **Start VNC**, switches the same button to **Stop VNC** while
+they are active, and sends a close beacon when the tab leaves or closes. A
+short heartbeat timeout also stops the services if that beacon is missed.
+Services: `kiosk-vnc.service` (x11vnc) and `kiosk-novnc.service` (the web
+bridge on port 6080). Changing the WebUI login password also updates the VNC
+password.
 
 ## Updating
 

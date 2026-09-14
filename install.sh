@@ -289,15 +289,16 @@ cp "$SRC_DIR"/systemd/*.service "$SRC_DIR"/systemd/*.timer "$HOME/.config/system
 systemctl --user daemon-reload
 systemctl --user enable kiosk-chrome.service kiosk-mqtt-stats.service \
   kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-webui.service \
-  kiosk-vnc.service kiosk-novnc.service kiosk-input-guardian.service \
+  kiosk-input-guardian.service \
   kiosk-adaptive-brightness.service kiosk-capabilities.timer
 loginctl enable-linger "$USER" || true
 systemctl --user start kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-webui.service || true
+systemctl --user disable --now kiosk-vnc.service kiosk-novnc.service >/dev/null 2>&1 || true
 if [[ -n "${DISPLAY:-}" ]]; then
   systemctl --user start kiosk-capabilities.service kiosk-capabilities.timer kiosk-chrome.service kiosk-watchdog.service kiosk-health.service \
-    kiosk-vnc.service kiosk-novnc.service kiosk-input-guardian.service kiosk-adaptive-brightness.service || true
+    kiosk-input-guardian.service kiosk-adaptive-brightness.service || true
 else
-  echo "Ingen grafisk session lige nu — Chrome/VNC-relaterede services starter ved næste login/reboot."
+  echo "Ingen grafisk session lige nu — Chrome-relaterede services starter ved næste login/reboot."
 fi
 
 if command -v ufw >/dev/null 2>&1 && sudo ufw status | grep -q "Status: active"; then
