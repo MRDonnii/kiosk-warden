@@ -190,9 +190,10 @@ the browser with `noVNC` + `websockify`:
 
 The VNC password is managed automatically from your Kiosk Warden login. The
 WebUI embeds noVNC with that password, so you do not have to enter a separate
-VNC password. Services: `kiosk-vnc.service` (x11vnc) and
-`kiosk-novnc.service` (the web bridge on port 6080). Changing the WebUI login
-password also updates the VNC password.
+VNC password. VNC can connect while the physical display is OFF because
+`x11vnc` keeps polling the framebuffer with DPMS handling disabled. Services:
+`kiosk-vnc.service` (x11vnc) and `kiosk-novnc.service` (the web bridge on port
+6080). Changing the WebUI login password also updates the VNC password.
 
 ## Updating
 

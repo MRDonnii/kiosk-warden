@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.18.7 — 2026-09-14
+
+- **VNC works with the screen OFF.** x11vnc keeps the X11 framebuffer pollable
+  while the monitor is powered down, so remote control no longer requires the
+  kiosk display to wake first.
+- **Start VNC no longer changes kiosk state.** The explicit Start VNC action
+  only restarts the VNC and browser bridge services; it leaves the kiosk's
+  current screen state untouched.
+
 ## v1.18.6 — 2026-09-14
 
 - **Automatic VNC authentication.** noVNC now derives its access password from
@@ -21,8 +30,6 @@
 - **Profiles are the only display source.** The remaining URL field is removed
   from Settings. Control now shows the active profile's URL, and every profile
   has an editable URL and zoom.
-- **Reliable VNC start.** Starting VNC now wakes the kiosk display before
-  reconnecting, so a sleeping screen no longer appears black.
 - **Dedicated MQTT page.** Broker address, credentials, discovery and stats
   timing now live on a separate MQTT tab instead of the general Settings page.
 
