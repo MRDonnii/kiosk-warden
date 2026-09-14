@@ -10,6 +10,11 @@ if [[ -d "$HOME/kiosk/screenshots" ]]; then
   find "$HOME/kiosk/screenshots" -maxdepth 1 -type f -delete
   rmdir "$HOME/kiosk/screenshots" 2>/dev/null || true
 fi
+# Services introduced after the updater itself was installed must be enabled
+# from a freshly copied script during the first upgrade.
+if [[ -f "$HOME/.config/systemd/user/kiosk-profile-scheduler.service" ]]; then
+  systemctl --user enable --now kiosk-profile-scheduler.service >/dev/null 2>&1 || true
+fi
 
 hardware_model="$(cat /sys/devices/virtual/dmi/id/product_name 2>/dev/null || tr -d '\0' </proc/device-tree/model 2>/dev/null || uname -m)"
 os_name="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Linux}")"
