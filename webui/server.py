@@ -1990,7 +1990,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/vnc/start":
             run("systemctl", "--user", "restart", "kiosk-vnc.service", "kiosk-novnc.service")
-            return self._send_html(render_vnc(conf, message="VNC er startet. Prøv forbindelsen igen."))
+            return self._redirect("/vnc")
 
         if parsed.path == "/rollback":
             version = fields.get("version", [""])[0]
