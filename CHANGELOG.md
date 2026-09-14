@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.19.2 — 2026-09-14
+
+- Let administrators choose exactly which profiles participate in Cycle mode.
+- Require at least two selected profiles when enabled, preserve displayed profile order, and remove deleted profiles from the cycle selection automatically.
+
 ## v1.19.1 — 2026-09-14
 
 - Enable the new profile scheduler during the first update even when that update was started by an older updater process.

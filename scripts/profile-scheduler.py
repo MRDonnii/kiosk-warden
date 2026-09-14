@@ -15,14 +15,16 @@ def switch(name):
 
 def tick(now=None):
     now=now or time.time(); data=read_json(PROFILES,{"profiles":[]}); profiles=data.get("profiles",[]); automation=data.get("automation",{})
-    if not automation.get("enabled") or len(profiles)<2: return
+    if not automation.get("enabled"): return
     mode=automation.get("mode","cycle")
     if mode=="cycle":
+        selected=set(automation.get("cycle_profiles",[])); cycle=[x for x in profiles if x["name"] in selected]
+        if len(cycle)<2: return
         state=read_json(STATE,{}); last=int(state.get("last_switch",0) or 0); interval=max(1,int(automation.get("cycle_minutes",15)))*60
         if not last: STATE.write_text(json.dumps({"last_switch":int(now)})+"\n"); return
         if now-last>=interval:
-            active=ACTIVE.read_text().strip() if ACTIVE.exists() else profiles[0]["name"]
-            names=[x["name"] for x in profiles]; switch(names[(names.index(active)+1)%len(names)] if active in names else names[0])
+            active=ACTIVE.read_text().strip() if ACTIVE.exists() else cycle[0]["name"]
+            names=[x["name"] for x in cycle]; switch(names[(names.index(active)+1)%len(names)] if active in names else names[0])
     elif mode=="schedule":
         entries=automation.get("schedule",[])
         if not entries: return

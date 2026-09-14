@@ -185,6 +185,7 @@ ENGLISH_TEXT = {
     "Tidsplan (én linje pr. skift: TT:MM=Profilnavn)": "Schedule (one switch per line: HH:MM=Profile name)",
     "Cycle følger profilernes rækkefølge. Tidsplanen gentages hver dag og bruger maskinens lokale tid.": "Cycle follows the profile order. The schedule repeats daily and uses the machine's local time.",
     "Gem automatisk profilskift": "Save automatic profile switching",
+    "Profiler i cycle mode": "Profiles in cycle mode", "Vælg mindst to profiler, når cycle mode er aktiv.": "Select at least two profiles when cycle mode is enabled.",
     "Start VNC": "Start VNC", "VNC er startet. Prøv forbindelsen igen.": "VNC has started. Try the connection again.",
     "VNC bruger automatisk dit Kiosk Warden-login. Der skal ikke skrives et separat password.": "VNC uses your Kiosk Warden login automatically. No separate password is required.",
     "VNC-passworden styres automatisk af Kiosk Warden-login og skal ikke indtastes.": "The VNC password is managed automatically from your Kiosk Warden login and does not need to be entered.",
@@ -1518,6 +1519,8 @@ def render_control(conf, message=None, error=None):
       <label><input type="checkbox" name="enabled" value="true"{' checked' if profile_automation.get('enabled') else ''}> Aktivér automatisk profilskift</label>
       <label>Automatiktype</label><select name="mode"><option value="cycle"{' selected' if profile_automation.get('mode','cycle') == 'cycle' else ''}>Cycle mode</option><option value="schedule"{' selected' if profile_automation.get('mode') == 'schedule' else ''}>Bestemte tidspunkter</option></select>
       <label>Skift hvert antal minutter (cycle mode)</label><input type="number" name="cycle_minutes" min="1" max="1440" value="{esc(profile_automation.get('cycle_minutes',15))}" required>
+      <label>Profiler i cycle mode</label><div class="choice-grid">{''.join(f'<label><input type="checkbox" name="cycle_profile" value="{esc(item.get("name",""))}"{" checked" if item.get("name") in profile_automation.get("cycle_profiles",[]) else ""}> {esc(item.get("name","Profil"))}</label>' for item in profiles)}</div>
+      <p class="status">Vælg mindst to profiler, når cycle mode er aktiv.</p>
       <label>Tidsplan (én linje pr. skift: TT:MM=Profilnavn)</label><textarea name="schedule" rows="6" placeholder="07:00=Morgen&#10;18:00=Aften">{esc(chr(10).join(f'{entry.get("time","")}={entry.get("profile","")}' for entry in profile_automation.get('schedule',[])))}</textarea>
       <p class="status">Cycle følger profilernes rækkefølge. Tidsplanen gentages hver dag og bruger maskinens lokale tid.</p>
       <div class="row"><button class="primary" type="submit">Gem automatisk profilskift</button></div>
@@ -2175,6 +2178,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             enabled = "true" if fields.get("enabled", ["false"])[0] == "true" else "false"
             mode = fields.get("mode", ["cycle"])[0]
             minutes = fields.get("cycle_minutes", ["15"])[0].strip()
+            cycle_profiles = [name.strip() for name in fields.get("cycle_profile", []) if name.strip()]
             schedule = []
             try:
                 if not minutes.isdigit() or not 1 <= int(minutes) <= 1440:
@@ -2188,7 +2192,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     schedule.append({"time": clock, "profile": profile})
             except (ValueError, TypeError):
                 return self._send_html(render_control(conf, error="Tidsplanen skal bruge formatet TT:MM=Profilnavn."))
-            result = subprocess.run([os.path.join(KIOSK_DIR, "profile-manager.py"), "automation", enabled, mode, minutes, json.dumps(schedule)], timeout=10)
+            result = subprocess.run([os.path.join(KIOSK_DIR, "profile-manager.py"), "automation", enabled, mode, minutes, json.dumps(cycle_profiles), json.dumps(schedule)], timeout=10)
             if result.returncode != 0:
                 return self._send_html(render_control(conf, error="Automatisk profilskift kunne ikke gemmes. Kontroller profilnavnene."))
             run("systemctl", "--user", "restart", "kiosk-profile-scheduler.service")
