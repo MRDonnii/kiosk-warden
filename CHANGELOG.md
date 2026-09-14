@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.18.22 — 2026-09-14
+
+- **Post-install checks can no longer downgrade a kiosk to an old snapshot.**
+  Release acceptance is limited to the installed version, the WebUI service,
+  and its installed server file. Hardware, MQTT, port, renderer, and display
+  differences remain diagnostics instead of rollback conditions.
+- **A failed post-check is explicit and non-destructive.** The update reaches
+  100 percent, keeps the newly installed release, and records the exact failed
+  essential check for troubleshooting. Rollback remains available manually.
+- **The persistent 30-day signed login session remains included.** Installing
+  this release directly also upgrades kiosks that were repeatedly returned to
+  v1.18.12 before the login fix could remain installed.
+
 ## v1.18.21 — 2026-09-14
 
 - **Updates no longer force the physical screen through OFF→ON at 95%.** The
