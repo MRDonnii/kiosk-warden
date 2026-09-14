@@ -320,7 +320,7 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('action="/vnc/start"', vnc_off)
         self.assertIn("/vnc/heartbeat", vnc_page)
         self.assertIn("/vnc/status", vnc_page)
-        self.assertIn("navigator.sendBeacon('/vnc/stop')", vnc_page)
+        self.assertIn("navigator.sendBeacon('/vnc/stop?csrf=' + csrf)", vnc_page)
         self.assertIn("VNC er slukket", vnc_off)
         self.assertNotIn("#password=", vnc_off)
 
@@ -482,13 +482,39 @@ class UpdatesPageTest(unittest.TestCase):
                 conn.request("GET", "/settings", headers={"Cookie": cookie.split(";", 1)[0]})
                 response = conn.getresponse()
                 self.assertEqual(200, response.status)
-                self.assertIn("Sign out", response.read().decode())
+                self.assertEqual("nosniff", response.getheader("X-Content-Type-Options"))
+                self.assertEqual("SAMEORIGIN", response.getheader("X-Frame-Options"))
+                settings_html = response.read().decode()
+                self.assertIn("Sign out", settings_html)
+                csrf = __import__("re").search(r'<meta name="warden-csrf" content="([a-f0-9]+)">', settings_html).group(1)
+                self.assertIn('name="csrf_token"', settings_html)
+
+                session_cookie = cookie.split(";", 1)[0]
+                conn.request("POST", "/vnc/heartbeat", "", {"Cookie": session_cookie})
+                response = conn.getresponse()
+                self.assertEqual(403, response.status)
+                response.read()
+
+                conn.request("POST", "/vnc/heartbeat", "", {"Cookie": session_cookie, "X-Warden-CSRF": csrf})
+                response = conn.getresponse()
+                self.assertEqual(200, response.status)
+                response.read()
                 conn.close()
             finally:
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=5)
                 SERVER.KIOSK_DIR, SERVER.CONF_PATH = original_dir, original_path
+
+    def test_connection_checks_and_post_security_are_shipped(self):
+        connections = SERVER.render_mqtt(dict(SERVER.DEFAULTS, KIOSK_NAME="Test", KIOSK_ID="test"))
+        source = (ROOT / "webui" / "server.py").read_text()
+        self.assertIn('action="/test-mqtt"', connections)
+        self.assertIn('action="/test-ha"', connections)
+        self.assertIn('parsed.path == "/test-mqtt"', source)
+        self.assertIn('parsed.path == "/test-ha"', source)
+        self.assertIn("MAX_POST_BYTES", source)
+        self.assertIn("Content-Security-Policy", source)
 
     def test_first_run_creates_username_and_password(self):
         page = SERVER.render_first_run()

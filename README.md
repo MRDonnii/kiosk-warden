@@ -175,6 +175,9 @@ From the web UI you can:
 - Switch the machine between **Strømbesparelse**, **Balanceret** and **Ydelse**;
   the same power-profile control is published to Home Assistant over MQTT.
 - Change the web UI password.
+- Test the configured MQTT and optional Home Assistant connections directly
+  from **Connections**. Authenticated write actions are protected by a
+  session-bound CSRF token and oversized requests are rejected.
 
 If you'd rather keep it off the network entirely, set `KIOSK_WEBUI_HOST=127.0.0.1`
 as an `Environment=` line in `~/.config/systemd/user/kiosk-webui.service`

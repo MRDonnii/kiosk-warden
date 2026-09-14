@@ -232,11 +232,17 @@ ENGLISH_TEXT = {
     "Kunne ikke forbinde": "Could not connect",
     "Forbindelse OK.": "Connection OK.",
     "Home Assistant-forbindelse gemt.": "Home Assistant connection saved.",
+    "Test MQTT-forbindelse": "Test MQTT connection", "Test Home Assistant-forbindelse": "Test Home Assistant connection",
+    "MQTT-forbindelsen virker.": "The MQTT connection works.", "MQTT-forbindelsen fejlede": "The MQTT connection failed",
+    "Home Assistant-forbindelsen virker.": "The Home Assistant connection works.",
+    "Sikkerhedskontrollen afviste forespørgslen. Genindlæs siden og prøv igen.": "The security check rejected the request. Reload the page and try again.",
+    "Forespørgslen er for stor.": "The request is too large.",
 }
 
 SESSION_COOKIE = "warden_session"
 SESSION_TTL = 12 * 60 * 60
 REMEMBER_TTL = 30 * 24 * 60 * 60
+MAX_POST_BYTES = 1024 * 1024
 _session_lock = threading.Lock()
 _login_failures = {}
 
@@ -247,6 +253,16 @@ def localize_html(body, language):
     for source in sorted(ENGLISH_TEXT, key=len, reverse=True):
         body = body.replace(source, ENGLISH_TEXT[source])
     return body
+
+
+def csrf_token(session_token, conf):
+    return hmac.new(_session_key(conf), ("csrf:" + session_token).encode(), hashlib.sha256).hexdigest()
+
+
+def inject_csrf(body, token):
+    hidden = f'<input type="hidden" name="csrf_token" value="{esc(token)}">'
+    body = re.sub(r'(<form\b[^>]*\bmethod="post"[^>]*>)', lambda match: match.group(1) + hidden, body, flags=re.I)
+    return body.replace("</head>", f'<meta name="warden-csrf" content="{esc(token)}">\n</head>', 1)
 
 
 def read_conf():
@@ -436,6 +452,24 @@ def run_bg(*args):
         subprocess.Popen(list(args), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass
+
+
+def test_mqtt_connection(conf):
+    command = [
+        "mosquitto_pub", "-h", conf.get("MQTT_HOST", ""),
+        "-p", str(conf.get("MQTT_PORT", "1883")),
+        "-t", f'{conf.get("BASE_TOPIC", "home/kiosk/kiosk")}/diagnostics/connection_test',
+        "-m", json.dumps({"source": "kiosk-warden", "timestamp": int(time.time())}),
+    ]
+    if conf.get("MQTT_USER"):
+        command.extend(["-u", conf["MQTT_USER"]])
+    if conf.get("MQTT_PASS"):
+        command.extend(["-P", conf["MQTT_PASS"]])
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=8)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)
+    return result.returncode == 0, (result.stderr or result.stdout).strip()
 
 
 def current_version():
@@ -1287,7 +1321,7 @@ async function pollStatus() {
 }
 document.getElementById('checkUpdates').addEventListener('click', async () => {
   progress.style.display = 'block'; progressText.textContent = 'Tjekker GitHub Releases…'; fill.style.width = '10%'; progressPercent.textContent = '10%';
-  try { const response = await fetch('/api/update-check', {method:'POST'}); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Update-tjek fejlede'); location.reload(); }
+  try { const response = await fetch('/api/update-check', {method:'POST',headers:{'X-Warden-CSRF':document.querySelector('meta[name="warden-csrf"]').content}}); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Update-tjek fejlede'); location.reload(); }
   catch (error) { progressText.textContent = error.message; fill.style.width = '100%'; progressPercent.textContent = 'Fejl'; }
 });
 document.getElementById('installUpdate').closest('form').addEventListener('submit', event => {
@@ -1298,7 +1332,7 @@ document.getElementById('installUpdate').closest('form').addEventListener('submi
 document.getElementById('restartLater').addEventListener('click', async () => { const response = await fetch('/api/update-status', {cache:'no-store'}); const status = await response.json(); restartChoice.style.display = 'none'; localStorage.setItem('kiosk-restart-later', status.updated_at || '1'); });
 function restartCountdown(action, button, label) {
   let seconds = 5; button.disabled = true; label.textContent = `Genstarter om ${seconds} sekunder…`;
-  const timer = setInterval(async () => { seconds -= 1; label.textContent = `Genstarter om ${seconds} sekunder…`; if (seconds <= 0) { clearInterval(timer); await fetch('/action', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'do=' + encodeURIComponent(action)}); } }, 1000);
+  const timer = setInterval(async () => { seconds -= 1; label.textContent = `Genstarter om ${seconds} sekunder…`; if (seconds <= 0) { clearInterval(timer); await fetch('/action', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Warden-CSRF':document.querySelector('meta[name="warden-csrf"]').content},body:'do=' + encodeURIComponent(action)}); } }, 1000);
 }
 document.getElementById('restartWarden').addEventListener('click', event => restartCountdown('restart_warden', event.currentTarget, document.getElementById('restartCountdown')));
 document.getElementById('restartMachine').addEventListener('click', event => restartCountdown('reboot', event.currentTarget, document.getElementById('restartCountdown')));
@@ -1527,7 +1561,7 @@ document.getElementById('refreshSmartdash').addEventListener('click', async () =
 }});
 document.getElementById('restartWardenManual').addEventListener('click', event => {{
   let seconds = 5; const button = event.currentTarget; const label = document.getElementById('manualRestartCountdown'); button.disabled = true; label.textContent = `Genstarter om ${{seconds}} sekunder…`;
-  const timer = setInterval(async () => {{ seconds -= 1; label.textContent = `Genstarter om ${{seconds}} sekunder…`; if (seconds <= 0) {{ clearInterval(timer); await fetch('/action', {{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'do=restart_warden'}}); label.textContent = 'Kiosk Warden genstarter…'; }} }}, 1000);
+  const timer = setInterval(async () => {{ seconds -= 1; label.textContent = `Genstarter om ${{seconds}} sekunder…`; if (seconds <= 0) {{ clearInterval(timer); await fetch('/action', {{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Warden-CSRF':document.querySelector('meta[name="warden-csrf"]').content}},body:'do=restart_warden'}}); label.textContent = 'Kiosk Warden genstarter…'; }} }}, 1000);
 }});
 </script>"""
     return body + PAGE_TAIL
@@ -1595,6 +1629,7 @@ def render_ha_fieldset(conf):
     <div class="row"><button type="submit">Gem og test forbindelse</button></div>
   </fieldset>
 </form>
+<form method="post" action="/test-ha"><div class="row"><button type="submit">Test Home Assistant-forbindelse</button></div></form>
 """
 
 
@@ -1626,6 +1661,7 @@ def render_mqtt(conf, message=None, error=None):
     <div class="grid"><div class="tile"><span>Base topic</span><strong>{esc(topic)}</strong></div><div class="tile"><span>Kiosk-id</span><strong>{esc(conf.get('KIOSK_ID', 'kiosk'))}</strong></div></div>
   </fieldset>
 </form>
+<form method="post" action="/test-mqtt"><div class="row"><button type="submit">Test MQTT-forbindelse</button></div></form>
 {render_ha_fieldset(conf)}
 </div>
 """
@@ -1751,12 +1787,13 @@ def render_vnc(conf, message=None, error=None, active=None):
     reloadFrame();
   }}
   function heartbeat() {{
-    fetch('/vnc/heartbeat', {{method: 'POST', cache: 'no-store', keepalive: true}});
+    fetch('/vnc/heartbeat', {{method: 'POST', cache: 'no-store', keepalive: true, headers: {{'X-Warden-CSRF': document.querySelector('meta[name="warden-csrf"]').content}}}});
   }}
   heartbeat();
   setInterval(heartbeat, 1000);
-  window.addEventListener('pagehide', () => navigator.sendBeacon('/vnc/stop'));
-  window.addEventListener('beforeunload', () => navigator.sendBeacon('/vnc/stop'));
+  const csrf = encodeURIComponent(document.querySelector('meta[name="warden-csrf"]').content);
+  window.addEventListener('pagehide', () => navigator.sendBeacon('/vnc/stop?csrf=' + csrf));
+  window.addEventListener('beforeunload', () => navigator.sendBeacon('/vnc/stop?csrf=' + csrf));
   startFrame();
 </script>
 """
@@ -1782,11 +1819,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
+    def _security_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-src http: https:; connect-src 'self'")
+
     def _send_html(self, body, status=200):
-        body = localize_html(body, read_conf().get("UI_LANGUAGE", "en"))
+        conf = read_conf()
+        if self._authenticated(conf):
+            body = inject_csrf(body, csrf_token(self._session_token(), conf))
+        body = localize_html(body, conf.get("UI_LANGUAGE", "en"))
         data = body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self._security_headers()
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -1799,6 +1847,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        self._security_headers()
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -1808,6 +1857,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Location", location)
         if cookie:
             self.send_header("Set-Cookie", cookie)
+        self._security_headers()
         self.end_headers()
 
     def _session_token(self):
@@ -1895,7 +1945,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urllib.parse.urlsplit(self.path)
         conf = read_conf()
-        length = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            length = MAX_POST_BYTES + 1
+        if length < 0 or length > MAX_POST_BYTES:
+            return self._send_html("<h1>Forespørgslen er for stor.</h1>", status=413)
         raw = self.rfile.read(length).decode() if length else ""
         fields = urllib.parse.parse_qs(raw)
         password_set = bool(conf.get("WEBUI_PASSWORD_HASH"))
@@ -1942,6 +1997,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if not self._authenticated(conf):
             return self._login_redirect(parsed.path)
+
+        supplied_csrf = fields.get("csrf_token", [""])[0] or self.headers.get("X-Warden-CSRF", "") or urllib.parse.parse_qs(parsed.query).get("csrf", [""])[0]
+        expected_csrf = csrf_token(self._session_token(), conf)
+        if not hmac.compare_digest(supplied_csrf, expected_csrf):
+            return self._send_html("<h1>Sikkerhedskontrollen afviste forespørgslen. Genindlæs siden og prøv igen.</h1>", status=403)
 
         if parsed.path == "/api/update-check":
             try:
@@ -2033,6 +2093,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self._send_html(render_mqtt(conf, message=f"Home Assistant-forbindelse gemt. {msg}"))
                 return self._send_html(render_mqtt(conf, error=msg))
             return self._send_html(render_mqtt(conf, message="Home Assistant-forbindelse gemt."))
+
+        if parsed.path == "/test-mqtt":
+            ok, detail = test_mqtt_connection(conf)
+            if ok:
+                return self._send_html(render_mqtt(conf, message="MQTT-forbindelsen virker."))
+            return self._send_html(render_mqtt(conf, error=f"MQTT-forbindelsen fejlede: {detail or 'ingen forbindelse'}"))
+
+        if parsed.path == "/test-ha":
+            if not conf.get("HA_URL") or not conf.get("HA_TOKEN"):
+                return self._send_html(render_mqtt(conf, error="URL og token skal begge udfyldes."))
+            ok, detail = ha_client.test_connection(conf["HA_URL"], conf["HA_TOKEN"])
+            if ok:
+                return self._send_html(render_mqtt(conf, message=f"Home Assistant-forbindelsen virker. {detail}"))
+            return self._send_html(render_mqtt(conf, error=detail))
 
         if parsed.path == "/change-password":
             username = fields.get("username", [""])[0].strip()
