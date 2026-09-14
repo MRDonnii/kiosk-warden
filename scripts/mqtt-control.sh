@@ -177,8 +177,21 @@ set_zoom() {
 }
 
 screen_on() {
-  # Let a compatible dashboard resume expensive visual work. Repeated presence
-  # ON events remain idempotent and never restart healthy Chrome.
+  # Recover an output disabled by v1.16.1 before Smartdash resumes. xrandr
+  # --off shrinks the X11 desktop to 320x200 and makes responsive cards cache
+  # invalid geometry. New OFF cycles keep the output mode intact and use DPMS.
+  local output geometry width height
+  output="$(kiosk_output)"
+  [[ -n "$output" ]] && timeout 3s xrandr --output "$output" --auto || true
+  for _ in $(seq 1 20); do
+    geometry="$(xdotool getdisplaygeometry 2>/dev/null || true)"
+    read -r width height <<<"$geometry"
+    [[ "${width:-0}" -ge 1024 && "${height:-0}" -ge 600 ]] && break
+    sleep 0.1
+  done
+
+  # Resume expensive visual work only after the full kiosk viewport exists.
+  # Repeated presence ON events remain idempotent and preserve healthy Chrome.
   "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
   publish_smartdash_state
   rm -f "$WAKE_FILE"
@@ -187,8 +200,6 @@ screen_on() {
   xset s off || true
   xset s noblank || true
   xset dpms 0 0 0 || true
-  local output; output="$(kiosk_output)"
-  [[ -n "$output" ]] && timeout 3s xrandr --output "$output" --auto || true
   printf 'ON\n' > "$SCREEN_FILE"
   publish_state screen "ON"
 
@@ -211,12 +222,10 @@ screen_off() {
   xset +dpms || true
   xset dpms 0 0 1 || true
   timeout 3s xset dpms force off || true
-  # Belt-and-suspenders: some desktop environments (GNOME's gsd-power in
-  # particular) reset DPMS state shortly after a manual force-off. Disabling
-  # the output directly at the X11/KMS level survives that in cases where
-  # DPMS alone does not - see start-kiosk.sh for the GNOME-specific root fix.
-  local output; output="$(kiosk_output)"
-  [[ -n "$output" ]] && timeout 3s xrandr --output "$output" --off || true
+  # Do not use xrandr --off here. It collapses the logical X11 desktop to
+  # 320x200, causing responsive dashboards to measure and cache a broken
+  # layout. start-kiosk.sh disables GNOME's competing power daemon, so DPMS
+  # can power down the monitor while the 1920x1080 viewport remains stable.
 }
 
 dock_onboard_bottom() {

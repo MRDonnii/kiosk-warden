@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.16.2 — 2026-09-14
+
+- **Stable Smartdash geometry across presence sleep.** Screen-off no longer
+  disables the X11 output with `xrandr --off`, which collapsed the logical
+  desktop from 1920x1080 to 320x200 and could leave responsive dashboard cards
+  measured for the tiny fallback viewport after wake. DPMS still powers down
+  the physical monitor while Smartdash pauses cameras and animations.
+- **Safe recovery from v1.16.1 OFF state.** Screen-on restores the configured
+  output mode and waits for a full kiosk-sized viewport before resuming
+  Smartdash rendering and exposing the monitor.
+
 ## v1.16.1 — 2026-09-13
 
 - **Fix: screen_off did not actually power down GNOME kiosks.** On GNOME
