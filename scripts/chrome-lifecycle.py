@@ -16,6 +16,15 @@ def _conf_int(key, default):
         pass
     return default
 
+def _conf_url():
+    try:
+        for line in (pathlib.Path.home() / "kiosk" / "kiosk.conf").read_text().splitlines():
+            if line.startswith("KIOSK_URL="):
+                return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return ""
+
 def _write_status(details):
     status_path = pathlib.Path.home() / "kiosk" / "smartdash_status.json"
     temp_path = status_path.with_suffix(".tmp")
@@ -83,10 +92,10 @@ def main() -> int:
     )
     try:
         requested = json.dumps(state)
-        destination = json.dumps(navigate_url)
+        destination = json.dumps(navigate_url or _conf_url())
         expression = f"""(() => {{
           const supported = Boolean(window.BeastPower?.getState && window.BeastPower?.setState);
-          if ({requested} === 'navigate') {{ location.assign({destination}); return {{navigating:true, url:{destination}}}; }}
+          if ({requested} === 'navigate') {{ const destination = {destination} || location.href; location.assign(destination); return {{navigating:true, url:destination}}; }}
           if ({requested} === 'reload') {{ location.reload(); return {{reloading:true, url:location.href}}; }}
           if (!['status', 'verify'].includes({requested})) {{
             if (supported) window.BeastPower.setState({requested});

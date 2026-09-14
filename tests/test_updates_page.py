@@ -305,6 +305,19 @@ class UpdatesPageTest(unittest.TestCase):
             unsafe = subprocess.run([script, "add", "Bad", "javascript:alert(1)", "100"], env=env)
             self.assertEqual(2, unsafe.returncode)
 
+    def test_mqtt_updates_the_active_kiosk_profile(self):
+        control = (ROOT / "scripts" / "mqtt-control.sh").read_text()
+        discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
+        manager = (ROOT / "scripts" / "profile-manager.py").read_text()
+        lifecycle = (ROOT / "scripts" / "chrome-lifecycle.py").read_text()
+        self.assertIn('"set-active-url"', manager)
+        self.assertIn('"set-active-zoom"', manager)
+        self.assertIn('set-active-url "$1"', control)
+        self.assertIn('set-active-zoom "${1%%%}"', control)
+        self.assertIn("Profile URL", discovery)
+        self.assertIn("Profile Zoom", discovery)
+        self.assertIn('const destination = {destination} || location.href;', lifecycle)
+
     def test_capability_probe_stdout_is_valid_and_non_mutating(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = dict(os.environ, HOME=tmp)

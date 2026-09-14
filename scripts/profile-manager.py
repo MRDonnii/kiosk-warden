@@ -39,6 +39,18 @@ def switch(name):
     count,key=ZOOMS[zoom]
     for _ in range(count): subprocess.run(["xdotool","key",key],check=False)
     return 0
+def set_active_url(url):
+    current=ACTIVE.read_text().strip() if ACTIVE.exists() else load()["profiles"][0]["name"]
+    data=load(); item=next((x for x in data["profiles"] if x["name"]==current),None)
+    if not item or not re.fullmatch(r"https?://[^\s\"'\\]+",url): return 2
+    item["url"]=url; data["profiles"]=[x for x in data["profiles"] if x["name"]!=current]+[item]; save(data); return switch(current)
+def set_active_zoom(zoom):
+    current=ACTIVE.read_text().strip() if ACTIVE.exists() else load()["profiles"][0]["name"]
+    data=load(); item=next((x for x in data["profiles"] if x["name"]==current),None)
+    if not item: return 1
+    zoom=int(zoom)
+    if zoom not in ZOOMS: return 2
+    item["zoom"]=zoom; data["profiles"]=[x for x in data["profiles"] if x["name"]!=current]+[item]; save(data); return switch(current)
 def main():
     action=sys.argv[1] if len(sys.argv)>1 else "list"; data=load()
     if action=="list": print(json.dumps(data)); return 0
@@ -51,6 +63,7 @@ def main():
         current=ACTIVE.read_text().strip() if ACTIVE.exists() else data["profiles"][0]["name"]
         if len(data["profiles"])<=1 or current==sys.argv[2]: return 2
         data["profiles"]=[x for x in data["profiles"] if x["name"]!=sys.argv[2]]; save(data); return 0
-    if action=="switch" and len(sys.argv)==3: return switch(sys.argv[2])
-    print("Usage: profile-manager.py list|status|add NAME URL ZOOM|remove NAME|switch NAME",file=sys.stderr); return 2
+    if action=="set-active-url" and len(sys.argv)==3: return set_active_url(sys.argv[2])
+    if action=="set-active-zoom" and len(sys.argv)==3: return set_active_zoom(sys.argv[2])
+    print("Usage: profile-manager.py list|status|add NAME URL ZOOM|remove NAME|switch NAME|set-active-url URL|set-active-zoom ZOOM",file=sys.stderr); return 2
 if __name__=="__main__": raise SystemExit(main())

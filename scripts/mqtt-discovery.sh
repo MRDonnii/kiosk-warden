@@ -145,7 +145,7 @@ number_entity() {
 text_entity() {
   local payload
   source "$HOME/kiosk/kiosk.conf"
-  payload="$(jq -cn --arg name "Page Url" --arg uniq "${KIOSK_ID}_url" --arg cmd "$BASE_TOPIC/set_url" \
+  payload="$(jq -cn --arg name "Profile URL" --arg uniq "${KIOSK_ID}_url" --arg cmd "$BASE_TOPIC/set_profile_url" \
     --arg stat "$BASE_TOPIC/state/url" --arg av "$BASE_TOPIC/online/status" --argjson dev "$device_json" \
     '{name:$name, unique_id:$uniq, command_topic:$cmd, state_topic:$stat, mode:"text", min:8, max:255, availability_topic:$av, payload_available:"online", payload_not_available:"offline", icon:"mdi:web", device:$dev}')"
   publish_config text url "$payload"
@@ -208,6 +208,7 @@ if (( ${#profile_names[@]} > 1 )); then
 else
   publish_config select kiosk_profile ""
 fi
+number_entity profile_zoom "Profile Zoom" "state/page_zoom" "set_profile_zoom" 50 200 1 "%" "mdi:magnify-plus"
 if jq -e '.audio.output == true' <<<"$capabilities" >/dev/null; then number_entity volume "Volume" "state/volume" "set_volume" 0 100 1 "%" "mdi:volume-high"; else publish_config number volume ""; fi
 if jq -e '.audio.microphone == true' <<<"$capabilities" >/dev/null; then number_entity microphone "Microphone" "state/microphone" "set_microphone" 0 100 1 "%" "mdi:microphone"; else publish_config number microphone ""; fi
 
@@ -228,7 +229,7 @@ mqtt_pub "$BASE_TOPIC/state/window_mode" "$(cat "$HOME/kiosk/window_mode" 2>/dev
 mqtt_pub "$BASE_TOPIC/state/screen" "$(cat "$HOME/kiosk/screen_state" 2>/dev/null || echo ON)" -r
 mqtt_pub "$BASE_TOPIC/state/keyboard" "$(cat "$HOME/kiosk/keyboard_state" 2>/dev/null || echo OFF)" -r
 mqtt_pub "$BASE_TOPIC/state/theme" "$(cat "$HOME/kiosk/theme" 2>/dev/null || echo Dark)" -r
-mqtt_pub "$BASE_TOPIC/state/page_zoom" "$(cat "$HOME/kiosk/page_zoom" 2>/dev/null || echo 100)" -r
+mqtt_pub "$BASE_TOPIC/state/page_zoom" "$(sed 's/%$//' < <(cat "$HOME/kiosk/page_zoom" 2>/dev/null || echo 100%))" -r
 mqtt_pub "$BASE_TOPIC/state/volume" "$(cat "$HOME/kiosk/volume" 2>/dev/null || echo 100)" -r
 mqtt_pub "$BASE_TOPIC/stats/web_ui_url" "${KIOSK_WEBUI_SCHEME:-http}://$(hostname -I | awk '{print $1}'):${KIOSK_WEBUI_PORT:-8080}" -r
 mqtt_pub "$BASE_TOPIC/state/update_channel" "$(sed 's/.*/\u&/' "$HOME/kiosk/update_channel" 2>/dev/null || echo Stable)" -r
