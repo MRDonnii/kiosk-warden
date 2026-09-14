@@ -230,6 +230,11 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('complete false', updater)
         self.assertIn("releases.atom", updater)
         self.assertIn("API returns 403", updater)
+        verify = updater[updater.index("runtime_release_healthy()") : updater.index("install_release()")]
+        self.assertNotIn("kiosk-self-test.sh", verify)
+        self.assertIn("warden-state.sh\" verify", verify)
+        self.assertIn("screen_state", verify)
+        self.assertIn("kiosk-webui.service", verify)
 
     def test_installer_supports_a_conflict_checked_webui_port(self):
         installer = (ROOT / "install.sh").read_text()
