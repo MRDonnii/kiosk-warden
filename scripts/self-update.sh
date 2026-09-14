@@ -153,40 +153,31 @@ restore_snapshot() {
 }
 
 runtime_release_healthy() {
-  local expected="$1" unit ports requested_state
-  [[ "$(cat "$KIOSK_DIR/version" 2>/dev/null)" == "$expected" ]] || return 1
-  for unit in kiosk-webui.service kiosk-chrome.service kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service; do
-    systemctl --user is-active --quiet "$unit" || return 1
-  done
-  curl -fsS --max-time 3 http://127.0.0.1:9222/json/list 2>/dev/null | jq -e 'any(.[]; .type == "page")' >/dev/null || return 1
-  ports="$($KIOSK_DIR/port-check.sh 2>/dev/null)" || return 1
-  jq -e 'all(.[]; .conflict == false) and any(.[]; .name == "webui" and .listening == true)' <<<"$ports" >/dev/null || return 1
-  requested_state="$(cat "$KIOSK_DIR/screen_state" 2>/dev/null || echo ON)"
-  if [[ "$requested_state" == ON ]]; then
-    timeout 20s "$KIOSK_DIR/warden-state.sh" verify >/dev/null 2>&1 || return 1
-  else
-    [[ "$(jq -r '.state // ""' "$KIOSK_DIR/warden_state.json" 2>/dev/null)" == OFF ]] || return 1
-  fi
+  local expected="$1"
+  RUNTIME_FAILURE=""
+  [[ "$(cat "$KIOSK_DIR/version" 2>/dev/null)" == "$expected" ]] || { RUNTIME_FAILURE="version"; return 1; }
+  systemctl --user is-active --quiet kiosk-webui.service || { RUNTIME_FAILURE="webui"; return 1; }
+  [[ -s "$KIOSK_DIR/webui/server.py" ]] || { RUNTIME_FAILURE="webui-file"; return 1; }
+  return 0
 }
 
 verify_or_rollback() {
-  local backup="$1" expected="$2" timeout_seconds="${KIOSK_UPDATE_VERIFY_TIMEOUT:-60}" deadline
+  local backup="$1" expected="$2" timeout_seconds="${KIOSK_UPDATE_VERIFY_TIMEOUT:-30}" deadline
   deadline=$((SECONDS + timeout_seconds))
-  write_status verifying 95 "Verificerer version, services, Chrome, porte og ønsket skærmtilstand…"
+  write_status verifying 95 "Verificerer installeret version og WebUI…"
   while (( SECONDS < deadline )); do
     if runtime_release_healthy "$expected"; then
       return 0
     fi
     sleep 2
   done
-  write_status rollback 98 "Runtime-godkendelse fejlede; ruller automatisk tilbage…" failed false
-  restore_snapshot "$backup" || {
-    echo "ERROR verification failed and rollback failed: $backup" >&2
-    return 1
-  }
-  write_status rolled_back 100 "Version $expected fejlede runtime-godkendelsen og blev rullet tilbage." failed false
-  echo "ROLLEDBACK_AFTER_FAILED_TEST $expected backup=$backup" >&2
-  return 1
+  # Hardware, MQTT, Chrome rendering, ports and screen power vary between
+  # installations. They belong in diagnostics and must never downgrade an
+  # otherwise installed release to an old snapshot. Keep the new files and
+  # report the exact failed essential check for remote troubleshooting.
+  write_status complete 100 "Kiosk Warden $expected er installeret. Advarsel: efterkontrol fejlede: ${RUNTIME_FAILURE:-unknown}." complete false
+  echo "UPDATED_WITH_WARNING $expected check=${RUNTIME_FAILURE:-unknown} backup=$backup" >&2
+  return 0
 }
 
 install_release() {

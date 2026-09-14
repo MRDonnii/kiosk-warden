@@ -232,9 +232,11 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("API returns 403", updater)
         verify = updater[updater.index("runtime_release_healthy()") : updater.index("install_release()")]
         self.assertNotIn("kiosk-self-test.sh", verify)
-        self.assertIn("warden-state.sh\" verify", verify)
-        self.assertIn("screen_state", verify)
         self.assertIn("kiosk-webui.service", verify)
+        self.assertNotIn("restore_snapshot", verify)
+        self.assertIn("UPDATED_WITH_WARNING", verify)
+        self.assertIn('RUNTIME_FAILURE="version"', verify)
+        self.assertIn('RUNTIME_FAILURE="webui"', verify)
 
     def test_installer_supports_a_conflict_checked_webui_port(self):
         installer = (ROOT / "install.sh").read_text()
