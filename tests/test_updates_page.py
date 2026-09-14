@@ -323,6 +323,18 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("navigator.sendBeacon('/vnc/stop?csrf=' + csrf)", vnc_page)
         self.assertIn("VNC er slukket", vnc_off)
         self.assertNotIn("#password=", vnc_off)
+        installer = (ROOT / "install.sh").read_text()
+        server = (ROOT / "webui" / "server.py").read_text()
+        self.assertNotIn("ask VNC_PASSWORD", installer)
+        self.assertNotIn('parsed.path == "/vnc-password"', server)
+        self.assertNotIn("def set_vnc_password", server)
+
+    def test_touch_calibration_is_presented_as_a_readable_state(self):
+        identity = "1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000"
+        custom = "0.000000, -1.000000, 1.000000, 1.000000, 0.000000, 0.000000, 0.000000, 0.000000, 1.000000"
+        self.assertEqual("Standard", SERVER.calibration_label(identity))
+        self.assertEqual("Tilpasset", SERVER.calibration_label(custom))
+        self.assertEqual("Standard/ukendt", SERVER.calibration_label("not a matrix"))
 
     def test_login_submits_with_enter_and_vnc_has_start_action(self):
         login = SERVER.render_login({"KIOSK_NAME": "Test kiosk"})

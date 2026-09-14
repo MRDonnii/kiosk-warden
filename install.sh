@@ -146,7 +146,6 @@ if [[ "$CONFIGURE_NOW" == "yes" ]]; then
   ask MQTT_USER "MQTT brugernavn (blank = ingen auth)" ""
   ask MQTT_PASS "MQTT password" "" silent
   ask STATS_INTERVAL "Stats-interval i sekunder" "10"
-  ask VNC_PASSWORD "VNC password til fjernstyring (blankt = generér tilfældigt)" "" silent
 else
   echo "Springer terminal-opsætning over — brug web-UI'et (System og Forbindelser) efter installationen."
   KIOSK_NAME="${KIOSK_NAME:-Kiosk}"
@@ -157,7 +156,6 @@ else
   MQTT_USER="${MQTT_USER:-}"
   MQTT_PASS="${MQTT_PASS:-}"
   STATS_INTERVAL="${STATS_INTERVAL:-10}"
-  VNC_PASSWORD="${VNC_PASSWORD:-}"
 fi
 if [[ -f "$HOME/kiosk/kiosk.conf" ]]; then
   existing_webui_port="$(sed -n -E 's/^KIOSK_WEBUI_PORT=\"?([0-9]+)\"?$/\1/p' "$HOME/kiosk/kiosk.conf" | tail -n1)"
@@ -263,19 +261,6 @@ if ! systemctl --user is-active --quiet kiosk-webui.service 2>/dev/null; then
   for port in "${KIOSK_WEBUI_PORT:-8080}" "${KIOSK_VNC_PORT:-5900}" "${KIOSK_NOVNC_PORT:-6080}"; do
     webui_port_in_use "$port" && { echo "Lokal serviceport $port er allerede i brug." >&2; exit 1; }
   done
-fi
-
-echo "== VNC password =="
-if [[ ! -f "$HOME/.vnc/passwd" ]]; then
-  mkdir -p "$HOME/.vnc"
-  if [[ -z "${VNC_PASSWORD:-}" ]]; then
-    VNC_PASSWORD="$(head -c9 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c12)"
-    echo "Genereret VNC password: $VNC_PASSWORD (skriv det ned — administrator-login kan skiftes senere under System)"
-  fi
-  x11vnc -storepasswd "$VNC_PASSWORD" "$HOME/.vnc/passwd" >/dev/null
-  chmod 600 "$HOME/.vnc/passwd"
-else
-  echo "~/.vnc/passwd findes allerede — rører den ikke."
 fi
 
 echo "== Kopierer web-UI til ~/kiosk/webui =="
@@ -422,6 +407,6 @@ echo "  http://localhost:$KIOSK_WEBUI_PORT  (på selve maskinen)"
 echo "Første besøg beder dig oprette administrator-login — gør det med det samme, siden UI'et er tilgængeligt på netværket."
 echo "Fjernstyring (klik direkte på skærmen i browseren): klik 'Fjernstyring' i web-UI'et, eller åbn direkte:"
 [[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:${KIOSK_NOVNC_PORT:-6080}/vnc.html"
-echo "Kræver VNC-passwordet sat ovenfor (separat fra web-UI-passwordet)."
+echo "VNC bruger automatisk administrator-loginet fra Kiosk Warden; der oprettes ingen separat VNC-kode."
 echo "Kør 'bash ~/kiosk/mqtt-discovery.sh' for at (gen)publicere Home Assistant entities."
 echo "Genstart maskinen for at få GDM-autologin og kiosk-chrome til at starte ved boot."
