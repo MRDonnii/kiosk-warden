@@ -272,6 +272,7 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("Start VNC", vnc_off)
         self.assertIn('action="/vnc/start"', vnc_off)
         self.assertIn("/vnc/heartbeat", vnc_page)
+        self.assertIn("/vnc/status", vnc_page)
         self.assertIn("navigator.sendBeacon('/vnc/stop')", vnc_page)
         self.assertIn("VNC er slukket", vnc_off)
         self.assertNotIn("#password=", vnc_off)

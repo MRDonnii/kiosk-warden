@@ -350,6 +350,17 @@ def vnc_is_active():
     return result.returncode == 0
 
 
+def vnc_is_ready():
+    conf = read_conf()
+    for key in ("KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT"):
+        try:
+            with socket.create_connection(("127.0.0.1", int(conf.get(key, ""))), timeout=0.2):
+                pass
+        except (OSError, ValueError):
+            return False
+    return True
+
+
 def mark_vnc_activity():
     global _vnc_last_seen
     with _vnc_watchdog_lock:
@@ -1685,6 +1696,16 @@ def render_vnc(conf, message=None, error=None, active=None):
   function reloadFrame() {{
     document.getElementById('vncframe').src = vncUrl();
   }}
+  async function startFrame() {{
+    for (let attempt = 0; attempt < 24; attempt++) {{
+      try {{
+        const response = await fetch('/vnc/status', {{cache: 'no-store'}});
+        if ((await response.json()).ready) break;
+      }} catch (error) {{}}
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }}
+    reloadFrame();
+  }}
   function heartbeat() {{
     fetch('/vnc/heartbeat', {{method: 'POST', cache: 'no-store', keepalive: true}});
   }}
@@ -1692,7 +1713,7 @@ def render_vnc(conf, message=None, error=None, active=None):
   setInterval(heartbeat, 1000);
   window.addEventListener('pagehide', () => navigator.sendBeacon('/vnc/stop'));
   window.addEventListener('beforeunload', () => navigator.sendBeacon('/vnc/stop'));
-  reloadFrame();
+  startFrame();
 </script>
 """
     else:
@@ -2065,6 +2086,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/vnc/heartbeat":
             mark_vnc_activity()
             return self._send_json({"active": vnc_is_active()})
+
+        if parsed.path == "/vnc/status":
+            return self._send_json({"active": vnc_is_active(), "ready": vnc_is_ready()})
 
         if parsed.path == "/rollback":
             version = fields.get("version", [""])[0]
