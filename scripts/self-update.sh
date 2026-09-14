@@ -152,22 +152,39 @@ restore_snapshot() {
   restart_warden
 }
 
+runtime_release_healthy() {
+  local expected="$1" unit ports requested_state
+  [[ "$(cat "$KIOSK_DIR/version" 2>/dev/null)" == "$expected" ]] || return 1
+  for unit in kiosk-webui.service kiosk-chrome.service kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service; do
+    systemctl --user is-active --quiet "$unit" || return 1
+  done
+  curl -fsS --max-time 3 http://127.0.0.1:9222/json/list 2>/dev/null | jq -e 'any(.[]; .type == "page")' >/dev/null || return 1
+  ports="$($KIOSK_DIR/port-check.sh 2>/dev/null)" || return 1
+  jq -e 'all(.[]; .conflict == false) and any(.[]; .name == "webui" and .listening == true)' <<<"$ports" >/dev/null || return 1
+  requested_state="$(cat "$KIOSK_DIR/screen_state" 2>/dev/null || echo ON)"
+  if [[ "$requested_state" == ON ]]; then
+    timeout 20s "$KIOSK_DIR/warden-state.sh" verify >/dev/null 2>&1 || return 1
+  else
+    [[ "$(jq -r '.state // ""' "$KIOSK_DIR/warden_state.json" 2>/dev/null)" == OFF ]] || return 1
+  fi
+}
+
 verify_or_rollback() {
-  local backup="$1" expected="$2" timeout_seconds="${KIOSK_UPDATE_VERIFY_TIMEOUT:-90}" deadline
+  local backup="$1" expected="$2" timeout_seconds="${KIOSK_UPDATE_VERIFY_TIMEOUT:-60}" deadline
   deadline=$((SECONDS + timeout_seconds))
-  write_status verifying 95 "Verificerer skærm, Chrome, dashboard og wake…"
+  write_status verifying 95 "Verificerer version, services, Chrome, porte og ønsket skærmtilstand…"
   while (( SECONDS < deadline )); do
-    if timeout 60s "$KIOSK_DIR/kiosk-self-test.sh" >/dev/null 2>&1; then
+    if runtime_release_healthy "$expected"; then
       return 0
     fi
-    sleep 3
+    sleep 2
   done
-  write_status rollback 98 "Wake-test fejlede; ruller automatisk tilbage…" failed false
+  write_status rollback 98 "Runtime-godkendelse fejlede; ruller automatisk tilbage…" failed false
   restore_snapshot "$backup" || {
     echo "ERROR verification failed and rollback failed: $backup" >&2
     return 1
   }
-  write_status rolled_back 100 "Version $expected fejlede godkendelsen og blev rullet tilbage." failed false
+  write_status rolled_back 100 "Version $expected fejlede runtime-godkendelsen og blev rullet tilbage." failed false
   echo "ROLLEDBACK_AFTER_FAILED_TEST $expected backup=$backup" >&2
   return 1
 }

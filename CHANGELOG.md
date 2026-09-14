@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.18.21 — 2026-09-14
+
+- **Updates no longer force the physical screen through OFF→ON at 95%.** The
+  acceptance step verifies the installed version, six core services, Chrome,
+  port ownership, and the already requested screen state without changing it.
+- **An ON kiosk still gets strict dashboard verification.** An OFF kiosk is
+  accepted only when Warden also reports OFF; neither path changes presence or
+  power state. The disruptive full OFF→ON cycle remains available as a manual
+  diagnostic test.
+- **Faster and clearer completion.** Runtime acceptance retries for up to 60
+  seconds and reports a runtime failure, rather than sitting at 95 percent in
+  a nested physical wake test.
+
 ## v1.18.20 — 2026-09-14
 
 - **Beta updates survive GitHub API rate limits.** When GitHub's anonymous API
