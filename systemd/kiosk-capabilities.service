@@ -1,0 +1,11 @@
+[Unit]
+Description=Probe Kiosk Warden hardware capabilities
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+Environment=DISPLAY=:0
+ExecStart=%h/kiosk/capability-probe.py
+
+[Install]
+WantedBy=default.target

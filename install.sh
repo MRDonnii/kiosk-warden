@@ -104,6 +104,8 @@ fi
 echo "OS: $OS_NAME ($OS_ID) — arkitektur: $ARCH — display manager: $DISPLAY_MANAGER — desktop: ${XDG_CURRENT_DESKTOP:-ukendt}"
 
 if [[ "$IS_RASPBERRY_PI" -eq 1 ]]; then
+  KIOSK_MIN_WIDTH="${KIOSK_MIN_WIDTH:-640}"
+  KIOSK_MIN_HEIGHT="${KIOSK_MIN_HEIGHT:-400}"
   echo "== Raspberry Pi OS: aktiverer X11/Openbox til Warden-skærmstyring og x11vnc =="
   if command -v raspi-config >/dev/null 2>&1; then
     sudo raspi-config nonint do_wayland W1
@@ -112,6 +114,8 @@ if [[ "$IS_RASPBERRY_PI" -eq 1 ]]; then
     echo "raspi-config mangler; X11 skal vælges manuelt før Chrome/VNC-styring virker." >&2
   fi
 fi
+KIOSK_MIN_WIDTH="${KIOSK_MIN_WIDTH:-1024}"
+KIOSK_MIN_HEIGHT="${KIOSK_MIN_HEIGHT:-600}"
 
 echo "== kiosk-warden install =="
 echo
@@ -172,9 +176,12 @@ echo
 echo "== Installerer apt-pakker =="
 sudo apt-get update -y
 required_packages=(git mosquitto-clients jq bc curl gnupg xdotool wmctrl unclutter
-  x11-xserver-utils xinput xprintidle lm-sensors openssh-server dbus-x11 imagemagick python3 zip
+  x11-xserver-utils xinput xprintidle evtest lm-sensors openssh-server dbus-x11 imagemagick python3 zip
   python3-websocket x11vnc novnc websockify)
 sudo apt-get install -y "${required_packages[@]}"
+if getent group input >/dev/null 2>&1; then
+  sudo usermod -aG input "$USER"
+fi
 
 # Desktop conveniences and hardware telemetry differ between Ubuntu, Mint,
 # Debian and Raspberry Pi OS. Missing optional packages must not abort install.
@@ -232,8 +239,13 @@ KIOSK_WEBUI_PORT=$KIOSK_WEBUI_PORT
 KIOSK_VNC_PORT=${KIOSK_VNC_PORT:-5900}
 KIOSK_NOVNC_PORT=${KIOSK_NOVNC_PORT:-6080}
 KIOSK_SCREEN_BACKEND="${KIOSK_SCREEN_BACKEND:-auto}"
-KIOSK_MIN_WIDTH=${KIOSK_MIN_WIDTH:-1024}
-KIOSK_MIN_HEIGHT=${KIOSK_MIN_HEIGHT:-600}
+KIOSK_MIN_WIDTH=$KIOSK_MIN_WIDTH
+KIOSK_MIN_HEIGHT=$KIOSK_MIN_HEIGHT
+KIOSK_TOUCH_WAKE=${KIOSK_TOUCH_WAKE:-true}
+KIOSK_TOUCH_RELEASE_DELAY=${KIOSK_TOUCH_RELEASE_DELAY:-1.2}
+KIOSK_AUTO_BRIGHTNESS=${KIOSK_AUTO_BRIGHTNESS:-false}
+KIOSK_BRIGHTNESS_MIN=${KIOSK_BRIGHTNESS_MIN:-15}
+KIOSK_BRIGHTNESS_MAX=${KIOSK_BRIGHTNESS_MAX:-100}
 EOF
   chmod 600 "$HOME/kiosk/kiosk.conf"
 else
@@ -273,16 +285,17 @@ chmod +x "$HOME/kiosk/webui/server.py"
 
 echo "== Installerer systemd user services =="
 mkdir -p "$HOME/.config/systemd/user"
-cp "$SRC_DIR"/systemd/*.service "$HOME/.config/systemd/user/"
+cp "$SRC_DIR"/systemd/*.service "$SRC_DIR"/systemd/*.timer "$HOME/.config/systemd/user/"
 systemctl --user daemon-reload
 systemctl --user enable kiosk-chrome.service kiosk-mqtt-stats.service \
   kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-webui.service \
-  kiosk-vnc.service kiosk-novnc.service
+  kiosk-vnc.service kiosk-novnc.service kiosk-input-guardian.service \
+  kiosk-adaptive-brightness.service kiosk-capabilities.timer
 loginctl enable-linger "$USER" || true
 systemctl --user start kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-webui.service || true
 if [[ -n "${DISPLAY:-}" ]]; then
-  systemctl --user start kiosk-chrome.service kiosk-watchdog.service kiosk-health.service \
-    kiosk-vnc.service kiosk-novnc.service || true
+  systemctl --user start kiosk-capabilities.service kiosk-capabilities.timer kiosk-chrome.service kiosk-watchdog.service kiosk-health.service \
+    kiosk-vnc.service kiosk-novnc.service kiosk-input-guardian.service kiosk-adaptive-brightness.service || true
 else
   echo "Ingen grafisk session lige nu — Chrome/VNC-relaterede services starter ved næste login/reboot."
 fi
@@ -405,7 +418,7 @@ echo "Konfiguration: ~/kiosk/kiosk.conf"
 echo "Web-UI (opsætning + kontrolpanel):"
 echo "  http://localhost:$KIOSK_WEBUI_PORT  (på selve maskinen)"
 [[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:$KIOSK_WEBUI_PORT  (fra andre enheder på netværket, fx telefonen)"
-echo "Første besøg beder dig sætte et password — gør det med det samme, siden UI'et er tilgængeligt på netværket."
+echo "Første besøg beder dig oprette administrator-login — gør det med det samme, siden UI'et er tilgængeligt på netværket."
 echo "Fjernstyring (klik direkte på skærmen i browseren): klik 'Fjernstyring' i web-UI'et, eller åbn direkte:"
 [[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:${KIOSK_NOVNC_PORT:-6080}/vnc.html"
 echo "Kræver VNC-passwordet sat ovenfor (separat fra web-UI-passwordet)."

@@ -85,7 +85,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/MRDonnii/kiosk-warden/main/i
 Early on it asks: **configure now in the terminal, or skip and finish later
 in the web UI?** Answering no (or piping in `CONFIGURE_NOW=no`) installs
 everything with placeholder values and skips straight to the apt/systemd
-setup — you then open the web UI's Indstillinger page afterward to set the
+setup — you then create the administrator login and open the web UI's Settings page to set the
 real kiosk name/URL/MQTT details and passwords. Answering yes asks for kiosk
 name/id, the URL to display, MQTT broker host/user/password, and a VNC
 password (input is read from your terminal even when piped through `curl`).
@@ -149,9 +149,10 @@ firewall is enabled, the new TCP port must also be allowed there.
 
 It binds to `0.0.0.0` by default so you can finish setup from your phone
 without plugging in a keyboard. **The first thing you must do is open it and
-set a password** — until a password is set, the page only shows the
-password form (nothing else is reachable), and once it's set every page
-requires HTTP Basic Auth. Because the port is reachable from your whole LAN,
+create an administrator username and password** — until a login is created,
+the page only shows that setup form (nothing else is reachable). Afterwards,
+the built-in login page creates a private, expiring browser session; every page
+remains protected. Because the port is reachable from your whole LAN,
 don't leave that first-run window open longer than necessary.
 
 From the web UI you can:

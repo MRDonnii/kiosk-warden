@@ -80,8 +80,12 @@ snapshot_current() {
   stamp="$(date +%Y%m%d-%H%M%S)"
   mkdir -p "$BACKUP_DIR"
   archive="$BACKUP_DIR/${version}-${stamp}.tar.gz"
-  owned=(kiosk/version kiosk/.version kiosk/CHANGELOG.md kiosk/icon.svg kiosk/chrome-lifecycle.py kiosk/webui)
-  for file in "$KIOSK_DIR"/*.sh; do [[ -f "$file" ]] && owned+=("kiosk/$(basename "$file")"); done
+  owned=(kiosk/version kiosk/.version kiosk/CHANGELOG.md kiosk/icon.svg kiosk/webui)
+  for file in "$KIOSK_DIR"/*.sh "$KIOSK_DIR"/*.py; do [[ -f "$file" ]] && owned+=("kiosk/$(basename "$file")"); done
+  for file in "$HOME"/.config/systemd/user/kiosk-capabilities.service "$HOME"/.config/systemd/user/kiosk-capabilities.timer \
+    "$HOME"/.config/systemd/user/kiosk-input-guardian.service "$HOME"/.config/systemd/user/kiosk-adaptive-brightness.service; do
+    [[ -f "$file" ]] && owned+=(".config/systemd/user/$(basename "$file")")
+  done
   tar -czf "$archive" -C "$HOME" --ignore-failed-read "${owned[@]}" \
     .config/systemd/user/kiosk-chrome.service .config/systemd/user/kiosk-mqtt-stats.service \
     .config/systemd/user/kiosk-mqtt-control.service .config/systemd/user/kiosk-watchdog.service \
@@ -102,11 +106,15 @@ ensure_system_dependencies() {
   # required_packages (Smartdash auto-detection) would silently keep missing
   # it forever. Best-effort, non-interactive: never blocks or fails the
   # release install if apt/sudo isn't cooperative.
-  if python3 -c 'import websocket' 2>/dev/null; then
-    return 0
-  fi
-  echo "python3-websocket mangler - forsøger automatisk installation…"
-  sudo -n apt-get install -y python3-websocket >/dev/null 2>&1 || true
+  local -a packages=()
+  python3 -c 'import websocket' 2>/dev/null || packages+=(python3-websocket)
+  command -v evtest >/dev/null 2>&1 || packages+=(evtest)
+  command -v xinput >/dev/null 2>&1 || packages+=(xinput)
+  command -v xprintidle >/dev/null 2>&1 || packages+=(xprintidle)
+  command -v zip >/dev/null 2>&1 || packages+=(zip)
+  (( ${#packages[@]} == 0 )) && return 0
+  echo "Valgfrie hardware-afhængigheder mangler - forsøger automatisk installation…"
+  sudo -n apt-get install -y "${packages[@]}" >/dev/null 2>&1 || true
   if ! python3 -c 'import websocket' 2>/dev/null; then
     echo "ADVARSEL: python3-websocket kunne ikke installeres automatisk. Kør: sudo apt-get install -y python3-websocket" >&2
   fi
@@ -116,6 +124,8 @@ ensure_system_dependencies() {
 restart_warden() {
   systemctl --user daemon-reload
   systemctl --user restart kiosk-mqtt-stats.service kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-vnc.service kiosk-novnc.service || true
+  systemctl --user enable --now kiosk-capabilities.timer kiosk-input-guardian.service kiosk-adaptive-brightness.service >/dev/null 2>&1 || true
+  systemctl --user start kiosk-capabilities.service >/dev/null 2>&1 || true
   systemctl --user restart kiosk-chrome.service || true
   systemd-run --user --collect --on-active=2s \
     --unit="kiosk-webui-restart-$(date +%s)" \
@@ -164,7 +174,7 @@ install_release() {
   repo="$workdir/repo"
   write_status validating 40 "Validerer release og versionsmetadata…"
   [[ "$(cat "$repo/VERSION" 2>/dev/null)" == "$expected" ]] || { echo 'ERROR release version validation failed'; return 1; }
-  for file in scripts/self-update.sh scripts/mqtt-control.sh scripts/mqtt-stats.sh scripts/chrome-lifecycle.py webui/server.py; do [[ -f "$repo/$file" ]] || { echo "ERROR release missing $file"; return 1; }; done
+  for file in scripts/self-update.sh scripts/mqtt-control.sh scripts/mqtt-stats.sh scripts/chrome-lifecycle.py scripts/capability-probe.py scripts/input-guardian.sh scripts/profile-manager.py webui/server.py; do [[ -f "$repo/$file" ]] || { echo "ERROR release missing $file"; return 1; }; done
   write_status backup 55 "Opretter rollback-snapshot af den nuværende version…"
   backup="$(snapshot_current)" || { echo 'ERROR could not create pre-update backup'; return 1; }
   write_status installing 70 "Installerer validerede releasefiler…"
@@ -172,7 +182,7 @@ install_release() {
   replace_atomic "$repo/VERSION" "$KIOSK_DIR/version" 644; replace_atomic "$repo/icon.svg" "$KIOSK_DIR/icon.svg" 644; replace_atomic "$repo/CHANGELOG.md" "$KIOSK_DIR/CHANGELOG.md" 644
   mkdir -p "$KIOSK_DIR/webui" "$HOME/.config/systemd/user"
   for file in "$repo"/webui/*.py; do replace_atomic "$file" "$KIOSK_DIR/webui/$(basename "$file")"; done
-  for file in "$repo"/systemd/*.service; do replace_atomic "$file" "$HOME/.config/systemd/user/$(basename "$file")" 644; done
+  for file in "$repo"/systemd/*.service "$repo"/systemd/*.timer; do replace_atomic "$file" "$HOME/.config/systemd/user/$(basename "$file")" 644; done
   git -C "$repo" rev-parse HEAD > "$KIOSK_DIR/.version"
   write_status dependencies 80 "Tjekker system-afhængigheder…"
   ensure_system_dependencies

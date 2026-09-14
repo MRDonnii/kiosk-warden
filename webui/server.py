@@ -5,8 +5,8 @@ Stdlib-only on purpose (no pip installs needed on the kiosk). Binds to
 0.0.0.0:8080 by default so it can be reached from other devices on the LAN
 (e.g. a phone) — see README for restricting it to localhost instead.
 """
-import base64
 import collections
+import http.cookies
 import hashlib
 import hmac
 import html
@@ -39,6 +39,8 @@ SMARTDASH_STATUS_PATH = os.path.join(KIOSK_DIR, "smartdash_status.json")
 WARDEN_STATE_PATH = os.path.join(KIOSK_DIR, "warden_state.json")
 SELF_TEST_PATH = os.path.join(KIOSK_DIR, "self_test.json")
 DIAGNOSTICS_DIR = os.path.join(KIOSK_DIR, "diagnostics")
+CAPABILITIES_PATH = os.path.join(KIOSK_DIR, "capabilities.json")
+PROFILES_PATH = os.path.join(KIOSK_DIR, "profiles.json")
 REPO_URL = os.environ.get("KIOSK_WARDEN_REPO", "https://github.com/MRDonnii/kiosk-warden.git")
 
 FALLBACK_ICON_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -67,7 +69,8 @@ CONF_ORDER = [
     "KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_PORT",
     "MQTT_USER", "MQTT_PASS", "BASE_TOPIC", "CODEX_REMOTE_TOPIC",
     "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT",
-    "KIOSK_SCREEN_BACKEND", "KIOSK_MIN_WIDTH", "KIOSK_MIN_HEIGHT", "UI_LANGUAGE", "WEBUI_PASSWORD_HASH",
+    "KIOSK_SCREEN_BACKEND", "KIOSK_MIN_WIDTH", "KIOSK_MIN_HEIGHT", "KIOSK_TOUCH_WAKE", "KIOSK_TOUCH_RELEASE_DELAY",
+    "KIOSK_AUTO_BRIGHTNESS", "KIOSK_BRIGHTNESS_MIN", "KIOSK_BRIGHTNESS_MAX", "UI_LANGUAGE", "WEBUI_USERNAME", "WEBUI_PASSWORD_HASH",
     "HA_URL", "HA_TOKEN", "HA_POWER_ENTITY",
 ]
 
@@ -88,7 +91,13 @@ DEFAULTS = {
     "KIOSK_SCREEN_BACKEND": "auto",
     "KIOSK_MIN_WIDTH": "1024",
     "KIOSK_MIN_HEIGHT": "600",
+    "KIOSK_TOUCH_WAKE": "true",
+    "KIOSK_TOUCH_RELEASE_DELAY": "1.2",
+    "KIOSK_AUTO_BRIGHTNESS": "false",
+    "KIOSK_BRIGHTNESS_MIN": "15",
+    "KIOSK_BRIGHTNESS_MAX": "100",
     "UI_LANGUAGE": "en",
+    "WEBUI_USERNAME": "admin",
     "WEBUI_PASSWORD_HASH": "",
     "HA_URL": "",
     "HA_TOKEN": "",
@@ -102,7 +111,10 @@ DEFAULTS = {
 ENGLISH_TEXT = {
     "Opsætning": "Setup",
     "Velkommen til Kiosk Warden": "Welcome to Kiosk Warden",
-    "Sæt et password for at beskytte opsætningssiden, før du gør noget andet.": "Set a password to protect the setup page before doing anything else.",
+    "Opret administrator-login for at beskytte Kiosk Warden, før du gør noget andet.": "Create an administrator login to protect Kiosk Warden before doing anything else.",
+    "Log ind": "Sign in", "Log ud": "Sign out", "Brugernavn": "Username", "Fortsæt til Kiosk Warden": "Continue to Kiosk Warden",
+    "Forkert brugernavn eller password.": "Incorrect username or password.", "For mange loginforsøg. Prøv igen om lidt.": "Too many sign-in attempts. Try again shortly.",
+    "Opret administrator": "Create administrator", "Opret login": "Create login",
     "Sæt password": "Set password", "Gentag password": "Repeat password", "Gem password": "Save password",
     "🏠 Oversigt": "🏠 Overview", "🖱️ Fjernstyring": "🖱️ Remote Control", "🎛️ Styring": "🎛️ Control",
     "⬇️ Opdateringer": "⬇️ Updates", "⚙️ Indstillinger": "⚙️ Settings",
@@ -175,6 +187,12 @@ ENGLISH_TEXT = {
     "Home Assistant-forbindelse gemt.": "Home Assistant connection saved.",
 }
 
+SESSION_COOKIE = "warden_session"
+SESSION_TTL = 12 * 60 * 60
+_sessions = {}
+_session_lock = threading.Lock()
+_login_failures = {}
+
 
 def localize_html(body, language):
     if language == "da":
@@ -226,6 +244,53 @@ def verify_password(password, stored):
     except ValueError:
         return False
     return hmac.compare_digest(dk.hex(), hashed)
+
+
+def create_session():
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    with _session_lock:
+        for old_token, expires in list(_sessions.items()):
+            if expires <= now:
+                _sessions.pop(old_token, None)
+        _sessions[token] = now + SESSION_TTL
+    return token
+
+
+def valid_session(token):
+    if not token:
+        return False
+    now = time.time()
+    with _session_lock:
+        expires = _sessions.get(token, 0)
+        if expires <= now:
+            _sessions.pop(token, None)
+            return False
+        _sessions[token] = now + SESSION_TTL
+    return True
+
+
+def destroy_session(token):
+    with _session_lock:
+        _sessions.pop(token, None)
+
+
+def login_blocked(client_ip):
+    now = time.time()
+    with _session_lock:
+        attempts = [stamp for stamp in _login_failures.get(client_ip, []) if now - stamp < 300]
+        _login_failures[client_ip] = attempts
+    return len(attempts) >= 5
+
+
+def record_login_failure(client_ip):
+    with _session_lock:
+        _login_failures.setdefault(client_ip, []).append(time.time())
+
+
+def clear_login_failures(client_ip):
+    with _session_lock:
+        _login_failures.pop(client_ip, None)
 
 
 def set_vnc_password(password):
@@ -684,9 +749,11 @@ def validate_settings(fields):
     vnc_port = fields.get("KIOSK_VNC_PORT", ["5900"])[0].strip()
     novnc_port = fields.get("KIOSK_NOVNC_PORT", ["6080"])[0].strip()
     backend = fields.get("KIOSK_SCREEN_BACKEND", ["auto"])[0].strip()
+    brightness_min = fields.get("KIOSK_BRIGHTNESS_MIN", ["15"])[0].strip()
+    brightness_max = fields.get("KIOSK_BRIGHTNESS_MAX", ["100"])[0].strip()
     if not re.match(r"^[a-z0-9_]+$", kiosk_id):
         return "Kiosk-id må kun indeholde a-z, 0-9 og _."
-    if not re.match(r"^https?://", kiosk_url):
+    if not re.fullmatch(r"https?://[^\s\"'\\]+", kiosk_url):
         return "URL skal starte med http:// eller https://."
     if not mqtt_port.isdigit():
         return "MQTT port skal være et tal."
@@ -706,8 +773,10 @@ def validate_settings(fields):
             return f"{name}-porten er allerede i brug."
     if len({webui_port, vnc_port, novnc_port}) != 3:
         return "Web-UI, VNC og noVNC skal bruge hver sin port."
-    if backend not in {"auto", "gnome-x11", "cinnamon-x11", "x11", "raspberry-pi", "ddc", "cec"}:
+    if backend not in {"auto", "gnome-x11", "cinnamon-x11", "x11", "wayland-wlopm", "wayland-kde", "raspberry-pi", "ddc", "cec"}:
         return "Ugyldig skærm-backend."
+    if not brightness_min.isdigit() or not brightness_max.isdigit() or not 1 <= int(brightness_min) <= int(brightness_max) <= 100:
+        return "Lysstyrkegrænser skal være 1–100, og minimum må ikke være større end maksimum."
     return None
 
 
@@ -841,6 +910,17 @@ PAGE_HEAD = """<!doctype html>
   .chart-title {{ font-size:.8rem; font-weight:700; margin-bottom:.45rem; opacity:.8; }}
   canvas.telemetry-chart {{ display:block; width:100%; height:150px; }}
   @media (max-width:600px) {{ .charts {{ grid-template-columns:1fr; }} }}
+  .login-shell {{ min-height:calc(100vh - 6rem); display:grid; place-items:center; }}
+  .login-card {{ width:min(430px, 100%); padding:2rem; border:1px solid rgba(128,128,128,.28); border-radius:24px;
+    background:rgba(20,24,34,.82); box-shadow:0 24px 80px rgba(0,0,0,.35); backdrop-filter:blur(18px); }}
+  .login-mark {{ width:64px; height:64px; margin:0 auto .8rem; display:grid; place-items:center; border-radius:18px;
+    background:linear-gradient(135deg,rgba(37,99,235,.24),rgba(124,58,237,.24)); }}
+  .login-mark img {{ width:44px; height:44px; }}
+  .login-product {{ text-align:center; text-transform:uppercase; letter-spacing:.13em; font-size:.72rem; font-weight:800; opacity:.55; }}
+  .login-card h1 {{ text-align:center; font-size:1.85rem; margin:.35rem 0 .15rem; }}
+  .login-card .sub {{ text-align:center; margin-bottom:1.25rem; }}
+  .login-button {{ width:100%; margin-top:1.25rem; padding:.8rem; }}
+  .login-note {{ text-align:center; opacity:.45; font-size:.72rem; margin:1.2rem 0 0; }}
 </style>
 </head>
 <body>
@@ -861,25 +941,52 @@ def render_message(message, error):
 
 def render_first_run(message=None, error=None):
     body = PAGE_HEAD.format(title_suffix=" — Opsætning")
-    body += "<h1>Velkommen til Kiosk Warden</h1>"
-    body += '<div class="sub">Sæt et password for at beskytte opsætningssiden, før du gør noget andet.</div>'
+    body += '<main class="login-shell"><section class="login-card">'
+    body += '<div class="login-mark"><img src="/icon.svg" alt=""></div><div class="login-product">Kiosk Warden</div>'
+    body += "<h1>Velkommen</h1>"
+    body += '<div class="sub">Opret administrator-login for at beskytte Kiosk Warden, før du gør noget andet.</div>'
     body += render_message(message, error)
-    body += '<div class="narrow">'
     body += f"""
 <form method="post" action="/set-password">
-  <fieldset>
-    <legend>Sæt password</legend>
+    <label>Brugernavn</label>
+    <input type="text" name="username" value="admin" required minlength="3" maxlength="40" autocomplete="username">
     <label>Password (min. 8 tegn)</label>
-    <input type="password" name="password" required minlength="8">
+    <input type="password" name="password" required minlength="8" autocomplete="new-password">
     <label>Gentag password</label>
-    <input type="password" name="password2" required minlength="8">
-    <div class="row"><button class="primary" type="submit">Gem password</button></div>
-  </fieldset>
+    <input type="password" name="password2" required minlength="8" autocomplete="new-password">
+    <button class="primary login-button" type="submit">Opret login</button>
 </form>
+<p class="login-note">Lokal administration · login kan ændres senere</p>
 """
-    body += "</div>"
+    body += "</section></main>"
     body += PAGE_TAIL
     return body
+
+
+def render_login(conf, next_path="/", error=None):
+    safe_next = next_path if next_path.startswith("/") and not next_path.startswith("//") else "/"
+    body = PAGE_HEAD.format(title_suffix=" — Log ind")
+    body += f"""
+<main class="login-shell">
+  <section class="login-card">
+    <div class="login-mark"><img src="/icon.svg" alt=""></div>
+    <div class="login-product">Kiosk Warden</div>
+    <h1>Log ind</h1>
+    <p class="sub">{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</p>
+    {render_message(None, error)}
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{esc(safe_next)}">
+      <label>Brugernavn</label>
+      <input type="text" name="username" required autofocus autocomplete="username">
+      <label>Password</label>
+      <input type="password" name="password" required autocomplete="current-password">
+      <button class="primary login-button" type="submit">Fortsæt til Kiosk Warden</button>
+    </form>
+    <p class="login-note">Lokal administration · sessionen udløber automatisk</p>
+  </section>
+</main>
+"""
+    return body + PAGE_TAIL
 
 
 def render_nav(active):
@@ -889,6 +996,7 @@ def render_nav(active):
         ("/control", "🎛️ Styring"),
         ("/updates", "⬇️ Opdateringer"),
         ("/settings", "⚙️ Indstillinger"),
+        ("/logout", "↪ Log ud"),
     ]
     parts = []
     for path, label in items:
@@ -1176,6 +1284,16 @@ def render_control(conf, message=None, error=None):
     except (OSError, ValueError, subprocess.TimeoutExpired):
         display_status = {}
     try:
+        capabilities = json.loads(read_file(CAPABILITIES_PATH, '{}'))
+    except ValueError:
+        capabilities = {}
+    try:
+        profile_script = os.path.join(KIOSK_DIR, "profile-manager.py")
+        profiles = json.loads(subprocess.run([profile_script, "list"], capture_output=True, text=True, timeout=3).stdout).get("profiles", [])
+        active_profile = subprocess.run([profile_script, "status"], capture_output=True, text=True, timeout=3).stdout.strip()
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        profiles, active_profile = [], ""
+    try:
         touch_output = subprocess.run(["xinput", "list"], capture_output=True, text=True, timeout=3).stdout
         touch_line = next((line.strip() for line in touch_output.splitlines() if "touch" in line.lower()), "")
         touch_name = re.sub(r".*↳\s*|\s+id=\d+.*", "", touch_line).strip() or "Ikke registreret"
@@ -1213,6 +1331,18 @@ def render_control(conf, message=None, error=None):
   <div class="tile"><span>Seneste input</span><strong>{esc(last_input)}</strong></div>
   <div class="tile"><span>Backend</span><strong>{esc(display_status.get('backend', '—'))}</strong></div>
 </div></fieldset>
+<fieldset><legend>Hardware capabilities</legend><div class="grid">
+  <div class="tile"><span>Touch wake</span><strong>{'Understøttet' if capabilities.get('touch',{}).get('guardian') else 'Ikke tilgængelig'}</strong></div>
+  <div class="tile"><span>Lysstyrke</span><strong>{esc(capabilities.get('display',{}).get('brightness_backend') or 'Ikke tilgængelig')}</strong></div>
+  <div class="tile"><span>Lyssensor</span><strong>{'Understøttet' if capabilities.get('sensors',{}).get('illuminance') else 'Ikke tilgængelig'}</strong></div>
+  <div class="tile"><span>Mikrofon</span><strong>{'Understøttet' if capabilities.get('audio',{}).get('microphone') else 'Ikke tilgængelig'}</strong></div>
+  <div class="tile"><span>Batteri</span><strong>{'Understøttet' if capabilities.get('sensors',{}).get('battery') else 'Ikke tilgængelig'}</strong></div>
+</div><div class="row"><form method="post" action="/action"><input type="hidden" name="do" value="probe_capabilities"><button type="submit">🔎 Kontroller hardware igen</button></form></div></fieldset>
+<fieldset><legend>Kioskprofiler</legend>
+  <p class="status">Hver profil har sin egen URL og zoom. Warden verifierer den valgte URL og bruger den lokale offline-side, hvis dashboardet ikke kan nås.</p>
+  <div class="row">{''.join(f'<form method="post" action="/profile-switch"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><button class="{"primary" if item.get("name")==active_profile else ""}" type="submit">{esc(item.get("name","Profil"))} · {esc(item.get("zoom",100))}%</button></form><form method="post" action="/profile-remove"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><button type="submit" title="Fjern profil">×</button></form>' for item in profiles)}</div>
+  <form method="post" action="/profile-add"><label>Profilnavn</label><input type="text" name="name" required maxlength="40"><label>URL</label><input type="text" name="url" required placeholder="https://..."><label>Zoom</label><select name="zoom">{''.join(f'<option value="{z}"{" selected" if z == 100 else ""}>{z}%</option>' for z in (50,75,90,100,110,125,150,175,200))}</select><div class="row"><button type="submit">Tilføj eller opdatér profil</button></div></form>
+</fieldset>
 <fieldset><legend>Strømprofil</legend>
   <p class="status">Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.</p>
   <form method="post" action="/power-profile"><label>Aktiv profil</label><select name="profile">{options}</select><div class="row"><button class="primary" type="submit">Skift strømprofil</button></div></form>
@@ -1255,6 +1385,16 @@ document.getElementById('restartWardenManual').addEventListener('click', event =
 }});
 </script>"""
     return body + PAGE_TAIL
+
+
+def render_offline():
+    return PAGE_HEAD.format(title_suffix=" — Offline") + """
+<div class="narrow"><fieldset><legend>Kiosk dashboard unavailable</legend>
+<h1>Kiosk Warden</h1><p>The configured dashboard cannot be reached. Warden is
+still running locally and will return automatically when the dashboard is
+healthy again.</p><p class="status">Check network, DNS, the dashboard service,
+or open Warden from another device for diagnostics.</p></fieldset></div>
+<script>setTimeout(()=>location.reload(),30000)</script>""" + PAGE_TAIL
 
 
 def render_ha_fieldset(conf):
@@ -1352,7 +1492,11 @@ def render_settings(conf, message=None, error=None):
     <label>VNC port</label><input type="number" name="KIOSK_VNC_PORT" min="1024" max="65535" value="{esc(conf.get('KIOSK_VNC_PORT', '5900'))}" required>
     <label>noVNC port</label><input type="number" name="KIOSK_NOVNC_PORT" min="1024" max="65535" value="{esc(conf.get('KIOSK_NOVNC_PORT', '6080'))}" required>
     <div class="status">Alle tre lokale serviceporte konfliktkontrolleres før de gemmes.</div>
-    <label>Skærm-backend</label><select name="KIOSK_SCREEN_BACKEND">{''.join(f'<option value="{item}"{" selected" if conf.get("KIOSK_SCREEN_BACKEND", "auto") == item else ""}>{item}</option>' for item in ('auto','gnome-x11','cinnamon-x11','x11','raspberry-pi','ddc','cec'))}</select>
+    <label>Skærm-backend</label><select name="KIOSK_SCREEN_BACKEND">{''.join(f'<option value="{item}"{" selected" if conf.get("KIOSK_SCREEN_BACKEND", "auto") == item else ""}>{item}</option>' for item in ('auto','gnome-x11','cinnamon-x11','x11','wayland-wlopm','wayland-kde','raspberry-pi','ddc','cec'))}</select>
+    <label><input type="checkbox" name="KIOSK_TOUCH_WAKE" value="true"{' checked' if conf.get('KIOSK_TOUCH_WAKE','true') == 'true' else ''}> Sikker touch-to-wake</label>
+    <label><input type="checkbox" name="KIOSK_AUTO_BRIGHTNESS" value="true"{' checked' if conf.get('KIOSK_AUTO_BRIGHTNESS') == 'true' else ''}> Automatisk lysstyrke, når både skærm og lyssensor understøttes</label>
+    <label>Minimum lysstyrke (%)</label><input type="number" name="KIOSK_BRIGHTNESS_MIN" min="1" max="100" value="{esc(conf.get('KIOSK_BRIGHTNESS_MIN','15'))}">
+    <label>Maksimum lysstyrke (%)</label><input type="number" name="KIOSK_BRIGHTNESS_MAX" min="1" max="100" value="{esc(conf.get('KIOSK_BRIGHTNESS_MAX','100'))}">
     <label>Brugerfladesprog</label>
     <select name="UI_LANGUAGE"><option value="en"{' selected' if conf.get('UI_LANGUAGE', 'en') == 'en' else ''}>English</option><option value="da"{' selected' if conf.get('UI_LANGUAGE') == 'da' else ''}>Dansk</option></select>
     <div class="row"><button class="primary" type="submit">Gem og genstart</button></div>
@@ -1363,7 +1507,9 @@ def render_settings(conf, message=None, error=None):
 
 <form method="post" action="/change-password">
   <fieldset>
-    <legend>Skift password</legend>
+    <legend>Skift administrator-login</legend>
+    <label>Brugernavn</label>
+    <input type="text" name="username" value="{esc(conf.get('WEBUI_USERNAME', 'admin'))}" required minlength="3" maxlength="40" autocomplete="username">
     <label>Nyt password (min. 8 tegn)</label>
     <input type="password" name="password" required minlength="8">
     <label>Gentag nyt password</label>
@@ -1473,37 +1619,37 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _redirect(self, location):
+    def _redirect(self, location, cookie=None):
         self.send_response(303)
         self.send_header("Location", location)
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
 
-    def _require_auth(self):
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", 'Basic realm="Kiosk Warden"')
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(b"Login required")
+    def _session_token(self):
+        try:
+            cookies = http.cookies.SimpleCookie(self.headers.get("Cookie", ""))
+            return cookies[SESSION_COOKIE].value if SESSION_COOKIE in cookies else ""
+        except (http.cookies.CookieError, KeyError):
+            return ""
+
+    def _session_cookie(self, token, max_age=SESSION_TTL):
+        return f"{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}"
 
     def _authenticated(self, conf):
-        stored = conf.get("WEBUI_PASSWORD_HASH", "")
-        if not stored:
-            return False
-        header = self.headers.get("Authorization", "")
-        if not header.startswith("Basic "):
-            return False
-        try:
-            decoded = base64.b64decode(header[6:]).decode()
-        except Exception:
-            return False
-        _, _, pw = decoded.partition(":")
-        return verify_password(pw, stored)
+        return bool(conf.get("WEBUI_PASSWORD_HASH")) and valid_session(self._session_token())
+
+    def _login_redirect(self, requested="/"):
+        target = requested if requested.startswith("/") and not requested.startswith("//") else "/"
+        return self._redirect("/login?" + urllib.parse.urlencode({"next": target}))
 
     def do_GET(self):
         parsed = urllib.parse.urlsplit(self.path)
 
         if parsed.path == "/icon.svg":
             return self._serve_icon()
+        if parsed.path == "/offline":
+            return self._send_html(render_offline())
 
         conf = read_conf()
         password_set = bool(conf.get("WEBUI_PASSWORD_HASH"))
@@ -1515,8 +1661,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if parsed.path == "/login":
+            if self._authenticated(conf):
+                return self._redirect("/")
+            next_path = urllib.parse.parse_qs(parsed.query).get("next", ["/"])[0]
+            return self._send_html(render_login(conf, next_path))
+
+        if parsed.path == "/logout":
+            destroy_session(self._session_token())
+            return self._redirect("/login", self._session_cookie("", 0))
+
         if not self._authenticated(conf):
-            return self._require_auth()
+            return self._login_redirect(self.path)
 
         if parsed.path == "/screenshot.jpg":
             return self._serve_screenshot()
@@ -1560,21 +1716,44 @@ class Handler(http.server.BaseHTTPRequestHandler):
         password_set = bool(conf.get("WEBUI_PASSWORD_HASH"))
 
         if parsed.path == "/set-password" and not password_set:
+            username = fields.get("username", [""])[0].strip()
             pw = fields.get("password", [""])[0]
             pw2 = fields.get("password2", [""])[0]
+            if not re.fullmatch(r"[A-Za-z0-9._-]{3,40}", username):
+                return self._send_html(render_first_run(error="Brugernavn skal være 3–40 tegn og kun bruge bogstaver, tal, punktum, bindestreg eller underscore."))
             if len(pw) < 8 or pw != pw2:
                 return self._send_html(render_first_run(error="Password skal være mindst 8 tegn og matche i begge felter."))
+            conf["WEBUI_USERNAME"] = username
             conf["WEBUI_PASSWORD_HASH"] = hash_password(pw)
             write_conf(conf)
-            return self._redirect("/")
+            token = create_session()
+            return self._redirect("/", self._session_cookie(token))
 
         if not password_set:
             self.send_response(404)
             self.end_headers()
             return
 
+        if parsed.path == "/login":
+            client_ip = self.client_address[0]
+            next_path = fields.get("next", ["/"])[0]
+            if login_blocked(client_ip):
+                return self._send_html(render_login(conf, next_path, "For mange loginforsøg. Prøv igen om lidt."), status=429)
+            username = fields.get("username", [""])[0].strip()
+            password = fields.get("password", [""])[0]
+            expected_username = conf.get("WEBUI_USERNAME", "admin") or "admin"
+            username_ok = hmac.compare_digest(username, expected_username)
+            password_ok = verify_password(password, conf.get("WEBUI_PASSWORD_HASH", ""))
+            if not username_ok or not password_ok:
+                record_login_failure(client_ip)
+                return self._send_html(render_login(conf, next_path, "Forkert brugernavn eller password."), status=401)
+            clear_login_failures(client_ip)
+            token = create_session()
+            safe_next = next_path if next_path.startswith("/") and not next_path.startswith("//") else "/"
+            return self._redirect(safe_next, self._session_cookie(token))
+
         if not self._authenticated(conf):
-            return self._require_auth()
+            return self._login_redirect(parsed.path)
 
         if parsed.path == "/api/update-check":
             try:
@@ -1593,9 +1772,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send_html(render_settings(conf, error=err))
             previous_conf = dict(conf)
             old_webui_port = int(conf.get("KIOSK_WEBUI_PORT", BIND_PORT))
-            for key in ["KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT", "KIOSK_SCREEN_BACKEND"]:
+            for key in ["KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT", "KIOSK_SCREEN_BACKEND", "KIOSK_BRIGHTNESS_MIN", "KIOSK_BRIGHTNESS_MAX"]:
                 if key in fields:
                     conf[key] = fields[key][0].strip()
+            conf["KIOSK_TOUCH_WAKE"] = "true" if fields.get("KIOSK_TOUCH_WAKE", ["false"])[0] == "true" else "false"
+            conf["KIOSK_AUTO_BRIGHTNESS"] = "true" if fields.get("KIOSK_AUTO_BRIGHTNESS", ["false"])[0] == "true" else "false"
             conf["UI_LANGUAGE"] = "da" if fields.get("UI_LANGUAGE", ["en"])[0] == "da" else "en"
             pw = fields.get("MQTT_PASS", [""])[0]
             if pw:
@@ -1642,13 +1823,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_html(render_settings(conf, message="Home Assistant-forbindelse gemt."))
 
         if parsed.path == "/change-password":
+            username = fields.get("username", [""])[0].strip()
             pw = fields.get("password", [""])[0]
             pw2 = fields.get("password2", [""])[0]
-            if len(pw) < 8 or pw != pw2:
+            if not re.fullmatch(r"[A-Za-z0-9._-]{3,40}", username) or len(pw) < 8 or pw != pw2:
                 return self._send_html(render_settings(conf, error="Password skal være mindst 8 tegn og matche i begge felter."))
+            conf["WEBUI_USERNAME"] = username
             conf["WEBUI_PASSWORD_HASH"] = hash_password(pw)
             write_conf(conf)
-            return self._send_html(render_settings(conf, message="Password skiftet."))
+            with _session_lock:
+                _sessions.clear()
+            token = create_session()
+            return self._redirect("/settings", self._session_cookie(token))
 
         if parsed.path == "/vnc-password":
             pw = fields.get("password", [""])[0]
@@ -1691,6 +1877,34 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send_html(render_control(conf, message=msg))
             return self._send_html(render_control(conf, error=msg))
 
+        if parsed.path == "/profile-add":
+            name = fields.get("name", [""])[0].strip()
+            url = fields.get("url", [""])[0].strip()
+            zoom = fields.get("zoom", ["100"])[0].strip()
+            if not re.fullmatch(r"[A-Za-z0-9 ÆØÅæøå._-]{1,40}", name) or not re.fullmatch(r"https?://[^\s\"'\\]+", url) or not zoom.isdigit() or int(zoom) not in {50,75,90,100,110,125,150,175,200}:
+                return self._send_html(render_control(conf, error="Ugyldig profil, URL eller zoom."))
+            result = subprocess.run([os.path.join(KIOSK_DIR, "profile-manager.py"), "add", name, url, zoom], timeout=10)
+            if result.returncode == 0:
+                run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
+            return self._send_html(render_control(read_conf(), message="Kioskprofil gemt." if result.returncode == 0 else None, error="Profilen kunne ikke gemmes." if result.returncode else None))
+
+        if parsed.path == "/profile-remove":
+            name = fields.get("name", [""])[0]
+            result = subprocess.run([os.path.join(KIOSK_DIR, "profile-manager.py"), "remove", name], timeout=10)
+            if result.returncode == 0:
+                run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
+                return self._send_html(render_control(read_conf(), message=f"Profilen {name} er fjernet."))
+            return self._send_html(render_control(conf, error="Den sidste profil eller den valgte profil kunne ikke fjernes."))
+
+        if parsed.path == "/profile-switch":
+            name = fields.get("name", [""])[0]
+            result = subprocess.run([os.path.join(KIOSK_DIR, "profile-manager.py"), "switch", name], timeout=15)
+            if result.returncode == 0:
+                run("systemctl", "--user", "restart", "kiosk-mqtt-control.service")
+                run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
+                return self._send_html(render_control(read_conf(), message=f"Skiftet til profilen {name}."))
+            return self._send_html(render_control(conf, error="Profilen kunne ikke aktiveres."))
+
         if parsed.path == "/rollback":
             version = fields.get("version", [""])[0]
             if not re.fullmatch(r"\d+\.\d+\.\d+", version):
@@ -1729,6 +1943,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if result.returncode == 0:
                     return self._send_html(render_control(conf, message="Diagnostikpakken er klar til download."))
                 return self._send_html(render_control(conf, error="Diagnostikpakken kunne ikke oprettes."))
+            elif action == "probe_capabilities":
+                result = subprocess.run([os.path.join(KIOSK_DIR, "capability-probe.py")], capture_output=True, text=True, timeout=20)
+                if result.returncode == 0:
+                    run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
+                    return self._send_html(render_control(conf, message="Hardware-capabilities er opdateret."))
+                return self._send_html(render_control(conf, error="Hardware-proben fejlede."))
             elif action == "restart_warden":
                 unit = f"kiosk-warden-restart-{int(time.time())}"
                 subprocess.run(["systemd-run", "--user", "--collect", "--on-active=1s", "--unit", unit,
@@ -1736,6 +1956,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                 "kiosk-mqtt-stats.service", "kiosk-mqtt-control.service",
                                 "kiosk-watchdog.service", "kiosk-health.service",
                                 "kiosk-vnc.service", "kiosk-novnc.service",
+                                "kiosk-capabilities.service", "kiosk-input-guardian.service", "kiosk-adaptive-brightness.service",
                                 "kiosk-chrome.service", "kiosk-webui.service"],
                                timeout=10, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             elif action == "reboot":

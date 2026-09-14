@@ -96,6 +96,7 @@ restart_warden() {
   systemd-run --user --collect --on-active=1s --unit="kiosk-warden-restart-$(date +%s)" \
     /usr/bin/systemctl --user restart kiosk-mqtt-stats.service kiosk-mqtt-control.service \
     kiosk-watchdog.service kiosk-health.service kiosk-vnc.service kiosk-novnc.service \
+    kiosk-capabilities.service kiosk-input-guardian.service kiosk-adaptive-brightness.service \
     kiosk-chrome.service kiosk-webui.service >/dev/null 2>&1 || true
 }
 
@@ -125,10 +126,10 @@ PY
 
 set_kiosk_url() {
   local url="$1"
-  case "$url" in
-    http://*|https://*) ;;
-    *) return 0 ;;
-  esac
+  python3 - "$url" <<'PY' >/dev/null 2>&1 || return 0
+import re, sys
+raise SystemExit(0 if re.fullmatch(r"https?://[^\s\"'\\]+", sys.argv[1]) else 1)
+PY
   set_conf_value KIOSK_URL "$url"
   source "$HOME/kiosk/kiosk.conf"
   publish_state url "$KIOSK_URL"
@@ -245,6 +246,28 @@ set_volume() {
   publish_state volume "$volume"
 }
 
+set_brightness() {
+  local value="${1%%%}"
+  [[ "$value" =~ ^[0-9]+$ ]] || return 0
+  value="$($HOME/kiosk/hardware-control.py brightness-set "$value" 2>/dev/null)" || return 0
+  publish_state brightness "$value"
+}
+
+set_microphone() {
+  local value="${1%%%}"
+  [[ "$value" =~ ^[0-9]+$ ]] || return 0
+  value="$($HOME/kiosk/hardware-control.py microphone-set "$value" 2>/dev/null)" || return 0
+  publish_state microphone "$value"
+}
+
+set_profile() {
+  local name="$1"
+  "$HOME/kiosk/profile-manager.py" switch "$name" >/dev/null 2>&1 || return 0
+  source "$HOME/kiosk/kiosk.conf"
+  publish_state kiosk_profile "$name"
+  publish_state url "$KIOSK_URL"
+}
+
 take_screenshot() {
   "$HOME/kiosk/take-screenshot.sh" >/dev/null 2>&1 || true
 }
@@ -318,6 +341,9 @@ listen_topic "$BASE_TOPIC/set_url" set_kiosk_url &
 listen_topic "$BASE_TOPIC/set_zoom" set_zoom &
 listen_topic "$BASE_TOPIC/set_theme" set_theme &
 listen_topic "$BASE_TOPIC/set_volume" set_volume &
+listen_topic "$BASE_TOPIC/set_brightness" set_brightness &
+listen_topic "$BASE_TOPIC/set_microphone" set_microphone &
+listen_topic "$BASE_TOPIC/set_profile" set_profile &
 listen_topic "$BASE_TOPIC/set_update_channel" set_update_channel &
 listen_topic "$BASE_TOPIC/set_power_profile" set_power_profile &
 listen_topic "$BASE_TOPIC/set_smartdash_rendering" set_smartdash_rendering &
