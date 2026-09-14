@@ -37,11 +37,23 @@ reset_progress_on_failure() {
 }
 
 release_json() {
-  local url="https://api.github.com/repos/$REPO_SLUG/releases/latest"
+  local url="https://api.github.com/repos/$REPO_SLUG/releases/latest" feed tag
   [[ "$CHANNEL" == beta ]] && url="https://api.github.com/repos/$REPO_SLUG/releases?per_page=1"
   local data tag release_url
   if data="$(curl -fsSL --max-time 20 -H 'Accept: application/vnd.github+json' -H 'User-Agent: kiosk-warden' "$url" 2>/dev/null)"; then
     [[ "$CHANNEL" == beta ]] && jq '.[0]' <<<"$data" || printf '%s\n' "$data"
+    return 0
+  fi
+
+  # The anonymous GitHub API is rate-limited per public IP. GitHub's public
+  # Atom feed lists prereleases too and remains available without API quota,
+  # so Beta discovery must not stop at 5% merely because the API returns 403.
+  if [[ "$CHANNEL" == beta ]]; then
+    feed="$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' -H 'User-Agent: kiosk-warden' "https://github.com/$REPO_SLUG/releases.atom?warden_check=$(date +%s)" 2>/dev/null)" || return 1
+    tag="$(sed -n -E 's@.*href="https://github.com/[^/]+/[^/]+/releases/tag/(v[0-9]+\.[0-9]+\.[0-9]+)".*@\1@p' <<<"$feed" | head -n1)"
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    jq -cn --arg tag "$tag" --arg url "https://github.com/$REPO_SLUG/releases/tag/$tag" \
+      '{tag_name:$tag,html_url:$url,body:"",prerelease:true}'
     return 0
   fi
 

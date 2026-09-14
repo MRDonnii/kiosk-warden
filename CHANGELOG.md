@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.18.20 — 2026-09-14
+
+- **Beta updates survive GitHub API rate limits.** When GitHub's anonymous API
+  returns 403, Beta discovery now reads the newest immutable release tag from
+  the public releases Atom feed instead of stopping at 5 percent.
+- **Includes bounded wake verification from v1.18.19.** Slower hardware gets a
+  short retry window while the same renderer, layout, screenshot, and display
+  checks remain mandatory before an update is accepted.
+- **Includes isolated VNC close from v1.18.18.** Viewer expiry stops only VNC
+  services and preserves Warden, Chrome, renderer, and screen state.
+
 ## v1.18.19 — 2026-09-14
 
 - **Do not reject a slow but healthy wake.** Dashboard, renderer, and screenshot

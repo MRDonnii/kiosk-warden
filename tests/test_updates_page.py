@@ -228,6 +228,8 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertNotIn("sleep 2 && systemctl --user restart kiosk-webui.service", updater)
         self.assertIn('er installeret og genstartet.', updater)
         self.assertIn('complete false', updater)
+        self.assertIn("releases.atom", updater)
+        self.assertIn("API returns 403", updater)
 
     def test_installer_supports_a_conflict_checked_webui_port(self):
         installer = (ROOT / "install.sh").read_text()
