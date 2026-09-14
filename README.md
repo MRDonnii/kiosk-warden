@@ -152,8 +152,10 @@ It binds to `0.0.0.0` by default so you can finish setup from your phone
 without plugging in a keyboard. **The first thing you must do is open it and
 create an administrator username and password** — until a login is created,
 the page only shows that setup form (nothing else is reachable). Afterwards,
-the built-in login page creates a private, expiring browser session; every page
-remains protected. Because the port is reachable from your whole LAN,
+the built-in login page creates a private, signed browser session that survives
+WebUI restarts and updates. **Remember me** keeps it for up to 30 days; changing
+the administrator password invalidates existing sessions. Every page remains
+protected. Because the port is reachable from your whole LAN,
 don't leave that first-run window open longer than necessary.
 
 From the web UI you can:

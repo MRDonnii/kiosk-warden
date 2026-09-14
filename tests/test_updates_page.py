@@ -409,7 +409,6 @@ class UpdatesPageTest(unittest.TestCase):
             SERVER.CONF_PATH = str(pathlib.Path(tmp) / "kiosk.conf")
             conf = dict(SERVER.DEFAULTS, WEBUI_USERNAME="warden", WEBUI_PASSWORD_HASH=SERVER.hash_password("correct-horse"))
             SERVER.write_conf(conf)
-            SERVER._sessions.clear()
             SERVER._login_failures.clear()
             server = SERVER.ThreadingHTTPServer(("127.0.0.1", 0), SERVER.Handler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -455,9 +454,21 @@ class UpdatesPageTest(unittest.TestCase):
         settings = SERVER.render_settings(dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk"))
         server = (ROOT / "webui" / "server.py").read_text()
         self.assertIn('name="remember"', login)
+        self.assertIn('name="remember" value="true" checked', login)
         self.assertIn('name="WEBUI_AUTO_LOGOUT"', settings)
         self.assertIn("REMEMBER_TTL", server)
         self.assertIn('conf["WEBUI_AUTO_LOGOUT"]', server)
+
+    def test_signed_login_survives_webui_restart_and_password_change_revokes_it(self):
+        conf = dict(SERVER.DEFAULTS, WEBUI_PASSWORD_HASH=SERVER.hash_password("correct-horse"))
+        token = SERVER.create_session(conf, SERVER.REMEMBER_TTL)
+        self.assertTrue(SERVER.valid_session(token, conf))
+        # Validation uses only the signed cookie and persisted password hash,
+        # so there is no process-local session table to lose on restart.
+        self.assertNotIn("_sessions", SERVER.__dict__)
+        changed = dict(conf, WEBUI_PASSWORD_HASH=SERVER.hash_password("new-password"))
+        self.assertFalse(SERVER.valid_session(token, changed))
+        self.assertFalse(SERVER.valid_session(token + "tampered", conf))
 
     def test_mqtt_has_a_dedicated_page(self):
         conf = dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test")

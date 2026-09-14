@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.18.13 — 2026-09-14
+
+- **Remembered login now survives WebUI restarts and updates.** Session cookies
+  are self-contained and HMAC-signed with the persisted administrator password
+  hash instead of depending on an in-memory token table that disappeared every
+  time `kiosk-webui.service` restarted.
+- **The 30-day option is submitted correctly.** The **Remember me** checkbox is
+  now inside the login form and enabled by default. Disabling automatic logout
+  also gives the session the remembered duration. Changing the administrator
+  password invalidates every previously signed cookie.
+
 ## v1.18.12 — 2026-09-14
 
 - **Avoid the white screen on the first VNC start.** The page now waits for the

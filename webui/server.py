@@ -5,6 +5,8 @@ Stdlib-only on purpose (no pip installs needed on the kiosk). Binds to
 0.0.0.0:8080 by default so it can be reached from other devices on the LAN
 (e.g. a phone) — see README for restricting it to localhost instead.
 """
+import base64
+import binascii
 import collections
 import http.cookies
 import hashlib
@@ -203,7 +205,6 @@ ENGLISH_TEXT = {
 SESSION_COOKIE = "warden_session"
 SESSION_TTL = 12 * 60 * 60
 REMEMBER_TTL = 30 * 24 * 60 * 60
-_sessions = {}
 _session_lock = threading.Lock()
 _login_failures = {}
 
@@ -260,33 +261,35 @@ def verify_password(password, stored):
     return hmac.compare_digest(dk.hex(), hashed)
 
 
-def create_session(duration=SESSION_TTL):
-    token = secrets.token_urlsafe(32)
-    now = time.time()
-    with _session_lock:
-        for old_token, expires in list(_sessions.items()):
-            if expires <= now:
-                _sessions.pop(old_token, None)
-        _sessions[token] = now + duration
-    return token
+def _session_key(conf):
+    material = "kiosk-warden-session-v1:" + conf.get("WEBUI_PASSWORD_HASH", "")
+    return hashlib.sha256(material.encode()).digest()
 
 
-def valid_session(token):
-    if not token:
+def create_session(conf, duration=SESSION_TTL):
+    expires = int(time.time()) + max(1, int(duration))
+    payload = f"{expires}:{secrets.token_urlsafe(24)}".encode()
+    encoded = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+    signature = hmac.new(_session_key(conf), encoded.encode(), hashlib.sha256).digest()
+    signed = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+    return f"{encoded}.{signed}"
+
+
+def valid_session(token, conf):
+    if not token or "." not in token or not conf.get("WEBUI_PASSWORD_HASH"):
         return False
-    now = time.time()
-    with _session_lock:
-        expires = _sessions.get(token, 0)
-        if expires <= now:
-            _sessions.pop(token, None)
-            return False
-        _sessions[token] = expires
-    return True
-
-
-def destroy_session(token):
-    with _session_lock:
-        _sessions.pop(token, None)
+    encoded, supplied_signature = token.split(".", 1)
+    expected = base64.urlsafe_b64encode(
+        hmac.new(_session_key(conf), encoded.encode(), hashlib.sha256).digest()
+    ).decode().rstrip("=")
+    if not hmac.compare_digest(supplied_signature, expected):
+        return False
+    try:
+        padded = encoded + "=" * (-len(encoded) % 4)
+        expires = int(base64.urlsafe_b64decode(padded).decode().split(":", 1)[0])
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return False
+    return expires > int(time.time())
 
 
 def login_blocked(client_ip):
@@ -1057,9 +1060,9 @@ def render_login(conf, next_path="/", error=None):
       <input type="text" name="username" required autofocus autocomplete="username">
       <label>Password</label>
       <input type="password" name="password" required autocomplete="current-password">
+      <label><input type="checkbox" name="remember" value="true" checked> Husk mig i 30 dage</label>
       <button class="primary login-button" type="submit">Fortsæt til Kiosk Warden</button>
     </form>
-    <label><input type="checkbox" name="remember" value="true"> Husk mig i 30 dage</label>
     <p class="login-note">Lokal administration · sessionen udløber automatisk</p>
   </section>
 </main>
@@ -1777,7 +1780,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return f"{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}"
 
     def _authenticated(self, conf):
-        return bool(conf.get("WEBUI_PASSWORD_HASH")) and valid_session(self._session_token())
+        return bool(conf.get("WEBUI_PASSWORD_HASH")) and valid_session(self._session_token(), conf)
 
     def _login_redirect(self, requested="/"):
         target = requested if requested.startswith("/") and not requested.startswith("//") else "/"
@@ -1808,7 +1811,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_html(render_login(conf, next_path))
 
         if parsed.path == "/logout":
-            destroy_session(self._session_token())
             return self._redirect("/login", self._session_cookie("", 0))
 
         if not self._authenticated(conf):
@@ -1869,7 +1871,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             conf["WEBUI_PASSWORD_HASH"] = hash_password(pw)
             write_conf(conf)
             run("systemctl", "--user", "restart", "kiosk-vnc.service")
-            token = create_session()
+            token = create_session(conf)
             return self._redirect("/", self._session_cookie(token))
 
         if not password_set:
@@ -1891,8 +1893,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 record_login_failure(client_ip)
                 return self._send_html(render_login(conf, next_path, "Forkert brugernavn eller password."), status=401)
             clear_login_failures(client_ip)
-            duration = REMEMBER_TTL if fields.get("remember", ["false"])[0] == "true" else SESSION_TTL
-            token = create_session(duration)
+            remember = fields.get("remember", ["false"])[0] == "true"
+            duration = REMEMBER_TTL if remember or conf.get("WEBUI_AUTO_LOGOUT", "true") == "false" else SESSION_TTL
+            token = create_session(conf, duration)
             safe_next = next_path if next_path.startswith("/") and not next_path.startswith("//") else "/"
             return self._redirect(safe_next, self._session_cookie(token, duration))
 
@@ -2000,9 +2003,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             conf["WEBUI_PASSWORD_HASH"] = hash_password(pw)
             write_conf(conf)
             run("systemctl", "--user", "restart", "kiosk-vnc.service")
-            with _session_lock:
-                _sessions.clear()
-            token = create_session()
+            token = create_session(conf)
             return self._redirect("/settings", self._session_cookie(token))
 
         if parsed.path == "/vnc-password":
