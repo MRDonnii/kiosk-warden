@@ -128,6 +128,30 @@ ENGLISH_TEXT = {
     "Vælg releasekanal, installer opdateringer eller gendan en tidligere version.": "Choose a release channel, install updates, or restore an earlier version.",
     "Tilpas identitet, lokale porte, skærm, login og strømfunktioner.": "Configure identity, local ports, display, login, and power features.",
     "Aktiv kiosk": "Active kiosk", "Forbindelser": "Connections", "System": "System",
+    "Aktiv visning": "Active view", "Ingen profil": "No profile",
+    "Kiosktilstand og diagnostik": "Kiosk state and diagnostics", "Tilstandsmaskine": "State machine",
+    "Seneste selvtest": "Latest self-test", "Wake-tid": "Wake time",
+    "Selvtesten gennemfører en rigtig OFF→ON-cyklus og kontrollerer backend/DPMS, opløsning, Chrome-side, renderer/layout, screenshot og serviceporte.": "The self-test performs a real OFF→ON cycle and checks the backend/DPMS, resolution, Chrome page, renderer/layout, screenshot, and service ports.",
+    "Kør OFF→ON-test": "Run OFF→ON test", "Trinvis recovery": "Step-by-step recovery", "Lav sikker diagnostik-ZIP": "Create safe diagnostics ZIP", "Download seneste ZIP": "Download latest ZIP",
+    "Skærm og touch": "Display and touch", "Aktiv skærm": "Active display", "Opløsning": "Resolution", "Refresh rate": "Refresh rate",
+    "Touchscreen": "Touchscreen", "Kalibrering": "Calibration", "Seneste input": "Latest input", "Ikke registreret": "Not detected",
+    "Standard/ukendt": "Default/unknown", "Hardware capabilities": "Hardware capabilities", "Touch wake": "Touch wake",
+    "Understøttet": "Supported", "Ikke tilgængelig": "Unavailable", "Lysstyrke": "Brightness", "Lyssensor": "Ambient light sensor",
+    "Mikrofon": "Microphone", "Batteri": "Battery", "Kontroller hardware igen": "Check hardware again",
+    "Touch er ikke registreret": "Touch is not detected", "Touch-enheden er frakoblet": "The touch device is disconnected",
+    "evtest mangler": "evtest is missing", "Mangler adgang til touch-enheden": "No access to the touch device", "Klar": "Ready",
+    "Kioskprofiler": "Kiosk profiles", "Hver profil har sin egen URL og zoom. Warden verifierer den valgte URL og bruger den lokale offline-side, hvis dashboardet ikke kan nås.": "Each profile has its own URL and zoom. Warden verifies the selected URL and uses the local offline page when the dashboard cannot be reached.",
+    "Fjern profil": "Remove profile", "Opdatér profil": "Update profile", "Nyt profilnavn": "New profile name", "Tilføj profil": "Add profile",
+    "VNC er slukket. Tryk på Start VNC for at forbinde.": "VNC is off. Press Start VNC to connect.",
+    "VNC er aktiv og lukker automatisk, når siden lukkes.": "VNC is active and stops automatically when the page is closed.",
+    "Kiosk-id bestemmer topic'et og bruges af MQTT discovery.": "The kiosk ID determines the topic and is used by MQTT discovery.",
+    "Base topic (bruges af MQTT og Home Assistant)": "Base topic (used by MQTT and Home Assistant)",
+    "Alle tre lokale serviceporte konfliktkontrolleres før de gemmes.": "All three local service ports are checked for conflicts before saving.",
+    "Skærm-backend": "Display backend", "Sikker touch-to-wake": "Safe touch-to-wake",
+    "Automatisk lysstyrke, når både skærm og lyssensor understøttes": "Automatic brightness when both display and ambient light sensor are supported",
+    "Minimum lysstyrke (%)": "Minimum brightness (%)", "Maksimum lysstyrke (%)": "Maximum brightness (%)",
+    "Automatisk logud efter 12 timer": "Automatic sign-out after 12 hours", "Til": "On", "Fra": "Off",
+    "Skift administrator-login": "Change administrator login", "Gentag nyt password": "Repeat new password",
     "Opdateringer": "Updates", "Ny version klar": "New version available", "Opdateret": "Up to date",
     "Installeret": "Installed", "Seneste på": "Latest on", "Release-kanal og installation": "Release channel and installation",
     "Opdateringskanal": "Update channel", "Tjek for updates": "Check for updates", "Gem kanal": "Save channel",
@@ -142,6 +166,7 @@ ENGLISH_TEXT = {
     "Genstarter om": "Restarting in", "sekunder…": "seconds…", "Kører fint": "Healthy", "Ukendt": "Unknown",
     "Ny version tilgængelig": "New version available", "åbn Opdateringer": "open Updates", "Kører": "Running", "Stoppet": "Stopped",
     "Temperatur": "Temperature", "CPU-frekvens": "CPU frequency", "NVMe temperatur": "NVMe temperature", "Netværk": "Network",
+    "CPU, RAM og GPU": "CPU, RAM and GPU",
     "seneste 60 minutter": "last 60 minutes", "CPU- og NVMe-temperatur": "CPU and NVMe temperature", "Netværkstrafik": "Network traffic",
     "Styring": "Control", "Strømprofil": "Power profile", "Strømbesparelse": "Power Saver", "Balanceret": "Balanced", "Ydelse": "Performance",
     "Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.": "Power Saver uses the least energy. Balanced and Performance progressively allow more CPU performance.",
@@ -1106,6 +1131,19 @@ def render_zoom_options(selected=100):
     )
 
 
+def touch_guardian_label(capabilities):
+    touch = capabilities.get("touch", {})
+    reason = touch.get("guardian_reason")
+    if touch.get("guardian"):
+        return "Klar"
+    return {
+        "touch_not_detected": "Touch er ikke registreret",
+        "event_device_missing": "Touch-enheden er frakoblet",
+        "evtest_missing": "evtest mangler",
+        "permission_denied": "Mangler adgang til touch-enheden",
+    }.get(reason, "Ikke tilgængelig")
+
+
 def render_page_header(title, conf, description, aside=""):
     return f"""
 <div class="header-row">
@@ -1439,7 +1477,7 @@ def render_control(conf, message=None, error=None):
   <div class="tile"><span>Backend</span><strong>{esc(display_status.get('backend', '—'))}</strong></div>
 </div></fieldset>
 <fieldset><legend>Hardware capabilities</legend><div class="grid">
-  <div class="tile"><span>Touch wake</span><strong>{'Understøttet' if capabilities.get('touch',{}).get('guardian') else 'Ikke tilgængelig'}</strong></div>
+  <div class="tile"><span>Touch wake</span><strong>{esc(touch_guardian_label(capabilities))}</strong></div>
   <div class="tile"><span>Lysstyrke</span><strong>{esc(capabilities.get('display',{}).get('brightness_backend') or 'Ikke tilgængelig')}</strong></div>
   <div class="tile"><span>Lyssensor</span><strong>{'Understøttet' if capabilities.get('sensors',{}).get('illuminance') else 'Ikke tilgængelig'}</strong></div>
   <div class="tile"><span>Mikrofon</span><strong>{'Understøttet' if capabilities.get('audio',{}).get('microphone') else 'Ikke tilgængelig'}</strong></div>

@@ -2,7 +2,7 @@
 
 Lets Kiosk Warden read a handful of things back FROM Home Assistant (a
 smart-plug power/energy sensor, its recent history) for the "PC overblik"
-page and the Indstillinger connection test. Never writes anything to HA -
+page and the Connections connection test. Never writes anything to HA -
 read-only, on purpose. Also runnable as a one-shot CLI so mqtt-stats.sh
 (bash) can call it without embedding a second HTTP client.
 """

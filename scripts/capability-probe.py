@@ -23,8 +23,22 @@ def touch():
     props = run("xinput", "list-props", match.group(1)) if match else ""
     node = re.search(r'Device Node[^:]*:\s*"([^"]+)"', props)
     path = node.group(1) if node else ""
+    evtest = bool(shutil.which("evtest"))
+    readable_device = bool(path and os.path.exists(path) and os.access(path, os.R_OK))
+    if not match:
+        guardian_reason = "touch_not_detected"
+    elif not path or not os.path.exists(path):
+        guardian_reason = "event_device_missing"
+    elif not evtest:
+        guardian_reason = "evtest_missing"
+    elif not readable_device:
+        guardian_reason = "permission_denied"
+    else:
+        guardian_reason = "ready"
     return {"available": bool(match), "name": re.sub(r".*↳\s*|\s+id=\d+.*", "", line).strip() or None,
-            "device": path or None, "guardian": bool(path and shutil.which("evtest") and os.access(path, os.R_OK))}
+            "device": path or None, "event_device_present": bool(path and os.path.exists(path)),
+            "event_device_readable": readable_device, "evtest": evtest,
+            "guardian": guardian_reason == "ready", "guardian_reason": guardian_reason}
 
 def probe():
     model = ""
