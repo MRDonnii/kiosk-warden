@@ -30,8 +30,8 @@ except ImportError:
 
 
 def main() -> int:
-    if len(sys.argv) != 2 or sys.argv[1] not in {"active", "idle", "status"}:
-        print(f"Usage: {sys.argv[0]} active|idle|status", file=sys.stderr)
+    if len(sys.argv) != 2 or sys.argv[1] not in {"active", "idle", "status", "verify", "reload"}:
+        print(f"Usage: {sys.argv[0]} active|idle|status|verify|reload", file=sys.stderr)
         return 2
     state = sys.argv[1]
     try:
@@ -72,12 +72,19 @@ def main() -> int:
         requested = json.dumps(state)
         expression = f"""(() => {{
           const supported = Boolean(window.BeastPower?.getState && window.BeastPower?.setState);
-          if ({requested} !== 'status') {{
+          if ({requested} === 'reload') {{ location.reload(); return {{reloading:true, url:location.href}}; }}
+          if (!['status', 'verify'].includes({requested})) {{
             if (supported) window.BeastPower.setState({requested});
             else window.postMessage({{type:'kiosk-warden-power',state:{requested}}}, window.location.origin);
           }}
+          const root = document.documentElement;
+          const body = document.body;
           return {{supported, name: supported ? 'HA Smartdash' : null,
             state: supported ? window.BeastPower.getState() : null,
+            ready: document.readyState === 'complete',
+            viewport: {{width: innerWidth, height: innerHeight}},
+            layout: {{scrollWidth: root?.scrollWidth || 0, scrollHeight: root?.scrollHeight || 0,
+              bodyWidth: body?.getBoundingClientRect().width || 0}},
             build: document.querySelector('meta[name="beast-build"]')?.content || null,
             release: document.querySelector('meta[name="beast-release-tag"]')?.content || null,
             url: location.href}};
@@ -100,7 +107,18 @@ def main() -> int:
         temp_path = status_path.with_suffix(".tmp")
         temp_path.write_text(json.dumps(details), encoding="utf-8")
         temp_path.replace(status_path)
-        if state == "status": print(json.dumps(details))
+        if state in {"status", "verify"}: print(json.dumps(details))
+        if state == "verify":
+            viewport = details.get("viewport") or {}
+            layout = details.get("layout") or {}
+            valid = (
+                details.get("ready") is True
+                and int(viewport.get("width") or 0) >= 1024
+                and int(viewport.get("height") or 0) >= 600
+                and float(layout.get("bodyWidth") or 0) >= 900
+                and (not details.get("supported") or details.get("state") == "active")
+            )
+            return 0 if valid else 1
     finally:
         connection.close()
     return 0

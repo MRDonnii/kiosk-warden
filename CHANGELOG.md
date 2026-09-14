@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.17.0 — 2026-09-14
+
+- **Deterministic kiosk state machine.** Screen and renderer transitions move
+  through `OFF`, `WAKING`, `ON`, `SLEEPING`, and `RECOVERING` under one lock.
+- **Verified wake and staged recovery.** Warden verifies display geometry, the
+  expected page, renderer/layout, and a non-blank screenshot before exposing
+  the monitor. Recovery escalates from resize and renderer resume to reload,
+  and only then restarts Chrome.
+- **Portable display backends.** GNOME/X11, Cinnamon/X11, generic X11,
+  Raspberry Pi, DDC/CI, and HDMI-CEC are isolated behind a backend interface.
+- **OFF→ON acceptance and automatic rollback.** Updates must pass a timed test
+  of DPMS, resolution, renderer, screenshot, ports, and wake time or the
+  pre-update snapshot is restored.
+- **Safe browser cleanup and diagnostics.** Only orphaned processes with the
+  dedicated Warden Chrome profile are closed. The WebUI creates a sanitized
+  diagnostics ZIP with services, logs, display, touch/input, Chrome, renderer,
+  ports and version data, without including `kiosk.conf`.
+- **All local ports conflict-checked.** WebUI, VNC, and noVNC ports are
+  configurable, range-checked, unique, and tested for active listeners.
+
 ## v1.16.4 — 2026-09-14
 
 - **Change the WebUI port later from Settings.** The port is validated against

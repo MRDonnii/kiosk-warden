@@ -36,6 +36,9 @@ VERSION_PATH = os.path.join(KIOSK_DIR, "version")
 UPDATE_CHANNEL_PATH = os.path.join(KIOSK_DIR, "update_channel")
 UPDATE_STATUS_PATH = os.path.join(KIOSK_DIR, "update_status.json")
 SMARTDASH_STATUS_PATH = os.path.join(KIOSK_DIR, "smartdash_status.json")
+WARDEN_STATE_PATH = os.path.join(KIOSK_DIR, "warden_state.json")
+SELF_TEST_PATH = os.path.join(KIOSK_DIR, "self_test.json")
+DIAGNOSTICS_DIR = os.path.join(KIOSK_DIR, "diagnostics")
 REPO_URL = os.environ.get("KIOSK_WARDEN_REPO", "https://github.com/MRDonnii/kiosk-warden.git")
 
 FALLBACK_ICON_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -63,7 +66,8 @@ os.environ.setdefault("XAUTHORITY", os.path.join(HOME, ".Xauthority"))
 CONF_ORDER = [
     "KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_PORT",
     "MQTT_USER", "MQTT_PASS", "BASE_TOPIC", "CODEX_REMOTE_TOPIC",
-    "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "UI_LANGUAGE", "WEBUI_PASSWORD_HASH",
+    "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT",
+    "KIOSK_SCREEN_BACKEND", "KIOSK_MIN_WIDTH", "KIOSK_MIN_HEIGHT", "UI_LANGUAGE", "WEBUI_PASSWORD_HASH",
     "HA_URL", "HA_TOKEN", "HA_POWER_ENTITY",
 ]
 
@@ -79,6 +83,11 @@ DEFAULTS = {
     "CODEX_REMOTE_TOPIC": "home/codex/kiosk/remote_control",
     "STATS_INTERVAL": "10",
     "KIOSK_WEBUI_PORT": "8080",
+    "KIOSK_VNC_PORT": "5900",
+    "KIOSK_NOVNC_PORT": "6080",
+    "KIOSK_SCREEN_BACKEND": "auto",
+    "KIOSK_MIN_WIDTH": "1024",
+    "KIOSK_MIN_HEIGHT": "600",
     "UI_LANGUAGE": "en",
     "WEBUI_PASSWORD_HASH": "",
     "HA_URL": "",
@@ -672,6 +681,9 @@ def validate_settings(fields):
     mqtt_port = fields.get("MQTT_PORT", [""])[0].strip()
     stats_interval = fields.get("STATS_INTERVAL", [""])[0].strip()
     webui_port = fields.get("KIOSK_WEBUI_PORT", [str(BIND_PORT)])[0].strip()
+    vnc_port = fields.get("KIOSK_VNC_PORT", ["5900"])[0].strip()
+    novnc_port = fields.get("KIOSK_NOVNC_PORT", ["6080"])[0].strip()
+    backend = fields.get("KIOSK_SCREEN_BACKEND", ["auto"])[0].strip()
     if not re.match(r"^[a-z0-9_]+$", kiosk_id):
         return "Kiosk-id må kun indeholde a-z, 0-9 og _."
     if not re.match(r"^https?://", kiosk_url):
@@ -684,6 +696,18 @@ def validate_settings(fields):
         return "Porten skal være mellem 1024 og 65535."
     if int(webui_port) != BIND_PORT and not webui_port_available(int(webui_port)):
         return "Web-UI porten er allerede i brug."
+    current = read_conf()
+    ports = {"VNC": vnc_port, "noVNC": novnc_port}
+    for name, port in ports.items():
+        if not port.isdigit() or not 1024 <= int(port) <= 65535:
+            return f"{name}-porten skal være mellem 1024 og 65535."
+        current_key = "KIOSK_VNC_PORT" if name == "VNC" else "KIOSK_NOVNC_PORT"
+        if port != current.get(current_key) and not webui_port_available(int(port)):
+            return f"{name}-porten er allerede i brug."
+    if len({webui_port, vnc_port, novnc_port}) != 3:
+        return "Web-UI, VNC og noVNC skal bruge hver sin port."
+    if backend not in {"auto", "gnome-x11", "cinnamon-x11", "x11", "raspberry-pi", "ddc", "cec"}:
+        return "Ugyldig skærm-backend."
     return None
 
 
@@ -841,7 +865,7 @@ def render_first_run(message=None, error=None):
     body += '<div class="sub">Sæt et password for at beskytte opsætningssiden, før du gør noget andet.</div>'
     body += render_message(message, error)
     body += '<div class="narrow">'
-    body += """
+    body += f"""
 <form method="post" action="/set-password">
   <fieldset>
     <legend>Sæt password</legend>
@@ -1137,6 +1161,36 @@ def render_control(conf, message=None, error=None):
         smartdash = {}
     profile = current_power_profile()
     has_screenshot = os.path.exists(SCREENSHOT_PATH)
+    has_diagnostics = os.path.isdir(DIAGNOSTICS_DIR) and any(name.endswith(".zip") for name in os.listdir(DIAGNOSTICS_DIR))
+    try:
+        state = json.loads(read_file(WARDEN_STATE_PATH, '{"state":"UNKNOWN"}'))
+    except ValueError:
+        state = {"state": "UNKNOWN"}
+    try:
+        self_test = json.loads(read_file(SELF_TEST_PATH, '{}'))
+    except ValueError:
+        self_test = {}
+    try:
+        display_result = subprocess.run([os.path.join(KIOSK_DIR, "warden-state.sh"), "status"], capture_output=True, text=True, timeout=5)
+        display_status = json.loads(display_result.stdout).get("display", {})
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        display_status = {}
+    try:
+        touch_output = subprocess.run(["xinput", "list"], capture_output=True, text=True, timeout=3).stdout
+        touch_line = next((line.strip() for line in touch_output.splitlines() if "touch" in line.lower()), "")
+        touch_name = re.sub(r".*↳\s*|\s+id=\d+.*", "", touch_line).strip() or "Ikke registreret"
+        touch_id = re.search(r"id=(\d+)", touch_line)
+        touch_props = subprocess.run(["xinput", "list-props", touch_id.group(1)], capture_output=True, text=True, timeout=3).stdout if touch_id else ""
+        matrix = re.search(r"Coordinate Transformation Matrix[^:]*:\s*(.+)", touch_props)
+        touch_calibration = matrix.group(1).strip() if matrix else "Standard/ukendt"
+    except (OSError, subprocess.TimeoutExpired):
+        touch_name = "Ikke registreret"
+        touch_calibration = "Ukendt"
+    try:
+        idle_ms = int(subprocess.run(["xprintidle"], capture_output=True, text=True, timeout=3).stdout.strip())
+        last_input = f"{idle_ms // 1000} sek. siden"
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        last_input = "Ukendt"
     options = "".join(
         f'<option value="{key}"{" selected" if key == profile else ""}>{label}</option>'
         for key, label in POWER_PROFILES.items()
@@ -1145,6 +1199,20 @@ def render_control(conf, message=None, error=None):
     body += f'<div class="header-row"><div><h1>Styring</h1><div class="sub">{esc(conf.get("KIOSK_NAME", "Kiosk"))}</div></div></div>'
     body += render_nav("/control") + render_message(message, error)
     body += f"""
+<fieldset><legend>Kiosktilstand og diagnostik</legend>
+  <div class="grid"><div class="tile"><span>Tilstandsmaskine</span><strong>{esc(state.get('state', 'UNKNOWN'))}</strong></div><div class="tile"><span>Seneste selvtest</span><strong>{esc(self_test.get('result', '—'))}</strong></div><div class="tile"><span>Wake-tid</span><strong>{esc(str(self_test.get('wake_time_ms', '—')) + (' ms' if self_test.get('wake_time_ms') is not None else ''))}</strong></div></div>
+  <p class="status">Selvtesten gennemfører en rigtig OFF→ON-cyklus og kontrollerer backend/DPMS, opløsning, Chrome-side, renderer/layout, screenshot og serviceporte.</p>
+  <div class="row"><form method="post" action="/action"><input type="hidden" name="do" value="self_test"><button class="primary" type="submit">🧪 Kør OFF→ON-test</button></form><form method="post" action="/action"><input type="hidden" name="do" value="recover"><button type="submit">🩹 Trinvis recovery</button></form><form method="post" action="/action"><input type="hidden" name="do" value="diagnostics"><button type="submit">📦 Lav sikker diagnostik-ZIP</button></form>{'<a class="nav-btn" href="/diagnostics/latest.zip">⬇ Download seneste ZIP</a>' if has_diagnostics else ''}</div>
+</fieldset>
+<fieldset><legend>Skærm og touch</legend><div class="grid">
+  <div class="tile"><span>Aktiv skærm</span><strong>{esc(display_status.get('output', '—'))}</strong></div>
+  <div class="tile"><span>Opløsning</span><strong>{esc(str(display_status.get('width', '—')) + '×' + str(display_status.get('height', '—')))}</strong></div>
+  <div class="tile"><span>Refresh rate</span><strong>{esc(str(display_status.get('refresh_hz', '—')) + ' Hz')}</strong></div>
+  <div class="tile"><span>Touchscreen</span><strong>{esc(touch_name)}</strong></div>
+  <div class="tile"><span>Kalibrering</span><strong>{esc(touch_calibration)}</strong></div>
+  <div class="tile"><span>Seneste input</span><strong>{esc(last_input)}</strong></div>
+  <div class="tile"><span>Backend</span><strong>{esc(display_status.get('backend', '—'))}</strong></div>
+</div></fieldset>
 <fieldset><legend>Strømprofil</legend>
   <p class="status">Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.</p>
   <form method="post" action="/power-profile"><label>Aktiv profil</label><select name="profile">{options}</select><div class="row"><button class="primary" type="submit">Skift strømprofil</button></div></form>
@@ -1281,6 +1349,10 @@ def render_settings(conf, message=None, error=None):
     <label>Web-UI port</label>
     <input type="number" name="KIOSK_WEBUI_PORT" min="1024" max="65535" value="{esc(conf.get('KIOSK_WEBUI_PORT', BIND_PORT))}" required>
     <div class="status">Når porten ændres, genstarter kun Web-UI'en, og browseren viderestilles automatisk.</div>
+    <label>VNC port</label><input type="number" name="KIOSK_VNC_PORT" min="1024" max="65535" value="{esc(conf.get('KIOSK_VNC_PORT', '5900'))}" required>
+    <label>noVNC port</label><input type="number" name="KIOSK_NOVNC_PORT" min="1024" max="65535" value="{esc(conf.get('KIOSK_NOVNC_PORT', '6080'))}" required>
+    <div class="status">Alle tre lokale serviceporte konfliktkontrolleres før de gemmes.</div>
+    <label>Skærm-backend</label><select name="KIOSK_SCREEN_BACKEND">{''.join(f'<option value="{item}"{" selected" if conf.get("KIOSK_SCREEN_BACKEND", "auto") == item else ""}>{item}</option>' for item in ('auto','gnome-x11','cinnamon-x11','x11','raspberry-pi','ddc','cec'))}</select>
     <label>Brugerfladesprog</label>
     <select name="UI_LANGUAGE"><option value="en"{' selected' if conf.get('UI_LANGUAGE', 'en') == 'en' else ''}>English</option><option value="da"{' selected' if conf.get('UI_LANGUAGE') == 'da' else ''}>Dansk</option></select>
     <div class="row"><button class="primary" type="submit">Gem og genstart</button></div>
@@ -1362,7 +1434,7 @@ def render_vnc(conf):
 <div class="status">Kræver VNC-password (separat fra login på denne side) ved forbindelse.</div>
 <script>
   function vncUrl() {
-    return 'http://' + location.hostname + ':6080/vnc.html?autoconnect=true&resize=scale&reconnect=true&_=' + Date.now();
+    return 'http://' + location.hostname + ':{int(conf.get("KIOSK_NOVNC_PORT", "6080"))}/vnc.html?autoconnect=true&resize=scale&reconnect=true&_=' + Date.now();
   }
   function reloadFrame() {
     document.getElementById('vncframe').src = vncUrl();
@@ -1448,6 +1520,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/screenshot.jpg":
             return self._serve_screenshot()
+        if parsed.path == "/diagnostics/latest.zip":
+            return self._serve_latest_diagnostics()
+        if parsed.path == "/api/warden-status":
+            try:
+                result = subprocess.run([os.path.join(KIOSK_DIR, "warden-state.sh"), "status"], timeout=5, check=False, capture_output=True, text=True)
+                return self._send_json(json.loads(result.stdout) if result.stdout else {"state": "UNKNOWN"})
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                return self._send_json({"state": "UNKNOWN"})
         if parsed.path == "/api/update-status":
             return self._send_json(update_status())
         if parsed.path == "/api/telemetry":
@@ -1513,7 +1593,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send_html(render_settings(conf, error=err))
             previous_conf = dict(conf)
             old_webui_port = int(conf.get("KIOSK_WEBUI_PORT", BIND_PORT))
-            for key in ["KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL", "KIOSK_WEBUI_PORT"]:
+            for key in ["KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT", "KIOSK_SCREEN_BACKEND"]:
                 if key in fields:
                     conf[key] = fields[key][0].strip()
             conf["UI_LANGUAGE"] = "da" if fields.get("UI_LANGUAGE", ["en"])[0] == "da" else "en"
@@ -1634,6 +1714,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 run(os.path.join(KIOSK_DIR, "take-screenshot.sh"), timeout=20)
             elif action == "backup":
                 run(os.path.join(KIOSK_DIR, "backup-kiosk.sh"), timeout=30)
+            elif action == "self_test":
+                result = subprocess.run([os.path.join(KIOSK_DIR, "kiosk-self-test.sh")], capture_output=True, text=True, timeout=120)
+                if result.returncode == 0:
+                    return self._send_html(render_control(conf, message="OFF→ON-test bestået."))
+                return self._send_html(render_control(conf, error="OFF→ON-test fejlede. Se testresultatet og diagnostikpakken."))
+            elif action == "recover":
+                result = subprocess.run([os.path.join(KIOSK_DIR, "warden-state.sh"), "recover", "WebUI command"], capture_output=True, text=True, timeout=90)
+                if result.returncode == 0:
+                    return self._send_html(render_control(conf, message="Trinvis recovery blev godkendt."))
+                return self._send_html(render_control(conf, error="Recovery kunne ikke godkende kiosken."))
+            elif action == "diagnostics":
+                result = subprocess.run([os.path.join(KIOSK_DIR, "create-diagnostics.sh")], capture_output=True, text=True, timeout=45)
+                if result.returncode == 0:
+                    return self._send_html(render_control(conf, message="Diagnostikpakken er klar til download."))
+                return self._send_html(render_control(conf, error="Diagnostikpakken kunne ikke oprettes."))
             elif action == "restart_warden":
                 unit = f"kiosk-warden-restart-{int(time.time())}"
                 subprocess.run(["systemd-run", "--user", "--collect", "--on-active=1s", "--unit", unit,
@@ -1674,6 +1769,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
             data = f.read()
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _serve_latest_diagnostics(self):
+        try:
+            candidates = [os.path.join(DIAGNOSTICS_DIR, name) for name in os.listdir(DIAGNOSTICS_DIR)
+                          if re.fullmatch(r"kiosk-warden-diagnostics-[0-9-]+\.zip", name)]
+            path = max(candidates, key=os.path.getmtime)
+            with open(path, "rb") as handle:
+                data = handle.read()
+        except (OSError, ValueError):
+            self.send_response(404); self.end_headers(); return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(path)}"')
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

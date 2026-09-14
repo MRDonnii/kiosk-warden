@@ -122,20 +122,23 @@ class UpdatesPageTest(unittest.TestCase):
 
     def test_screen_wake_is_idempotent_and_screen_off_does_not_freeze(self):
         control = (ROOT / "scripts" / "mqtt-control.sh").read_text()
+        state = (ROOT / "scripts" / "warden-state.sh").read_text()
+        backend = (ROOT / "scripts" / "screen-backend.sh").read_text()
         start = control.index("screen_on() {")
         end = control.index("\nscreen_off() {", start)
         screen_on = control[start:end]
         off_end = control.index("\ndock_onboard_bottom()", end)
         screen_off = control[end:off_end]
-        self.assertIn('CHROME_LIFECYCLE" active', screen_on)
-        self.assertIn('startswith("http")', screen_on)
-        self.assertIn("return 0", screen_on)
-        self.assertIn("restart_kiosk", screen_on)
+        self.assertIn('warden-state.sh" on', screen_on)
+        self.assertIn('write_state WAKING', state)
+        self.assertIn('verify_wake', state)
+        self.assertIn('recover_staged', state)
         self.assertNotIn('CHROME_LIFECYCLE" frozen', screen_off)
-        self.assertIn('CHROME_LIFECYCLE" idle', screen_off)
+        self.assertIn('warden-state.sh" off', screen_off)
         self.assertNotIn('xrandr --output "$output" --off', screen_off)
-        self.assertIn('xdotool getdisplaygeometry', screen_on)
-        self.assertLess(screen_on.index('xrandr --output "$output" --auto'), screen_on.index('CHROME_LIFECYCLE" active'))
+        self.assertNotIn('xrandr --output "$output" --off', backend)
+        self.assertIn('xdotool getdisplaygeometry', state)
+        self.assertLess(state.index('screen_prepare_on'), state.index('CHROME_LIFECYCLE" active'))
         lifecycle = (ROOT / "scripts" / "chrome-lifecycle.py").read_text()
         self.assertIn('"method": "Runtime.evaluate"', lifecycle)
         self.assertIn("kiosk-warden-power", lifecycle)
@@ -156,10 +159,13 @@ class UpdatesPageTest(unittest.TestCase):
 
     def test_mint_dpms_wake_order_keeps_dpms_enabled(self):
         control = (ROOT / "scripts" / "mqtt-control.sh").read_text()
+        backend = (ROOT / "scripts" / "screen-backend.sh").read_text()
         startup = (ROOT / "scripts" / "start-kiosk.sh").read_text()
         on = control[control.index("screen_on() {"):control.index("\nscreen_off() {")]
-        self.assertLess(on.index("xset +dpms"), on.index("xset dpms force on"))
-        self.assertLess(on.index("xset dpms force on"), on.index("xset dpms 0 0 0"))
+        show = backend[backend.index("screen_show() {"):backend.index("\nscreen_hide() {")]
+        self.assertIn('warden-state.sh" on', on)
+        self.assertLess(show.index("xset +dpms"), show.index("xset dpms force on"))
+        self.assertLess(show.index("xset dpms force on"), show.index("xset dpms 0 0 0"))
         self.assertNotIn("xset -dpms", on)
         self.assertIn("xset dpms 0 0 0", startup)
 
@@ -189,11 +195,39 @@ class UpdatesPageTest(unittest.TestCase):
         server = (ROOT / "webui" / "server.py").read_text()
         self.assertIn('name="KIOSK_WEBUI_PORT"', settings)
         self.assertIn('min="1024" max="65535"', settings)
-        self.assertIn('"KIOSK_WEBUI_PORT"]:', server)
+        self.assertIn('"KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT"', server)
         self.assertIn('systemd-run", "--user", "--collect", "--on-active=2s"', server)
         self.assertIn('if non_port_changed:', server)
         self.assertIn("location.replace(target)", SERVER.render_port_change(conf, 18081))
         self.assertIn(":18081/settings", SERVER.render_port_change(conf, 18081))
+
+    def test_state_machine_recovery_self_test_and_safe_cleanup_are_shipped(self):
+        state = (ROOT / "scripts" / "warden-state.sh").read_text()
+        self_test = (ROOT / "scripts" / "kiosk-self-test.sh").read_text()
+        cleanup = (ROOT / "scripts" / "cleanup-owned-browsers.sh").read_text()
+        updater = (ROOT / "scripts" / "self-update.sh").read_text()
+        for machine_state in ("OFF", "WAKING", "ON", "SLEEPING", "RECOVERING"):
+            self.assertIn(machine_state, state)
+        for step in ("resize", "resume", "reload", "restart"):
+            self.assertIn(step, state)
+        self.assertIn("dpms_off", self_test)
+        self.assertIn("renderer_layout", self_test)
+        self.assertIn("--user-data-dir=$PROFILE", cleanup)
+        self.assertIn("is_descendant", cleanup)
+        self.assertIn("verify_or_rollback", updater)
+        self.assertIn("restore_snapshot", updater)
+
+    def test_diagnostics_redacts_secrets_and_ports_are_configurable(self):
+        diagnostics = (ROOT / "scripts" / "create-diagnostics.sh").read_text()
+        port_check = (ROOT / "scripts" / "port-check.sh").read_text()
+        vnc = (ROOT / "systemd" / "kiosk-vnc.service").read_text()
+        novnc = (ROOT / "systemd" / "kiosk-novnc.service").read_text()
+        self.assertIn("[REDACTED]", diagnostics)
+        self.assertNotIn("kiosk.conf\" \"$work", diagnostics)
+        self.assertIn("KIOSK_VNC_PORT", port_check)
+        self.assertIn("KIOSK_NOVNC_PORT", port_check)
+        self.assertIn("KIOSK_VNC_PORT", vnc)
+        self.assertIn("KIOSK_NOVNC_PORT", novnc)
 
     def test_webui_port_validation_rejects_invalid_and_occupied_ports(self):
         fields = {

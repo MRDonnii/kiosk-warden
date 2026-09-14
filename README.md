@@ -1,5 +1,24 @@
 # kiosk-warden
 
+## Kiosk lifecycle and recovery
+
+Warden uses a locked state machine (`OFF`, `WAKING`, `ON`, `SLEEPING`, and
+`RECOVERING`). A wake is shown only after the minimum resolution, expected
+Chrome URL, completed document, renderer state, dashboard width, and a
+non-blank screenshot have been verified. Recovery proceeds through resize,
+renderer resume, reload, and finally a Chrome restart.
+
+The Control page can run a real OFF→ON acceptance test and create a sanitized
+diagnostics ZIP. Updates run the same test and restore their pre-update snapshot
+if it does not pass before the deadline.
+
+Choose display control with `KIOSK_SCREEN_BACKEND`: `auto` (recommended),
+`gnome-x11`, `cinnamon-x11`, `x11`, `raspberry-pi`, `ddc`, or `cec`. Local
+WebUI, VNC, and noVNC ports are configurable in Settings and conflict-checked.
+Browser cleanup is restricted to Wardens dedicated `~/.config/chrome-kiosk`
+profile. Diagnostics never include `kiosk.conf` and redact common password,
+token, and Authorization patterns.
+
 Self-healing Ubuntu Chrome kiosk with full Home Assistant MQTT control — a
 scripted, TouchKio-style parity layer built on bash + systemd instead of
 Electron.

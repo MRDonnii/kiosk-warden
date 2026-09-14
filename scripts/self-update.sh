@@ -122,6 +122,33 @@ restart_warden() {
     /usr/bin/systemctl --user restart kiosk-webui.service >/dev/null
 }
 
+restore_snapshot() {
+  local archive="$1"
+  [[ -f "$archive" ]] || return 1
+  tar -xzf "$archive" -C "$HOME"
+  restart_warden
+}
+
+verify_or_rollback() {
+  local backup="$1" expected="$2" timeout_seconds="${KIOSK_UPDATE_VERIFY_TIMEOUT:-90}" deadline
+  deadline=$((SECONDS + timeout_seconds))
+  write_status verifying 95 "Verificerer skærm, Chrome, dashboard og wake…"
+  while (( SECONDS < deadline )); do
+    if timeout 60s "$KIOSK_DIR/kiosk-self-test.sh" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 3
+  done
+  write_status rollback 98 "Wake-test fejlede; ruller automatisk tilbage…" failed false
+  restore_snapshot "$backup" || {
+    echo "ERROR verification failed and rollback failed: $backup" >&2
+    return 1
+  }
+  write_status rolled_back 100 "Version $expected fejlede godkendelsen og blev rullet tilbage." failed false
+  echo "ROLLEDBACK_AFTER_FAILED_TEST $expected backup=$backup" >&2
+  return 1
+}
+
 install_release() {
   local state tag expected installed workdir repo backup file
   write_status checking 5 "Tjekker GitHub Releases…"
@@ -154,6 +181,7 @@ install_release() {
   publish_update_json "$(jq -cn --arg version "$expected" --arg channel "$CHANNEL" '{installed_version:$version,latest_version:$version,title:"Kiosk Warden",channel:$channel,in_progress:false}')"
   trap - EXIT
   restart_warden
+  verify_or_rollback "$backup" "$expected" || return 1
   write_status complete 100 "Kiosk Warden $expected er installeret og genstartet." complete false
   echo "UPDATED $expected backup=$backup"
 }
@@ -164,7 +192,7 @@ rollback_release() {
   archive="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name "${wanted}-*.tar.gz" -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk 'NR==1 {$1=""; sub(/^ /,""); print}')"
   [[ -n "$archive" ]] || { echo "ERROR no backup for $wanted"; return 1; }
   current_backup="$(snapshot_current)" || return 1
-  tar -xzf "$archive" -C "$HOME"; restart_warden
+  restore_snapshot "$archive"
   echo "ROLLEDBACK $wanted backup=$current_backup"
 }
 

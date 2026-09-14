@@ -177,55 +177,17 @@ set_zoom() {
 }
 
 screen_on() {
-  # Recover an output disabled by v1.16.1 before Smartdash resumes. xrandr
-  # --off shrinks the X11 desktop to 320x200 and makes responsive cards cache
-  # invalid geometry. New OFF cycles keep the output mode intact and use DPMS.
-  local output geometry width height
-  output="$(kiosk_output)"
-  [[ -n "$output" ]] && timeout 3s xrandr --output "$output" --auto || true
-  for _ in $(seq 1 20); do
-    geometry="$(xdotool getdisplaygeometry 2>/dev/null || true)"
-    read -r width height <<<"$geometry"
-    [[ "${width:-0}" -ge 1024 && "${height:-0}" -ge 600 ]] && break
-    sleep 0.1
-  done
-
-  # Resume expensive visual work only after the full kiosk viewport exists.
-  # Repeated presence ON events remain idempotent and preserve healthy Chrome.
-  "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
+  "$HOME/kiosk/warden-state.sh" on || true
   publish_smartdash_state
-  rm -f "$WAKE_FILE"
-  xset +dpms || true
-  timeout 3s xset dpms force on || true
-  xset s off || true
-  xset s noblank || true
-  xset dpms 0 0 0 || true
-  printf 'ON\n' > "$SCREEN_FILE"
   publish_state screen "ON"
-
-  if pgrep -f "$HOME/.config/chrome-kiosk" >/dev/null 2>&1 \
-     && curl -fsS --max-time 2 http://127.0.0.1:9222/json/list 2>/dev/null \
-       | jq -e '.[] | select(.type == "page" and (.url | startswith("http")))' >/dev/null; then
-    return 0
-  fi
-  restart_kiosk
+  publish_state warden_state "$(cat "$HOME/kiosk/warden_state" 2>/dev/null || echo UNKNOWN)"
 }
 
 screen_off() {
-  rm -f "$WAKE_FILE"
-  # Keep Chrome responsive while a compatible dashboard pauses animations and
-  # camera streams. Sites without the bridge simply ignore this message.
-  "$CHROME_LIFECYCLE" idle >/dev/null 2>&1 || true
+  "$HOME/kiosk/warden-state.sh" off || true
   publish_smartdash_state
-  printf 'OFF\n' > "$SCREEN_FILE"
   publish_state screen "OFF"
-  xset +dpms || true
-  xset dpms 0 0 1 || true
-  timeout 3s xset dpms force off || true
-  # Do not use xrandr --off here. It collapses the logical X11 desktop to
-  # 320x200, causing responsive dashboards to measure and cache a broken
-  # layout. start-kiosk.sh disables GNOME's competing power daemon, so DPMS
-  # can power down the monitor while the 1920x1080 viewport remains stable.
+  publish_state warden_state "$(cat "$HOME/kiosk/warden_state" 2>/dev/null || echo UNKNOWN)"
 }
 
 dock_onboard_bottom() {
@@ -321,6 +283,9 @@ handle_command() {
     http://*|https://*) set_kiosk_url "$1" ;;
     screenshot) take_screenshot ;;
     backup) backup_kiosk ;;
+    self_test) "$HOME/kiosk/kiosk-self-test.sh" >/dev/null 2>&1 || true ;;
+    diagnostics) "$HOME/kiosk/create-diagnostics.sh" >/dev/null 2>&1 || true ;;
+    recover) "$HOME/kiosk/warden-state.sh" recover "MQTT command" >/dev/null 2>&1 || true ;;
     restart_warden) restart_warden ;;
     reboot) sudo /sbin/reboot ;;
     shutdown) sudo /sbin/poweroff ;;
@@ -341,6 +306,7 @@ source "$HOME/kiosk/kiosk.conf"
 publish_state url "$KIOSK_URL"
 publish_state window_mode "$(cat "$MODE_FILE" 2>/dev/null || echo Kiosk)"
 publish_state screen "$(cat "$SCREEN_FILE" 2>/dev/null || echo ON)"
+publish_state warden_state "$(cat "$HOME/kiosk/warden_state" 2>/dev/null || echo UNKNOWN)"
 publish_state keyboard "$(cat "$KEYBOARD_FILE" 2>/dev/null || echo OFF)"
 publish_state theme "$(cat "$THEME_FILE" 2>/dev/null || echo Dark)"
 publish_state page_zoom "$(cat "$ZOOM_FILE" 2>/dev/null || echo 100)"

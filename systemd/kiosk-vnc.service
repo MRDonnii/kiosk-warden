@@ -6,7 +6,8 @@ Wants=graphical-session.target
 [Service]
 Type=simple
 Environment=DISPLAY=:0
-ExecStart=/usr/bin/x11vnc -display :0 -auth guess -rfbauth %h/.vnc/passwd -forever -shared -rfbport 5900 -no6 -noxdamage -repeat -quiet
+EnvironmentFile=-%h/kiosk/kiosk.conf
+ExecStart=/bin/sh -c 'exec /usr/bin/x11vnc -display :0 -auth guess -rfbauth "$HOME/.vnc/passwd" -forever -shared -rfbport "${KIOSK_VNC_PORT:-5900}" -no6 -noxdamage -repeat -quiet'
 SuccessExitStatus=2
 Restart=on-failure
 RestartSec=5
