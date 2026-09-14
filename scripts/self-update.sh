@@ -38,6 +38,13 @@ reset_progress_on_failure() {
 
 release_json() {
   local url="https://api.github.com/repos/$REPO_SLUG/releases/latest" feed tag
+  if [[ -n "${KIOSK_WARDEN_FORCE_TAG:-}" ]]; then
+    tag="$KIOSK_WARDEN_FORCE_TAG"
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'ERROR invalid forced release tag' >&2; return 1; }
+    jq -cn --arg tag "$tag" --arg url "https://github.com/$REPO_SLUG/releases/tag/$tag" \
+      '{tag_name:$tag,html_url:$url,body:"",prerelease:true}'
+    return 0
+  fi
   [[ "$CHANNEL" == beta ]] && url="https://api.github.com/repos/$REPO_SLUG/releases?per_page=1"
   local data tag release_url
   if data="$(curl -fsSL --max-time 20 -H 'Accept: application/vnd.github+json' -H 'User-Agent: kiosk-warden' "$url" 2>/dev/null)"; then

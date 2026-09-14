@@ -230,6 +230,8 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('complete false', updater)
         self.assertIn("releases.atom", updater)
         self.assertIn("API returns 403", updater)
+        self.assertIn("KIOSK_WARDEN_FORCE_TAG", updater)
+        self.assertIn("ERROR invalid forced release tag", updater)
         verify = updater[updater.index("runtime_release_healthy()") : updater.index("install_release()")]
         self.assertNotIn("kiosk-self-test.sh", verify)
         self.assertIn("kiosk-webui.service", verify)

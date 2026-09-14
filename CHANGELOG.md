@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.18.23 — 2026-09-14
+
+- **Remote recovery can pin an exact immutable release.** A validated
+  `KIOSK_WARDEN_FORCE_TAG` bypasses stale Beta API/Atom discovery, so a kiosk
+  stuck on an older updater cannot accidentally reinstall the rollback-prone
+  release while being repaired.
+- Includes v1.18.22's non-destructive post-install acceptance and the
+  persistent signed-login fix.
+
 ## v1.18.22 — 2026-09-14
 
 - **Post-install checks can no longer downgrade a kiosk to an old snapshot.**
