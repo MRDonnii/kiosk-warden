@@ -34,10 +34,7 @@ def switch(name):
     if not item: return 1
     set_conf_url(item["url"]); ACTIVE.write_text(name+"\n")
     subprocess.run([str(KIOSK/"chrome-lifecycle.py"),"navigate",item["url"]],check=False)
-    zoom=int(item.get("zoom",100)); (KIOSK/"page_zoom").write_text(str(zoom)+"%\n")
-    subprocess.run(["xdotool","key","ctrl+0"],check=False)
-    count,key=ZOOMS[zoom]
-    for _ in range(count): subprocess.run(["xdotool","key",key],check=False)
+    zoom=int(item.get("zoom",100)); ZOOM_FILE.write_text(str(zoom)+"\n")
     return 0
 def set_active_url(url):
     current=ACTIVE.read_text().strip() if ACTIVE.exists() else load()["profiles"][0]["name"]

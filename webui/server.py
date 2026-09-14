@@ -70,7 +70,7 @@ CONF_ORDER = [
     "MQTT_USER", "MQTT_PASS", "BASE_TOPIC", "CODEX_REMOTE_TOPIC",
     "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT",
     "KIOSK_SCREEN_BACKEND", "KIOSK_MIN_WIDTH", "KIOSK_MIN_HEIGHT", "KIOSK_TOUCH_WAKE", "KIOSK_TOUCH_RELEASE_DELAY",
-    "KIOSK_AUTO_BRIGHTNESS", "KIOSK_BRIGHTNESS_MIN", "KIOSK_BRIGHTNESS_MAX", "UI_LANGUAGE", "WEBUI_USERNAME", "WEBUI_PASSWORD_HASH",
+    "KIOSK_AUTO_BRIGHTNESS", "KIOSK_BRIGHTNESS_MIN", "KIOSK_BRIGHTNESS_MAX", "UI_LANGUAGE", "WEBUI_AUTO_LOGOUT", "WEBUI_USERNAME", "WEBUI_PASSWORD_HASH",
     "HA_URL", "HA_TOKEN", "HA_POWER_ENTITY",
 ]
 
@@ -97,6 +97,7 @@ DEFAULTS = {
     "KIOSK_BRIGHTNESS_MIN": "15",
     "KIOSK_BRIGHTNESS_MAX": "100",
     "UI_LANGUAGE": "en",
+    "WEBUI_AUTO_LOGOUT": "true",
     "WEBUI_USERNAME": "admin",
     "WEBUI_PASSWORD_HASH": "",
     "HA_URL": "",
@@ -191,6 +192,7 @@ ENGLISH_TEXT = {
 
 SESSION_COOKIE = "warden_session"
 SESSION_TTL = 12 * 60 * 60
+REMEMBER_TTL = 30 * 24 * 60 * 60
 _sessions = {}
 _session_lock = threading.Lock()
 _login_failures = {}
@@ -248,14 +250,14 @@ def verify_password(password, stored):
     return hmac.compare_digest(dk.hex(), hashed)
 
 
-def create_session():
+def create_session(duration=SESSION_TTL):
     token = secrets.token_urlsafe(32)
     now = time.time()
     with _session_lock:
         for old_token, expires in list(_sessions.items()):
             if expires <= now:
                 _sessions.pop(old_token, None)
-        _sessions[token] = now + SESSION_TTL
+        _sessions[token] = now + duration
     return token
 
 
@@ -268,7 +270,7 @@ def valid_session(token):
         if expires <= now:
             _sessions.pop(token, None)
             return False
-        _sessions[token] = now + SESSION_TTL
+        _sessions[token] = expires
     return True
 
 
@@ -989,6 +991,7 @@ def render_login(conf, next_path="/", error=None):
       <input type="password" name="password" required autocomplete="current-password">
       <button class="primary login-button" type="submit">Fortsæt til Kiosk Warden</button>
     </form>
+    <label><input type="checkbox" name="remember" value="true"> Husk mig i 30 dage</label>
     <p class="login-note">Lokal administration · sessionen udløber automatisk</p>
   </section>
 </main>
@@ -1322,7 +1325,8 @@ def render_control(conf, message=None, error=None):
     )
     body = PAGE_HEAD.format(title_suffix=" — Styring")
     body += f'<div class="header-row"><div><h1>Styring</h1><div class="sub">{esc(conf.get("KIOSK_NAME", "Kiosk"))}</div></div></div>'
-    body += render_nav("/control") + render_message(message, error)
+    active_profile_url = next((item.get("url", "") for item in profiles if item.get("name") == active_profile), "")
+    body += render_nav("/control") + render_message(message, error) + f'<p class="status">Aktiv visning: <strong>{esc(active_profile_url or "Ingen profil")}</strong></p>'
     body += f"""
 <fieldset><legend>Kiosktilstand og diagnostik</legend>
   <div class="grid"><div class="tile"><span>Tilstandsmaskine</span><strong>{esc(state.get('state', 'UNKNOWN'))}</strong></div><div class="tile"><span>Seneste selvtest</span><strong>{esc(self_test.get('result', '—'))}</strong></div><div class="tile"><span>Wake-tid</span><strong>{esc(str(self_test.get('wake_time_ms', '—')) + (' ms' if self_test.get('wake_time_ms') is not None else ''))}</strong></div></div>
@@ -1348,7 +1352,8 @@ def render_control(conf, message=None, error=None):
 <fieldset><legend>Kioskprofiler</legend>
   <p class="status">Hver profil har sin egen URL og zoom. Warden verifierer den valgte URL og bruger den lokale offline-side, hvis dashboardet ikke kan nås.</p>
   <div class="row">{''.join(f'<form method="post" action="/profile-switch"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><button class="{"primary" if item.get("name")==active_profile else ""}" type="submit">{esc(item.get("name","Profil"))} · {esc(item.get("zoom",100))}%</button></form><form method="post" action="/profile-remove"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><button type="submit" title="Fjern profil">×</button></form>' for item in profiles)}</div>
-  <form method="post" action="/profile-add"><label>Profilnavn</label><input type="text" name="name" required maxlength="40"><label>URL</label><input type="text" name="url" required placeholder="https://..."><label>Zoom</label><select name="zoom">{''.join(f'<option value="{z}"{" selected" if z == 100 else ""}>{z}%</option>' for z in (50,75,90,100,110,125,150,175,200))}</select><div class="row"><button type="submit">Tilføj eller opdatér profil</button></div></form>
+  {''.join(f'<form method="post" action="/profile-add"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><label>{esc(item.get("name","Profil"))} URL</label><input type="text" name="url" value="{esc(item.get("url",""))}" required><label>Zoom</label><select name="zoom">{"''".join(f'<option value="{z}"{" selected" if z == int(item.get("zoom",100)) else ""}>{z}%</option>' for z in (50,75,90,100,110,125,150,175,200))}</select><div class="row"><button type="submit">Opdatér profil</button></div></form>' for item in profiles)}
+  <form method="post" action="/profile-add"><label>Nyt profilnavn</label><input type="text" name="name" required maxlength="40"><label>URL</label><input type="text" name="url" required placeholder="https://..."><label>Zoom</label><select name="zoom">{''.join(f'<option value="{z}"{" selected" if z == 100 else ""}>{z}%</option>' for z in (50,75,90,100,110,125,150,175,200))}</select><div class="row"><button type="submit">Tilføj profil</button></div></form>
 </fieldset>
 <fieldset><legend>Strømprofil</legend>
   <p class="status">Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.</p>
@@ -1481,8 +1486,6 @@ def render_settings(conf, message=None, error=None):
     <input type="text" name="KIOSK_NAME" value="{esc(conf.get('KIOSK_NAME',''))}" required>
     <label>Kiosk-id (a-z 0-9 _, bruges i MQTT-topics)</label>
     <input type="text" name="KIOSK_ID" value="{esc(conf.get('KIOSK_ID',''))}" required>
-    <label>Visning (styres kun af Kiosk Profiler under Styring)</label>
-    <input type="text" value="{esc(conf.get('KIOSK_URL',''))}" readonly>
     <label>MQTT broker host/IP</label>
     <input type="text" name="MQTT_HOST" value="{esc(conf.get('MQTT_HOST',''))}" required>
     <label>MQTT broker port</label>
@@ -1506,6 +1509,8 @@ def render_settings(conf, message=None, error=None):
     <label>Maksimum lysstyrke (%)</label><input type="number" name="KIOSK_BRIGHTNESS_MAX" min="1" max="100" value="{esc(conf.get('KIOSK_BRIGHTNESS_MAX','100'))}">
     <label>Brugerfladesprog</label>
     <select name="UI_LANGUAGE"><option value="en"{' selected' if conf.get('UI_LANGUAGE', 'en') == 'en' else ''}>English</option><option value="da"{' selected' if conf.get('UI_LANGUAGE') == 'da' else ''}>Dansk</option></select>
+    <label>Automatisk logud efter 12 timer</label>
+    <select name="WEBUI_AUTO_LOGOUT"><option value="true"{' selected' if conf.get('WEBUI_AUTO_LOGOUT', 'true') == 'true' else ''}>Til</option><option value="false"{' selected' if conf.get('WEBUI_AUTO_LOGOUT') == 'false' else ''}>Fra</option></select>
     <div class="row"><button class="primary" type="submit">Gem og genstart</button></div>
   </fieldset>
 </form>
@@ -1753,9 +1758,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 record_login_failure(client_ip)
                 return self._send_html(render_login(conf, next_path, "Forkert brugernavn eller password."), status=401)
             clear_login_failures(client_ip)
-            token = create_session()
+            duration = REMEMBER_TTL if fields.get("remember", ["false"])[0] == "true" else SESSION_TTL
+            token = create_session(duration)
             safe_next = next_path if next_path.startswith("/") and not next_path.startswith("//") else "/"
-            return self._redirect(safe_next, self._session_cookie(token))
+            return self._redirect(safe_next, self._session_cookie(token, duration))
 
         if not self._authenticated(conf):
             return self._login_redirect(parsed.path)
@@ -1782,6 +1788,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     conf[key] = fields[key][0].strip()
             conf["KIOSK_TOUCH_WAKE"] = "true" if fields.get("KIOSK_TOUCH_WAKE", ["false"])[0] == "true" else "false"
             conf["KIOSK_AUTO_BRIGHTNESS"] = "true" if fields.get("KIOSK_AUTO_BRIGHTNESS", ["false"])[0] == "true" else "false"
+            conf["WEBUI_AUTO_LOGOUT"] = "true" if fields.get("WEBUI_AUTO_LOGOUT", ["true"])[0] == "true" else "false"
             conf["UI_LANGUAGE"] = "da" if fields.get("UI_LANGUAGE", ["en"])[0] == "da" else "en"
             pw = fields.get("MQTT_PASS", [""])[0]
             if pw:
