@@ -120,7 +120,7 @@ KIOSK_MIN_HEIGHT="${KIOSK_MIN_HEIGHT:-600}"
 echo "== kiosk-warden install =="
 echo
 echo "Du kan udfylde kiosk-navn/URL/MQTT her i terminalen nu,"
-echo "eller installere med standardværdier og gøre det bagefter via web-UI'et (Indstillinger)."
+echo "eller installere med standardværdier og gøre det bagefter via web-UI'et (System og Forbindelser)."
 
 CONFIGURE_NOW="${CONFIGURE_NOW:-}"
 if [[ -z "$CONFIGURE_NOW" ]]; then
@@ -148,7 +148,7 @@ if [[ "$CONFIGURE_NOW" == "yes" ]]; then
   ask STATS_INTERVAL "Stats-interval i sekunder" "10"
   ask VNC_PASSWORD "VNC password til fjernstyring (blankt = generér tilfældigt)" "" silent
 else
-  echo "Springer terminal-opsætning over — brug web-UI'et (Indstillinger) efter installationen."
+  echo "Springer terminal-opsætning over — brug web-UI'et (System og Forbindelser) efter installationen."
   KIOSK_NAME="${KIOSK_NAME:-Kiosk}"
   KIOSK_ID="${KIOSK_ID:-kiosk_$(hostname | tr 'A-Z' 'a-z' | tr -c 'a-z0-9' '_')}"
   KIOSK_URL="${KIOSK_URL:-http://homeassistant.local:8123}"
@@ -270,7 +270,7 @@ if [[ ! -f "$HOME/.vnc/passwd" ]]; then
   mkdir -p "$HOME/.vnc"
   if [[ -z "${VNC_PASSWORD:-}" ]]; then
     VNC_PASSWORD="$(head -c9 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c12)"
-    echo "Genereret VNC password: $VNC_PASSWORD (skriv det ned — det kan skiftes senere i web-UI'et under Indstillinger)"
+    echo "Genereret VNC password: $VNC_PASSWORD (skriv det ned — administrator-login kan skiftes senere under System)"
   fi
   x11vnc -storepasswd "$VNC_PASSWORD" "$HOME/.vnc/passwd" >/dev/null
   chmod 600 "$HOME/.vnc/passwd"

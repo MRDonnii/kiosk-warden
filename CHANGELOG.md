@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.18.15 — 2026-09-14
+
+- **Complete the primary English WebUI.** Operational labels, explanations,
+  profile actions, remote-control states, connection details, and System
+  controls no longer fall back to Danish when English is selected.
+- **Explain why touch-to-wake is unavailable.** Capability detection now
+  distinguishes a disconnected touch device, a missing event device, missing
+  `evtest`, insufficient permissions, and a ready input guardian instead of
+  showing the same generic unavailable state for every cause.
+- **Align setup guidance with the new navigation.** Installer messages now
+  direct users to System and Connections rather than the retired Settings tab.
+
 ## v1.18.14 — 2026-09-14
 
 - **Clearer WebUI navigation in Danish and English.** The six areas are now

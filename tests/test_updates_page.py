@@ -105,6 +105,29 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertNotIn("</option>'<option", options)
         self.assertIn('<option value="90">90%</option><option value="100" selected>100%</option>', options)
 
+    def test_touch_guardian_reports_the_actual_unavailable_reason(self):
+        self.assertEqual(SERVER.touch_guardian_label({"touch": {"guardian": True, "guardian_reason": "ready"}}), "Klar")
+        self.assertEqual(SERVER.touch_guardian_label({"touch": {"guardian_reason": "permission_denied"}}), "Mangler adgang til touch-enheden")
+        self.assertEqual(SERVER.touch_guardian_label({"touch": {"guardian_reason": "event_device_missing"}}), "Touch-enheden er frakoblet")
+        probe = (ROOT / "scripts" / "capability-probe.py").read_text()
+        for reason in ("touch_not_detected", "event_device_missing", "evtest_missing", "permission_denied", "ready"):
+            self.assertIn(reason, probe)
+
+    def test_primary_page_actions_are_translated_to_english(self):
+        samples = {
+            "Aktiv visning:": "Active view:",
+            "Kiosktilstand og diagnostik": "Kiosk state and diagnostics",
+            "Kør OFF→ON-test": "Run OFF→ON test",
+            "Skærm og touch": "Display and touch",
+            "Kontroller hardware igen": "Check hardware again",
+            "Opdatér profil": "Update profile",
+            "VNC er slukket. Tryk på Start VNC for at forbinde.": "VNC is off. Press Start VNC to connect.",
+            "Alle tre lokale serviceporte konfliktkontrolleres før de gemmes.": "All three local service ports are checked for conflicts before saving.",
+            "Skift administrator-login": "Change administrator login",
+        }
+        for danish, english in samples.items():
+            self.assertEqual(SERVER.localize_html(danish, "en"), english)
+
     def test_mqtt_exposes_power_profile_and_warden_restart(self):
         discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
         control = (ROOT / "scripts" / "mqtt-control.sh").read_text()
