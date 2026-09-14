@@ -276,6 +276,7 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("this.requestSubmit()", login)
         self.assertIn('parsed.path == "/vnc/start"', server)
         self.assertIn('"kiosk-vnc.service", "kiosk-novnc.service"', server)
+        self.assertIn('warden-state.sh"), "on"', server)
 
     def test_profiles_offline_fallback_and_wayland_backends_are_shipped(self):
         profiles = (ROOT / "scripts" / "profile-manager.py").read_text()

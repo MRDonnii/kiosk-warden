@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.18.4 — 2026-09-14
+## v1.18.5 — 2026-09-14
 
 - **Automatic VNC authentication.** noVNC now derives its access password from
   the Kiosk Warden WebUI login, so remote control no longer asks for a separate
@@ -21,6 +21,8 @@
 - **Profiles are the only display source.** The remaining URL field is removed
   from Settings. Control now shows the active profile's URL, and every profile
   has an editable URL and zoom.
+- **Reliable VNC start.** Starting VNC now wakes the kiosk display before
+  reconnecting, so a sleeping screen no longer appears black.
 
 ## v1.18.0 — 2026-09-14
 
