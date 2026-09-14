@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.18.10 — 2026-09-14
+
+- **Fix black, unresponsive VNC iframe on Remote Control.** The page's inline
+  script was a plain (non-f) string, so the embedded VNC password and noVNC
+  port were sent to the browser as literal, unevaluated Python placeholder
+  text instead of real values. The invalid `port` placeholder was a
+  JavaScript syntax error, so the whole script silently failed and the
+  iframe's `src` was never set — showing a black, unresponsive box. Direct
+  noVNC access (bypassing the iframe) was unaffected, which is why this was
+  hard to spot. Fixed by making the block an f-string with the JS braces
+  escaped.
+
 ## v1.18.9 — 2026-09-14
 
 - **Fix 404 after Start VNC.** The Start VNC action now redirects back to
