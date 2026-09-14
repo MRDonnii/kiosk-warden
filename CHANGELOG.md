@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.18.24 — 2026-09-14
+
+- **Stops the Chrome restart storm found on Cinnamon kiosks.** GNOME's power
+  daemon is touched only in a confirmed GNOME session, and both commands are
+  bounded so they cannot hold Chrome startup indefinitely.
+- **Watchdog and health recovery now allow a 45-second startup grace.** They
+  no longer restart Chrome while its service has just started or Warden is in
+  a legitimate transition, preventing overlapping recovery loops.
+- Includes exact-tag recovery, non-destructive update acceptance, and the
+  persistent signed-login fix from the preceding releases.
+
 ## v1.18.23 — 2026-09-14
 
 - **Remote recovery can pin an exact immutable release.** A validated

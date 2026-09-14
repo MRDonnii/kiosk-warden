@@ -240,6 +240,19 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('RUNTIME_FAILURE="version"', verify)
         self.assertIn('RUNTIME_FAILURE="webui"', verify)
 
+    def test_chrome_startup_has_platform_guard_and_recovery_grace(self):
+        startup = (ROOT / "scripts" / "start-kiosk.sh").read_text()
+        watchdog = (ROOT / "scripts" / "watchdog.sh").read_text()
+        health = (ROOT / "scripts" / "health-check.sh").read_text()
+        self.assertIn('XDG_CURRENT_DESKTOP', startup)
+        self.assertIn('grep -q', startup)
+        self.assertIn('timeout 3s systemctl --user kill', startup)
+        self.assertIn('chrome_service_starting', watchdog)
+        self.assertIn('45000000', watchdog)
+        self.assertIn('chrome_service_starting', health)
+        self.assertIn('Chrome is starting', health)
+        self.assertIn('WAKING', health)
+
     def test_installer_supports_a_conflict_checked_webui_port(self):
         installer = (ROOT / "install.sh").read_text()
         service = (ROOT / "systemd" / "kiosk-webui.service").read_text()

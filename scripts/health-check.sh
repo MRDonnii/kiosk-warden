@@ -63,6 +63,15 @@ publish_health() {
   mqtt_pub "$BASE_TOPIC/diagnostic/errors" "$(cat "$ERROR_FILE" 2>/dev/null || echo 0)" || true
 }
 
+chrome_service_starting() {
+  local entered now transition
+  transition="$(jq -r '.state // ""' "$HOME/kiosk/warden_state.json" 2>/dev/null || true)"
+  [[ "$transition" == WAKING || "$transition" == SLEEPING || "$transition" == RECOVERING ]] && return 0
+  entered="$(systemctl --user show kiosk-chrome.service -p ActiveEnterTimestampMonotonic --value 2>/dev/null || echo 0)"
+  now="$(awk '{printf "%.0f", $1 * 1000000}' /proc/uptime)"
+  [[ "$entered" =~ ^[0-9]+$ && "$entered" -gt 0 && $((now - entered)) -lt 45000000 ]]
+}
+
 recover() {
   local reason="$1"
   local failures
@@ -87,8 +96,12 @@ while true; do
   pgrep -f "$HOME/.config/chrome-kiosk" >/dev/null && chrome_running="on"
 
   if [[ "$chrome_running" != "on" ]]; then
-    publish_health "OFF" "Chrome is not running"
-    recover "Chrome not running"
+    if chrome_service_starting; then
+      publish_health "STARTING" "Chrome is starting"
+    else
+      publish_health "OFF" "Chrome is not running"
+      recover "Chrome not running"
+    fi
   elif [[ -f "$FALLBACK_FILE" ]]; then
     if primary_available; then
       "$HOME/kiosk/chrome-lifecycle.py" navigate "$KIOSK_URL" >/dev/null 2>&1 || true
