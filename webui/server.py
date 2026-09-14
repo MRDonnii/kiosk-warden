@@ -1616,7 +1616,7 @@ def render_vnc(conf, message=None, error=None):
 """
     body += render_nav("/vnc")
     body += render_message(message, error)
-    body += """
+    body += f"""
 <div class="row">
   <button class="primary" type="button" onclick="document.getElementById('vncframe').requestFullscreen()">Fuld skærm</button>
   <button type="button" onclick="reloadFrame()">Genopfrisk forbindelse</button>
@@ -1631,14 +1631,14 @@ def render_vnc(conf, message=None, error=None):
 <div class="status">VNC bruger automatisk dit Kiosk Warden-login. Der skal ikke skrives et separat password.</div>
 <script>
   const vncPassword = "{esc(vnc_password_from_conf(conf))}";
-  function vncUrl() {
+  function vncUrl() {{
     const host = encodeURIComponent(location.hostname);
     const port = {int(conf.get("KIOSK_NOVNC_PORT", "6080"))};
     return 'http://' + host + ':' + port + '/vnc.html?autoconnect=true&resize=scale&reconnect=true&host=' + host + '&port=' + port + '&_=' + Date.now() + '#password=' + encodeURIComponent(vncPassword);
-  }
-  function reloadFrame() {
+  }}
+  function reloadFrame() {{
     document.getElementById('vncframe').src = vncUrl();
-  }
+  }}
   reloadFrame();
 </script>
 """
