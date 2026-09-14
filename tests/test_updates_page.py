@@ -357,10 +357,11 @@ class UpdatesPageTest(unittest.TestCase):
                 SERVER.BIND_HOST = original_host
 
     def test_kiosk_url_is_owned_only_by_profiles(self):
-        conf = dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test")
-        settings = SERVER.localize_html(SERVER.render_settings(conf), "da")
-        self.assertIn("Kiosk Profiler under Styring", settings)
+        control = SERVER.render_control(dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test"))
+        settings = SERVER.render_settings(dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test"))
+        self.assertIn("Aktiv visning", control)
         self.assertNotIn('name="KIOSK_URL"', settings)
+        self.assertNotIn("value=\"http://homeassistant.local:8123\" readonly", settings)
         fields = {
             "KIOSK_ID": ["test"], "KIOSK_URL": ["http://example.test/ignored"],
             "MQTT_PORT": ["1883"], "STATS_INTERVAL": ["10"],
@@ -421,6 +422,15 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('name="username"', page)
         self.assertIn('autocomplete="new-password"', page)
         self.assertIn("Opret login", page)
+
+    def test_login_remember_and_auto_logout_are_configurable(self):
+        login = SERVER.render_login({"KIOSK_NAME": "Test kiosk"})
+        settings = SERVER.render_settings(dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk"))
+        server = (ROOT / "webui" / "server.py").read_text()
+        self.assertIn('name="remember"', login)
+        self.assertIn('name="WEBUI_AUTO_LOGOUT"', settings)
+        self.assertIn("REMEMBER_TTL", server)
+        self.assertIn('conf["WEBUI_AUTO_LOGOUT"]', server)
 
     def test_stale_release_metadata_never_offers_a_downgrade(self):
         with tempfile.TemporaryDirectory() as tmp:

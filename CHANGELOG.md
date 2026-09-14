@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.18.3 — 2026-09-14
+## v1.18.4 — 2026-09-14
 
 - **Automatic VNC authentication.** noVNC now derives its access password from
   the Kiosk Warden WebUI login, so remote control no longer asks for a separate
@@ -16,6 +16,11 @@
   restarts the VNC and noVNC services before reconnecting.
 - **Login keyboard submit.** Pressing Enter on the login page submits the form
   after username and password are entered.
+- **Configurable WebUI sessions.** Login can remember the user for 30 days, and
+  Settings can turn automatic sign-out after 12 hours on or off.
+- **Profiles are the only display source.** The remaining URL field is removed
+  from Settings. Control now shows the active profile's URL, and every profile
+  has an editable URL and zoom.
 
 ## v1.18.0 — 2026-09-14
 
