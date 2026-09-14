@@ -269,6 +269,8 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("is_descendant", cleanup)
         self.assertIn("verify_or_rollback", updater)
         self.assertIn("restore_snapshot", updater)
+        self.assertIn("wait_verify_wake", state)
+        self.assertIn("KIOSK_WAKE_VERIFY_TRIES:-8", state)
 
     def test_diagnostics_redacts_secrets_and_ports_are_configurable(self):
         diagnostics = (ROOT / "scripts" / "create-diagnostics.sh").read_text()
