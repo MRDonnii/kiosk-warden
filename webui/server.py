@@ -149,9 +149,10 @@ ENGLISH_TEXT = {
     "MQTT password (tomt = behold nuværende)": "MQTT password (empty = keep current)", "Stats-interval (sekunder)": "Stats interval (seconds)",
     "Gem og genstart": "Save and restart", "Skift password": "Change password", "Nyt password": "New password",
     "Nyt VNC password": "New VNC password", "Gentag nyt VNC password": "Repeat new VNC password",
-    "Separat fra login på denne side. Klassisk VNC-password — kun de første 8 tegn bruges.": "Separate from this page's login. Classic VNC password — only the first 8 characters are used.",
     "Fjernstyring": "Remote Control", "Fuld skærm": "Full screen", "Genopfrisk forbindelse": "Refresh connection",
     "Kræver VNC-password (separat fra login på denne side) ved forbindelse.": "A VNC password (separate from this page's login) is required when connecting.",
+    "VNC bruger automatisk dit Kiosk Warden-login. Der skal ikke skrives et separat password.": "VNC uses your Kiosk Warden login automatically. No separate password is required.",
+    "VNC-passworden styres automatisk af Kiosk Warden-login og skal ikke indtastes.": "The VNC password is managed automatically from your Kiosk Warden login and does not need to be entered.",
     "Brugerfladesprog": "Interface language", "Dansk": "Danish",
     "Password skal være mindst 8 tegn og matche i begge felter.": "Password must be at least 8 characters and match in both fields.",
     "VNC password skal være mindst 4 tegn og matche i begge felter.": "VNC password must be at least 4 characters and match in both fields.",
@@ -309,6 +310,14 @@ def set_vnc_password(password):
         pass
     run("systemctl", "--user", "restart", "kiosk-vnc.service")
     return True, "VNC password skiftet."
+
+
+def vnc_password_from_conf(conf):
+    stored = conf.get("WEBUI_PASSWORD_HASH", "")
+    if not stored:
+        return ""
+    password = stored.split(":", 1)[1] if ":" in stored else stored
+    return password[:8]
 
 
 def run(*args, timeout=15):
@@ -742,7 +751,6 @@ def webui_port_available(port):
 
 def validate_settings(fields):
     kiosk_id = fields.get("KIOSK_ID", [""])[0].strip()
-    kiosk_url = fields.get("KIOSK_URL", [""])[0].strip()
     mqtt_port = fields.get("MQTT_PORT", [""])[0].strip()
     stats_interval = fields.get("STATS_INTERVAL", [""])[0].strip()
     webui_port = fields.get("KIOSK_WEBUI_PORT", [str(BIND_PORT)])[0].strip()
@@ -753,8 +761,6 @@ def validate_settings(fields):
     brightness_max = fields.get("KIOSK_BRIGHTNESS_MAX", ["100"])[0].strip()
     if not re.match(r"^[a-z0-9_]+$", kiosk_id):
         return "Kiosk-id må kun indeholde a-z, 0-9 og _."
-    if not re.fullmatch(r"https?://[^\s\"'\\]+", kiosk_url):
-        return "URL skal starte med http:// eller https://."
     if not mqtt_port.isdigit():
         return "MQTT port skal være et tal."
     if not stats_interval.isdigit():
@@ -1474,8 +1480,8 @@ def render_settings(conf, message=None, error=None):
     <input type="text" name="KIOSK_NAME" value="{esc(conf.get('KIOSK_NAME',''))}" required>
     <label>Kiosk-id (a-z 0-9 _, bruges i MQTT-topics)</label>
     <input type="text" name="KIOSK_ID" value="{esc(conf.get('KIOSK_ID',''))}" required>
-    <label>URL kiosken skal vise</label>
-    <input type="text" name="KIOSK_URL" value="{esc(conf.get('KIOSK_URL',''))}" required>
+    <label>Visning (styres kun af Kiosk Profiler under Styring)</label>
+    <input type="text" value="{esc(conf.get('KIOSK_URL',''))}" readonly>
     <label>MQTT broker host/IP</label>
     <input type="text" name="MQTT_HOST" value="{esc(conf.get('MQTT_HOST',''))}" required>
     <label>MQTT broker port</label>
@@ -1518,17 +1524,7 @@ def render_settings(conf, message=None, error=None):
   </fieldset>
 </form>
 
-<form method="post" action="/vnc-password">
-  <fieldset>
-    <legend>Fjernstyring (VNC) password</legend>
-    <div class="sub">Separat fra login på denne side. Klassisk VNC-password — kun de første 8 tegn bruges.</div>
-    <label>Nyt VNC password</label>
-    <input type="password" name="password" required minlength="4" maxlength="8">
-    <label>Gentag nyt VNC password</label>
-    <input type="password" name="password2" required minlength="4" maxlength="8">
-    <div class="row"><button type="submit">Skift VNC password</button></div>
-  </fieldset>
-</form>
+<div class="status">VNC-passworden styres automatisk af Kiosk Warden-login og skal ikke indtastes.</div>
 
 """
     body += "</div>"
@@ -1577,10 +1573,13 @@ def render_vnc(conf):
   <iframe id="vncframe" allowfullscreen
     style="width:100%; height:calc(100vh - 190px); min-height:420px; border:0; display:block; background:#000;"></iframe>
 </div>
-<div class="status">Kræver VNC-password (separat fra login på denne side) ved forbindelse.</div>
+<div class="status">VNC bruger automatisk dit Kiosk Warden-login. Der skal ikke skrives et separat password.</div>
 <script>
+  const vncPassword = "{esc(vnc_password_from_conf(conf))}";
   function vncUrl() {
-    return 'http://' + location.hostname + ':{int(conf.get("KIOSK_NOVNC_PORT", "6080"))}/vnc.html?autoconnect=true&resize=scale&reconnect=true&_=' + Date.now();
+    const host = encodeURIComponent(location.hostname);
+    const port = {int(conf.get("KIOSK_NOVNC_PORT", "6080"))};
+    return 'http://' + host + ':' + port + '/vnc.html?autoconnect=true&resize=scale&reconnect=true&host=' + host + '&port=' + port + '&_=' + Date.now() + '#password=' + encodeURIComponent(vncPassword);
   }
   function reloadFrame() {
     document.getElementById('vncframe').src = vncUrl();
@@ -1726,6 +1725,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             conf["WEBUI_USERNAME"] = username
             conf["WEBUI_PASSWORD_HASH"] = hash_password(pw)
             write_conf(conf)
+            run("systemctl", "--user", "restart", "kiosk-vnc.service")
             token = create_session()
             return self._redirect("/", self._session_cookie(token))
 
@@ -1772,7 +1772,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send_html(render_settings(conf, error=err))
             previous_conf = dict(conf)
             old_webui_port = int(conf.get("KIOSK_WEBUI_PORT", BIND_PORT))
-            for key in ["KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT", "KIOSK_SCREEN_BACKEND", "KIOSK_BRIGHTNESS_MIN", "KIOSK_BRIGHTNESS_MAX"]:
+            for key in ["KIOSK_NAME", "KIOSK_ID", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL", "KIOSK_WEBUI_PORT", "KIOSK_VNC_PORT", "KIOSK_NOVNC_PORT", "KIOSK_SCREEN_BACKEND", "KIOSK_BRIGHTNESS_MIN", "KIOSK_BRIGHTNESS_MAX"]:
                 if key in fields:
                     conf[key] = fields[key][0].strip()
             conf["KIOSK_TOUCH_WAKE"] = "true" if fields.get("KIOSK_TOUCH_WAKE", ["false"])[0] == "true" else "false"
@@ -1831,6 +1831,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             conf["WEBUI_USERNAME"] = username
             conf["WEBUI_PASSWORD_HASH"] = hash_password(pw)
             write_conf(conf)
+            run("systemctl", "--user", "restart", "kiosk-vnc.service")
             with _session_lock:
                 _sessions.clear()
             token = create_session()

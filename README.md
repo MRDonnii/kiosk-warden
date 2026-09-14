@@ -179,9 +179,8 @@ and run `systemctl --user restart kiosk-webui.service`.
 
 ## Remote control (VNC)
 
-The installer sets up `x11vnc` (shares the live X11 session, protected by a
-VNC password you set during install) and bridges it to the browser with
-`noVNC` + `websockify`:
+The installer sets up `x11vnc` (shares the live X11 session) and bridges it to
+the browser with `noVNC` + `websockify`:
 
 - Raw VNC (for a normal VNC client like TigerVNC/RealVNC): `<kiosk-ip>:5900`
 - Browser-based (noVNC): `http://<kiosk-ip>:6080/vnc.html`
@@ -189,19 +188,11 @@ VNC password you set during install) and bridges it to the browser with
   the same viewer with a fullscreen button — you can click directly on the
   kiosk's screen from your phone or laptop.
 
-The VNC password is separate from the web UI password — it's asked for
-(or auto-generated and printed once) during `install.sh`, and stored in
-`~/.vnc/passwd`. Services: `kiosk-vnc.service` (x11vnc) and
-`kiosk-novnc.service` (the web bridge on port 6080).
-
-To change the VNC password later, use the **Fjernstyring (VNC) password**
-form under Indstillinger in the web UI (it runs `x11vnc -storepasswd` and
-restarts `kiosk-vnc.service` for you), or do it manually:
-
-```bash
-x11vnc -storepasswd <new-password> ~/.vnc/passwd
-systemctl --user restart kiosk-vnc.service
-```
+The VNC password is managed automatically from your Kiosk Warden login. The
+WebUI embeds noVNC with that password, so you do not have to enter a separate
+VNC password. Services: `kiosk-vnc.service` (x11vnc) and
+`kiosk-novnc.service` (the web bridge on port 6080). Changing the WebUI login
+password also updates the VNC password.
 
 ## Updating
 

@@ -130,10 +130,25 @@ set_kiosk_url() {
 import re, sys
 raise SystemExit(0 if re.fullmatch(r"https?://[^\s\"'\\]+", sys.argv[1]) else 1)
 PY
-  set_conf_value KIOSK_URL "$url"
+  local profile
+  profile="$(python3 - "$url" <<'PY'
+import json, pathlib, sys
+url = sys.argv[1]
+try:
+    profiles = json.loads((pathlib.Path.home() / "kiosk/profiles.json").read_text())["profiles"]
+except (OSError, ValueError, KeyError):
+    raise SystemExit(0)
+for item in profiles:
+    if item.get("url") == url:
+        print(item["name"])
+        break
+PY
+)" || return 0
+  if [[ -n "$profile" ]]; then
+    "$HOME/kiosk/profile-manager.py" switch "$profile" >/dev/null 2>&1 || return 0
+  fi
   source "$HOME/kiosk/kiosk.conf"
   publish_state url "$KIOSK_URL"
-  restart_kiosk
 }
 
 set_window_mode() {

@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.18.1 — 2026-09-14
+
+- **Automatic VNC authentication.** noVNC now derives its access password from
+  the Kiosk Warden WebUI login, so remote control no longer asks for a separate
+  password. The old VNC password field has been removed.
+- **Profile-owned kiosk URL.** The URL/zoom shown by the kiosk is now managed
+  only by Kiosk Profiles. Settings shows the active URL read-only, ignores any
+  direct URL submission, and MQTT URL changes only take effect when they match
+  an existing profile.
+
 ## v1.18.0 — 2026-09-14
 
 - **Session-based WebUI login.** The Basic Auth prompt is replaced by a real
