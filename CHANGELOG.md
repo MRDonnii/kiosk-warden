@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.18.12 — 2026-09-14
+
+- **Avoid the white screen on the first VNC start.** The page now waits for the
+  VNC and noVNC ports to answer before it points the iframe at the viewer, so
+  the first click no longer needs a manual refresh.
+
 ## v1.18.11 — 2026-09-14
 
 - **On-demand VNC sessions.** VNC and noVNC are now disabled by default and
