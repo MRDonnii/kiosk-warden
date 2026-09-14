@@ -150,6 +150,7 @@ ENGLISH_TEXT = {
     "Gem og genstart": "Save and restart", "Skift password": "Change password", "Nyt password": "New password",
     "Nyt VNC password": "New VNC password", "Gentag nyt VNC password": "Repeat new VNC password",
     "Fjernstyring": "Remote Control", "Fuld skærm": "Full screen", "Genopfrisk forbindelse": "Refresh connection",
+    "Start VNC": "Start VNC", "VNC er startet. Prøv forbindelsen igen.": "VNC has started. Try the connection again.",
     "Kræver VNC-password (separat fra login på denne side) ved forbindelse.": "A VNC password (separate from this page's login) is required when connecting.",
     "VNC bruger automatisk dit Kiosk Warden-login. Der skal ikke skrives et separat password.": "VNC uses your Kiosk Warden login automatically. No separate password is required.",
     "VNC-passworden styres automatisk af Kiosk Warden-login og skal ikke indtastes.": "The VNC password is managed automatically from your Kiosk Warden login and does not need to be entered.",
@@ -980,7 +981,7 @@ def render_login(conf, next_path="/", error=None):
     <h1>Log ind</h1>
     <p class="sub">{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</p>
     {render_message(None, error)}
-    <form method="post" action="/login">
+    <form method="post" action="/login" onkeydown="if (event.key === 'Enter' && event.target.tagName !== 'BUTTON') {{ event.preventDefault(); this.requestSubmit(); }}">
       <input type="hidden" name="next" value="{esc(safe_next)}">
       <label>Brugernavn</label>
       <input type="text" name="username" required autofocus autocomplete="username">
@@ -1553,7 +1554,7 @@ def render_port_change(conf, new_port):
     return body
 
 
-def render_vnc(conf):
+def render_vnc(conf, message=None, error=None):
     body = PAGE_HEAD.format(title_suffix=" — Fjernstyring")
     body += f"""
 <div class="header-row">
@@ -1564,10 +1565,14 @@ def render_vnc(conf):
 </div>
 """
     body += render_nav("/vnc")
+    body += render_message(message, error)
     body += """
 <div class="row">
   <button class="primary" type="button" onclick="document.getElementById('vncframe').requestFullscreen()">Fuld skærm</button>
   <button type="button" onclick="reloadFrame()">Genopfrisk forbindelse</button>
+  <form method="post" action="/vnc/start" style="display:inline">
+    <button type="submit">Start VNC</button>
+  </form>
 </div>
 <div style="margin-top:.8rem; border-radius:14px; overflow:hidden; border:1px solid rgba(128,128,128,.3);">
   <iframe id="vncframe" allowfullscreen
@@ -1905,6 +1910,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
                 return self._send_html(render_control(read_conf(), message=f"Skiftet til profilen {name}."))
             return self._send_html(render_control(conf, error="Profilen kunne ikke aktiveres."))
+
+        if parsed.path == "/vnc/start":
+            run("systemctl", "--user", "restart", "kiosk-vnc.service", "kiosk-novnc.service")
+            return self._send_html(render_vnc(conf, message="VNC er startet. Prøv forbindelsen igen."))
 
         if parsed.path == "/rollback":
             version = fields.get("version", [""])[0]
