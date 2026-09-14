@@ -266,6 +266,16 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertEqual("abcdef12", SERVER.vnc_password_from_conf(conf))
         self.assertIn("#password=", vnc_page)
         self.assertIn("VNC bruger automatisk dit Kiosk Warden-login", vnc_page)
+        self.assertIn("Start VNC", vnc_page)
+        self.assertIn('action="/vnc/start"', vnc_page)
+
+    def test_login_submits_with_enter_and_vnc_has_start_action(self):
+        login = SERVER.render_login({"KIOSK_NAME": "Test kiosk"})
+        server = (ROOT / "webui" / "server.py").read_text()
+        self.assertIn("event.key === 'Enter'", login)
+        self.assertIn("this.requestSubmit()", login)
+        self.assertIn('parsed.path == "/vnc/start"', server)
+        self.assertIn('"kiosk-vnc.service", "kiosk-novnc.service"', server)
 
     def test_profiles_offline_fallback_and_wayland_backends_are_shipped(self):
         profiles = (ROOT / "scripts" / "profile-manager.py").read_text()
