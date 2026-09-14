@@ -63,7 +63,7 @@ class UpdatesPageTest(unittest.TestCase):
             dashboard = SERVER.render_dashboard(conf)
         finally:
             SERVER.current_power_profile = original
-        self.assertIn("🎛️ Styring", control)
+        self.assertIn("🎛️ Kiosk", control)
         self.assertIn("Strømbesparelse", control)
         self.assertIn('id="restartWardenManual"', control)
         self.assertIn("Genstart Kiosk Warden", control)
@@ -80,6 +80,30 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("Smartdash-forbindelse", control)
         self.assertIn("refreshSmartdash", control)
         self.assertIn("animationer, livekameraer og rendering virker kun", control)
+
+    def test_navigation_is_structured_and_bilingual(self):
+        conf = dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test")
+        nav = SERVER.render_nav("/mqtt")
+        expected = ["🏠 Status", "🎛️ Kiosk", "🖱️ Fjernstyring", "📡 Forbindelser", "⬇️ Opdateringer", "⚙️ System"]
+        self.assertEqual(sorted(nav.index(label) for label in expected), [nav.index(label) for label in expected])
+
+        connections_da = SERVER.render_mqtt(conf)
+        system_da = SERVER.render_settings(conf)
+        self.assertIn("Opsæt MQTT og den valgfrie forbindelse til Home Assistant.", connections_da)
+        self.assertIn('action="/save-ha"', connections_da)
+        self.assertNotIn('action="/save-ha"', system_da)
+        self.assertIn("Tilpas identitet, lokale porte, skærm, login og strømfunktioner.", system_da)
+
+        connections_en = SERVER.localize_html(connections_da, "en")
+        system_en = SERVER.localize_html(system_da, "en")
+        self.assertIn("📡 Connections", connections_en)
+        self.assertIn("Configure MQTT and the optional Home Assistant connection.", connections_en)
+        self.assertIn("Configure identity, local ports, display, login, and power features.", system_en)
+
+    def test_profile_zoom_options_have_no_literal_separators(self):
+        options = SERVER.render_zoom_options(100)
+        self.assertNotIn("</option>'<option", options)
+        self.assertIn('<option value="90">90%</option><option value="100" selected>100%</option>', options)
 
     def test_mqtt_exposes_power_profile_and_warden_restart(self):
         discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
