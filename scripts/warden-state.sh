@@ -64,6 +64,15 @@ verify_screenshot() {
 
 verify_wake() { wait_geometry && verify_page && verify_screenshot; }
 
+wait_verify_wake() {
+  local tries="${KIOSK_WAKE_VERIFY_TRIES:-8}"
+  for _ in $(seq 1 "$tries"); do
+    verify_wake && return 0
+    sleep 1
+  done
+  return 1
+}
+
 recover_staged() {
   local reason="${1:-verification failed}" step
   write_state RECOVERING "$reason"
@@ -74,7 +83,7 @@ recover_staged() {
       reload) "$CHROME_LIFECYCLE" reload >/dev/null 2>&1 || true; sleep 3 ;;
       restart) systemctl --user restart kiosk-chrome.service; sleep 6 ;;
     esac
-    if verify_wake; then
+    if wait_verify_wake; then
       printf '%s %s: %s\n' "$(date -Iseconds)" "$step" "$reason" >>"$KIOSK_DIR/recovery.log"
       return 0
     fi
@@ -88,7 +97,7 @@ wake() {
   screen_prepare_on || true
   wait_geometry || true
   "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
-  if ! verify_wake; then recover_staged "wake verification failed" || { write_state RECOVERING "wake recovery exhausted"; return 1; }; fi
+  if ! wait_verify_wake; then recover_staged "wake verification failed" || { write_state RECOVERING "wake recovery exhausted"; return 1; }; fi
   screen_show
   rm -f "$WAKE_FILE"; printf 'ON\n' >"$SCREEN_FILE"
   write_state ON "wake verified"

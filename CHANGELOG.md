@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.18.19 — 2026-09-14
+
+- **Do not reject a slow but healthy wake.** Dashboard, renderer, and screenshot
+  verification now retry for a bounded period before staged recovery or
+  rollback. This accommodates slower monitors and kiosk hardware without
+  weakening the final acceptance criteria.
+- **Includes the isolated VNC close from v1.18.18.** Closing a remote viewer
+  stops only VNC/noVNC after its heartbeat lease expires and never issues a
+  kiosk, Chrome, renderer, or screen-state command.
+
 ## v1.18.18 — 2026-09-14
 
 - **Closing VNC cannot trigger kiosk lifecycle actions.** Browser unload no
