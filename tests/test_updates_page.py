@@ -1,5 +1,6 @@
 import importlib.util
 import pathlib
+import socket
 import sys
 import tempfile
 import unittest
@@ -181,6 +182,36 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("http://localhost:$KIOSK_WEBUI_PORT", installer)
         self.assertIn("EnvironmentFile=-%h/kiosk/kiosk.conf", service)
         self.assertIn('"KIOSK_WEBUI_PORT": "8080"', server)
+
+    def test_webui_port_can_be_changed_later_from_settings(self):
+        conf = dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test")
+        settings = SERVER.render_settings(conf)
+        server = (ROOT / "webui" / "server.py").read_text()
+        self.assertIn('name="KIOSK_WEBUI_PORT"', settings)
+        self.assertIn('min="1024" max="65535"', settings)
+        self.assertIn('"KIOSK_WEBUI_PORT"]:', server)
+        self.assertIn('systemd-run", "--user", "--collect", "--on-active=2s"', server)
+        self.assertIn('if non_port_changed:', server)
+        self.assertIn("location.replace(target)", SERVER.render_port_change(conf, 18081))
+        self.assertIn(":18081/settings", SERVER.render_port_change(conf, 18081))
+
+    def test_webui_port_validation_rejects_invalid_and_occupied_ports(self):
+        fields = {
+            "KIOSK_ID": ["test"], "KIOSK_URL": ["http://example.test"],
+            "MQTT_PORT": ["1883"], "STATS_INTERVAL": ["10"],
+        }
+        fields["KIOSK_WEBUI_PORT"] = ["80"]
+        self.assertIn("1024", SERVER.validate_settings(fields))
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            port = listener.getsockname()[1]
+            original_host = SERVER.BIND_HOST
+            SERVER.BIND_HOST = "127.0.0.1"
+            try:
+                fields["KIOSK_WEBUI_PORT"] = [str(port)]
+                self.assertIn("allerede i brug", SERVER.validate_settings(fields))
+            finally:
+                SERVER.BIND_HOST = original_host
 
     def test_redirected_updates_page_resumes_progress_polling(self):
         page = SERVER.render_updates({"KIOSK_NAME": "Test kiosk"})

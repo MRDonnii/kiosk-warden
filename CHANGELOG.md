@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.16.4 — 2026-09-14
+
+- **Change the WebUI port later from Settings.** The port is validated against
+  the allowed range and active listeners before it is saved. Warden completes
+  the current response, restarts only the WebUI through a delayed independent
+  systemd scope and automatically redirects the browser to the new address.
+- **Safe failure handling.** If the delayed restart cannot be scheduled, the
+  previous port is restored in `kiosk.conf` and the WebUI remains reachable.
+
 ## v1.16.3 — 2026-09-14
 
 - **Conflict-safe WebUI port during installation.** Installations now validate
