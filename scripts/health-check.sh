@@ -59,12 +59,8 @@ recover() {
   failures=$((failures + 1))
   printf '%s\n' "$failures" > "$FAIL_COUNT_FILE"
 
-  if (( failures == 1 )); then
-    DISPLAY=:0 XAUTHORITY="$HOME/.Xauthority" xdotool key F5 >/dev/null 2>&1 || true
-  else
-    systemctl --user restart kiosk-chrome.service || true
-    printf '0\n' > "$FAIL_COUNT_FILE"
-  fi
+  "$HOME/kiosk/warden-state.sh" recover "$reason" >/dev/null 2>&1 || true
+  (( failures >= 2 )) && printf '0\n' > "$FAIL_COUNT_FILE"
 
   date -Iseconds > "$LAST_RECOVERY_FILE"
   echo "$reason" >> "$HOME/kiosk/recovery.log"

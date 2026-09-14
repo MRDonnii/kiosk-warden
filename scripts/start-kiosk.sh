@@ -48,7 +48,7 @@ if [[ "$screen_state" != "OFF" ]]; then
 fi
 pgrep -x unclutter >/dev/null || unclutter -idle 0.5 -root >/dev/null 2>&1 &
 
-pkill -f "$PROFILE_DIR" >/dev/null 2>&1 || true
+"$HOME/kiosk/cleanup-owned-browsers.sh" >/dev/null 2>&1 || true
 sleep 2
 
 if ! pgrep -f "$PROFILE_DIR" >/dev/null 2>&1; then

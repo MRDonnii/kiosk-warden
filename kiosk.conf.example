@@ -9,6 +9,12 @@ BASE_TOPIC="home/kiosk/my_kiosk"
 CODEX_REMOTE_TOPIC="home/codex/my_kiosk/remote_control"
 STATS_INTERVAL=10
 KIOSK_WEBUI_PORT=8080
+KIOSK_VNC_PORT=5900
+KIOSK_NOVNC_PORT=6080
+# auto, gnome-x11, cinnamon-x11, x11, raspberry-pi, ddc or cec
+KIOSK_SCREEN_BACKEND="auto"
+KIOSK_MIN_WIDTH=1024
+KIOSK_MIN_HEIGHT=600
 WEBUI_PASSWORD_HASH=""
 
 # Optional: lets Kiosk Warden read data back FROM Home Assistant (e.g. a

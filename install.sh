@@ -172,7 +172,7 @@ echo
 echo "== Installerer apt-pakker =="
 sudo apt-get update -y
 required_packages=(git mosquitto-clients jq bc curl gnupg xdotool wmctrl unclutter
-  x11-xserver-utils lm-sensors openssh-server dbus-x11 imagemagick python3
+  x11-xserver-utils xinput xprintidle lm-sensors openssh-server dbus-x11 imagemagick python3 zip
   python3-websocket x11vnc novnc websockify)
 sudo apt-get install -y "${required_packages[@]}"
 
@@ -229,10 +229,28 @@ BASE_TOPIC="$BASE_TOPIC"
 CODEX_REMOTE_TOPIC="$CODEX_REMOTE_TOPIC"
 STATS_INTERVAL=$STATS_INTERVAL
 KIOSK_WEBUI_PORT=$KIOSK_WEBUI_PORT
+KIOSK_VNC_PORT=${KIOSK_VNC_PORT:-5900}
+KIOSK_NOVNC_PORT=${KIOSK_NOVNC_PORT:-6080}
+KIOSK_SCREEN_BACKEND="${KIOSK_SCREEN_BACKEND:-auto}"
+KIOSK_MIN_WIDTH=${KIOSK_MIN_WIDTH:-1024}
+KIOSK_MIN_HEIGHT=${KIOSK_MIN_HEIGHT:-600}
 EOF
   chmod 600 "$HOME/kiosk/kiosk.conf"
 else
   echo "~/kiosk/kiosk.conf findes allerede — rører den ikke."
+fi
+
+# Refuse ambiguous or occupied ports before starting a fresh local service.
+source "$HOME/kiosk/kiosk.conf"
+for port in "${KIOSK_WEBUI_PORT:-8080}" "${KIOSK_VNC_PORT:-5900}" "${KIOSK_NOVNC_PORT:-6080}"; do
+  valid_webui_port "$port" || { echo "Ugyldig lokal serviceport: $port" >&2; exit 1; }
+done
+[[ "${KIOSK_WEBUI_PORT:-8080}" != "${KIOSK_VNC_PORT:-5900}" && "${KIOSK_WEBUI_PORT:-8080}" != "${KIOSK_NOVNC_PORT:-6080}" && "${KIOSK_VNC_PORT:-5900}" != "${KIOSK_NOVNC_PORT:-6080}" ]] \
+  || { echo "Web-UI, VNC og noVNC skal bruge hver sin port." >&2; exit 1; }
+if ! systemctl --user is-active --quiet kiosk-webui.service 2>/dev/null; then
+  for port in "${KIOSK_WEBUI_PORT:-8080}" "${KIOSK_VNC_PORT:-5900}" "${KIOSK_NOVNC_PORT:-6080}"; do
+    webui_port_in_use "$port" && { echo "Lokal serviceport $port er allerede i brug." >&2; exit 1; }
+  done
 fi
 
 echo "== VNC password =="
@@ -272,8 +290,8 @@ fi
 if command -v ufw >/dev/null 2>&1 && sudo ufw status | grep -q "Status: active"; then
   echo "== Åbner porte i ufw (web-UI, VNC) =="
   sudo ufw allow "$KIOSK_WEBUI_PORT/tcp" || true
-  sudo ufw allow 6080/tcp || true
-  sudo ufw allow 5900/tcp || true
+  sudo ufw allow "${KIOSK_NOVNC_PORT:-6080}/tcp" || true
+  sudo ufw allow "${KIOSK_VNC_PORT:-5900}/tcp" || true
 fi
 
 echo "== Sudoers regel til reboot/shutdown =="
@@ -389,7 +407,7 @@ echo "  http://localhost:$KIOSK_WEBUI_PORT  (på selve maskinen)"
 [[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:$KIOSK_WEBUI_PORT  (fra andre enheder på netværket, fx telefonen)"
 echo "Første besøg beder dig sætte et password — gør det med det samme, siden UI'et er tilgængeligt på netværket."
 echo "Fjernstyring (klik direkte på skærmen i browseren): klik 'Fjernstyring' i web-UI'et, eller åbn direkte:"
-[[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:6080/vnc.html"
+[[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:${KIOSK_NOVNC_PORT:-6080}/vnc.html"
 echo "Kræver VNC-passwordet sat ovenfor (separat fra web-UI-passwordet)."
 echo "Kør 'bash ~/kiosk/mqtt-discovery.sh' for at (gen)publicere Home Assistant entities."
 echo "Genstart maskinen for at få GDM-autologin og kiosk-chrome til at starte ved boot."
