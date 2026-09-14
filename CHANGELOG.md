@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.16.3 — 2026-09-14
+
+- **Conflict-safe WebUI port during installation.** Installations now validate
+  the configured WebUI port, detect an existing TCP listener and ask for an
+  alternative instead of silently starting a failed service on port 8080.
+  Non-interactive installs can set `KIOSK_WEBUI_PORT`; occupied or invalid
+  values stop with an actionable error.
+- **The selected port is used everywhere.** It is persisted in `kiosk.conf`,
+  loaded by the WebUI systemd service and used for the firewall rule, desktop
+  shortcut and final access URLs.
+
 ## v1.16.2 — 2026-09-14
 
 - **Stable Smartdash geometry across presence sleep.** Screen-off no longer

@@ -40,6 +40,46 @@ ask() {
   printf -v "$varname" '%s' "${val:-$default}"
 }
 
+valid_webui_port() {
+  [[ "$1" =~ ^[0-9]+$ ]] && (( 10#$1 >= 1024 && 10#$1 <= 65535 ))
+}
+
+webui_port_in_use() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltn "sport = :$port" 2>/dev/null | grep -q .
+    return
+  fi
+  timeout 1 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" >/dev/null 2>&1
+}
+
+select_webui_port() {
+  local requested="${KIOSK_WEBUI_PORT:-8080}" interactive=0
+  [[ -t 0 || -r /dev/tty ]] && interactive=1
+  while true; do
+    if ! valid_webui_port "$requested"; then
+      echo "Web-UI-port skal være et helt tal mellem 1024 og 65535: $requested" >&2
+    elif ! webui_port_in_use "$requested"; then
+      KIOSK_WEBUI_PORT="$requested"
+      return 0
+    else
+      echo "Port $requested er allerede i brug. Vælg en anden port til Kiosk Warden Web-UI." >&2
+    fi
+
+    if (( interactive == 0 )); then
+      echo "Kør installationen igen med f.eks. KIOSK_WEBUI_PORT=8081." >&2
+      return 1
+    fi
+    requested=""
+    if [[ -t 0 ]]; then
+      read -rp "Ny Web-UI-port [8081]: " requested
+    else
+      read -rp "Ny Web-UI-port [8081]: " requested </dev/tty
+    fi
+    requested="${requested:-8081}"
+  done
+}
+
 echo "== Registrerer OS og display manager =="
 OS_ID="$(. /etc/os-release 2>/dev/null; echo "${ID:-unknown}")"
 OS_NAME="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}")"
@@ -115,6 +155,16 @@ else
   STATS_INTERVAL="${STATS_INTERVAL:-10}"
   VNC_PASSWORD="${VNC_PASSWORD:-}"
 fi
+if [[ -f "$HOME/kiosk/kiosk.conf" ]]; then
+  existing_webui_port="$(sed -n -E 's/^KIOSK_WEBUI_PORT=\"?([0-9]+)\"?$/\1/p' "$HOME/kiosk/kiosk.conf" | tail -n1)"
+  KIOSK_WEBUI_PORT="${KIOSK_WEBUI_PORT:-${existing_webui_port:-8080}}"
+  valid_webui_port "$KIOSK_WEBUI_PORT" || {
+    echo "Eksisterende KIOSK_WEBUI_PORT er ugyldig: $KIOSK_WEBUI_PORT" >&2
+    exit 1
+  }
+else
+  select_webui_port
+fi
 BASE_TOPIC="home/kiosk/${KIOSK_ID}"
 CODEX_REMOTE_TOPIC="home/codex/${KIOSK_ID}/remote_control"
 
@@ -178,6 +228,7 @@ MQTT_PASS="$MQTT_PASS"
 BASE_TOPIC="$BASE_TOPIC"
 CODEX_REMOTE_TOPIC="$CODEX_REMOTE_TOPIC"
 STATS_INTERVAL=$STATS_INTERVAL
+KIOSK_WEBUI_PORT=$KIOSK_WEBUI_PORT
 EOF
   chmod 600 "$HOME/kiosk/kiosk.conf"
 else
@@ -220,7 +271,7 @@ fi
 
 if command -v ufw >/dev/null 2>&1 && sudo ufw status | grep -q "Status: active"; then
   echo "== Åbner porte i ufw (web-UI, VNC) =="
-  sudo ufw allow 8080/tcp || true
+  sudo ufw allow "$KIOSK_WEBUI_PORT/tcp" || true
   sudo ufw allow 6080/tcp || true
   sudo ufw allow 5900/tcp || true
 fi
@@ -321,7 +372,7 @@ cat > "$DESKTOP_DIR/Kiosk Setup.desktop" <<EOF
 Type=Application
 Name=Kiosk Setup
 Comment=Åbn kiosk-warden opsætning og kontrolpanel i browseren
-Exec=xdg-open http://localhost:8080
+Exec=xdg-open http://localhost:$KIOSK_WEBUI_PORT
 Icon=$HOME/kiosk/icon.svg
 Terminal=false
 Categories=Utility;
@@ -334,8 +385,8 @@ echo
 echo "== Færdig =="
 echo "Konfiguration: ~/kiosk/kiosk.conf"
 echo "Web-UI (opsætning + kontrolpanel):"
-echo "  http://localhost:8080  (på selve maskinen)"
-[[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:8080  (fra andre enheder på netværket, fx telefonen)"
+echo "  http://localhost:$KIOSK_WEBUI_PORT  (på selve maskinen)"
+[[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:$KIOSK_WEBUI_PORT  (fra andre enheder på netværket, fx telefonen)"
 echo "Første besøg beder dig sætte et password — gør det med det samme, siden UI'et er tilgængeligt på netværket."
 echo "Fjernstyring (klik direkte på skærmen i browseren): klik 'Fjernstyring' i web-UI'et, eller åbn direkte:"
 [[ -n "$IP_ADDR" ]] && echo "  http://$IP_ADDR:6080/vnc.html"

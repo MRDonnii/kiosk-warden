@@ -8,6 +8,7 @@ MQTT_PASS=""
 BASE_TOPIC="home/kiosk/my_kiosk"
 CODEX_REMOTE_TOPIC="home/codex/my_kiosk/remote_control"
 STATS_INTERVAL=10
+KIOSK_WEBUI_PORT=8080
 WEBUI_PASSWORD_HASH=""
 
 # Optional: lets Kiosk Warden read data back FROM Home Assistant (e.g. a
