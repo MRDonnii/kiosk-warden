@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.18.8 — 2026-09-14
+
+- **Editable MQTT identity.** Kiosk ID and Base topic can now both be changed
+  later from Settings. Custom Base topics are preserved, while changing the
+  Kiosk ID keeps the optional Codex remote topic aligned with the new ID.
+
 ## v1.18.7 — 2026-09-14
 
 - **VNC works with the screen OFF.** x11vnc keeps the X11 framebuffer pollable
