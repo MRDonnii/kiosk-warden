@@ -1982,7 +1982,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_html(render_control(conf, error="Profilen kunne ikke aktiveres."))
 
         if parsed.path == "/vnc/start":
-            run(os.path.join(KIOSK_DIR, "warden-state.sh"), "on", timeout=45)
             run("systemctl", "--user", "restart", "kiosk-vnc.service", "kiosk-novnc.service")
             return self._send_html(render_vnc(conf, message="VNC er startet. Prøv forbindelsen igen."))
 
