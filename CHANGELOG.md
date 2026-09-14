@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.18.14 — 2026-09-14
+
+- **Clearer WebUI navigation in Danish and English.** The six areas are now
+  Status, Kiosk, Remote Control, Connections, Updates, and System, and every
+  page starts with a short description plus the active kiosk name.
+- **Connections are grouped together.** The optional Home Assistant setup now
+  lives beside MQTT under Connections instead of being mixed into System.
+- **Profile zoom selector fixed.** An existing template typo no longer inserts
+  visible apostrophes between zoom choices.
+
 ## v1.18.13 — 2026-09-14
 
 - **Remembered login now survives WebUI restarts and updates.** Session cookies

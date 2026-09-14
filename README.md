@@ -161,14 +161,14 @@ don't leave that first-run window open longer than necessary.
 From the web UI you can:
 
 - Use English by default or switch the complete interface to Danish from
-  **Settings → Interface language**. The selection persists across updates.
+  **System → Interface language**. The selection persists across updates.
 - Monitor CPU, RAM, Intel GPU activity, CPU frequency, CPU/NVMe temperatures
   and network throughput with live status tiles and one-hour history graphs on
   Overview. Samples are retained in memory for up to six hours.
 - Edit `KIOSK_NAME`, `KIOSK_ID`, `KIOSK_URL`, MQTT host/port/user/password,
   and the stats interval — saving restarts the affected services and
   re-publishes Home Assistant discovery automatically.
-- Use the dedicated **Styring** page to reload the dashboard, restart Chrome
+- Use the dedicated **Kiosk** page to reload the dashboard, restart Chrome
   or all Kiosk Warden services, take a screenshot, create a config backup, or
   reboot/shut down the machine. The latest screenshot is displayed on the same
   page, keeping Overview focused on essential live status.
@@ -206,7 +206,7 @@ password.
 
 ## Updating
 
-Click **⬇️ Tjek og opdater fra GitHub** under Indstillinger in the web UI —
+Open **⬇️ Updates** in the web UI to check for and install a release —
 it pulls the latest commit, replaces the scripts/web UI/systemd units in
 place, and restarts the affected services. The current version (short
 commit hash) is shown right above the button; release notes are on the

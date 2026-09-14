@@ -119,8 +119,15 @@ ENGLISH_TEXT = {
     "Forkert brugernavn eller password.": "Incorrect username or password.", "For mange loginforsøg. Prøv igen om lidt.": "Too many sign-in attempts. Try again shortly.",
     "Opret administrator": "Create administrator", "Opret login": "Create login",
     "Sæt password": "Set password", "Gentag password": "Repeat password", "Gem password": "Save password",
-    "🏠 Oversigt": "🏠 Overview", "🖱️ Fjernstyring": "🖱️ Remote Control", "🎛️ Styring": "🎛️ Control",
-    "⬇️ Opdateringer": "⬇️ Updates", "⚙️ Indstillinger": "⚙️ Settings",
+    "🏠 Status": "🏠 Status", "🎛️ Kiosk": "🎛️ Kiosk", "🖱️ Fjernstyring": "🖱️ Remote Control",
+    "📡 Forbindelser": "📡 Connections", "⬇️ Opdateringer": "⬇️ Updates", "⚙️ System": "⚙️ System",
+    "Driftsstatus, ressourceforbrug og den aktive kiosks helbred.": "Operating status, resource usage, and health of the active kiosk.",
+    "Styr skærm, profiler, hardware og kioskens driftsfunktioner.": "Control the display, profiles, hardware, and kiosk operations.",
+    "Åbn en midlertidig fjernsession til kioskens aktuelle skærm.": "Open a temporary remote session to the kiosk's current screen.",
+    "Opsæt MQTT og den valgfrie forbindelse til Home Assistant.": "Configure MQTT and the optional Home Assistant connection.",
+    "Vælg releasekanal, installer opdateringer eller gendan en tidligere version.": "Choose a release channel, install updates, or restore an earlier version.",
+    "Tilpas identitet, lokale porte, skærm, login og strømfunktioner.": "Configure identity, local ports, display, login, and power features.",
+    "Aktiv kiosk": "Active kiosk", "Forbindelser": "Connections", "System": "System",
     "Opdateringer": "Updates", "Ny version klar": "New version available", "Opdateret": "Up to date",
     "Installeret": "Installed", "Seneste på": "Latest on", "Release-kanal og installation": "Release channel and installation",
     "Opdateringskanal": "Update channel", "Tjek for updates": "Check for updates", "Gem kanal": "Save channel",
@@ -894,6 +901,7 @@ PAGE_HEAD = """<!doctype html>
   .header-row {{ display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap; margin-bottom: .3rem; }}
   h1 {{ font-size: 1.6rem; margin: 0 0 .15rem; letter-spacing: -.01em; }}
   .sub {{ opacity: .6; font-size: .85rem; margin-bottom: 1.3rem; }}
+  .page-context {{ opacity:.48; font-size:.74rem; margin-top:-.9rem; }}
   fieldset {{
     border: 1px solid rgba(128,128,128,.26); border-radius: 16px; margin-bottom: 1.1rem;
     padding: 1rem 1.1rem 1.2rem; background: rgba(128,128,128,.04);
@@ -1072,11 +1080,12 @@ def render_login(conf, next_path="/", error=None):
 
 def render_nav(active):
     items = [
-        ("/", "🏠 Oversigt"),
+        ("/", "🏠 Status"),
+        ("/control", "🎛️ Kiosk"),
         ("/vnc", "🖱️ Fjernstyring"),
-        ("/control", "🎛️ Styring"), ("/mqtt", "📡 MQTT"),
+        ("/mqtt", "📡 Forbindelser"),
         ("/updates", "⬇️ Opdateringer"),
-        ("/settings", "⚙️ Indstillinger"),
+        ("/settings", "⚙️ System"),
         ("/logout", "↪ Log ud"),
     ]
     parts = []
@@ -1084,6 +1093,30 @@ def render_nav(active):
         cls = "nav-btn active" if path == active else "nav-btn"
         parts.append(f'<a href="{path}"><span class="{cls}">{label}</span></a>')
     return '<div class="nav">' + "".join(parts) + "</div>"
+
+
+def render_zoom_options(selected=100):
+    try:
+        selected = int(selected)
+    except (TypeError, ValueError):
+        selected = 100
+    return "".join(
+        f'<option value="{zoom}"{" selected" if zoom == selected else ""}>{zoom}%</option>'
+        for zoom in (50, 75, 90, 100, 110, 125, 150, 175, 200)
+    )
+
+
+def render_page_header(title, conf, description, aside=""):
+    return f"""
+<div class="header-row">
+  <div>
+    <h1>{esc(title)}</h1>
+    <div class="sub">{esc(description)}</div>
+    <div class="page-context">Aktiv kiosk: <strong>{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</strong></div>
+  </div>
+  {aside}
+</div>
+"""
 
 
 def render_markdown_lite(text):
@@ -1148,15 +1181,11 @@ def render_updates(conf, message=None, error=None):
     rollback_options = "".join(f'<option value="{esc(v)}">{esc(v)}</option>' for v in versions)
     update_ready = version_newer(latest_version, installed)
     body = PAGE_HEAD.format(title_suffix=" — Opdateringer")
-    body += f"""
-<div class="header-row">
-  <div>
-    <h1>Opdateringer</h1>
-    <div class="sub">{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</div>
-  </div>
-  <span class="pill {'warn' if update_ready else 'ok'}">{'Ny version klar' if update_ready else 'Opdateret'}</span>
-</div>
-"""
+    body += render_page_header(
+        "Opdateringer", conf,
+        "Vælg releasekanal, installer opdateringer eller gendan en tidligere version.",
+        f'<span class="pill {"warn" if update_ready else "ok"}">{"Ny version klar" if update_ready else "Opdateret"}</span>',
+    )
     body += render_nav("/updates")
     body += render_message(message, error)
     body += f"""
@@ -1252,16 +1281,12 @@ def render_dashboard(conf, message=None, error=None):
     pill_class = "ok" if health_state == "ON" else ("err" if health_state == "OFF" else "warn")
     pill_label = {"ON": "Kører fint", "OFF": "Fejl"}.get(health_state, health_state or "Ukendt")
 
-    body = PAGE_HEAD.format(title_suffix=f" — {esc(conf.get('KIOSK_NAME', 'Kiosk'))}")
-    body += f"""
-<div class="header-row">
-  <div>
-    <h1>{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</h1>
-    <div class="sub">Kiosk-id: {esc(conf.get("KIOSK_ID",""))}</div>
-  </div>
-  <span class="pill {pill_class}">{esc(pill_label)}</span>
-</div>
-"""
+    body = PAGE_HEAD.format(title_suffix=" — Status")
+    body += render_page_header(
+        "Status", conf,
+        "Driftsstatus, ressourceforbrug og den aktive kiosks helbred.",
+        f'<span class="pill {pill_class}">{esc(pill_label)}</span>',
+    )
     body += render_nav("/")
 
     latest = get_cached_latest_version()
@@ -1394,8 +1419,8 @@ def render_control(conf, message=None, error=None):
         f'<option value="{key}"{" selected" if key == profile else ""}>{label}</option>'
         for key, label in POWER_PROFILES.items()
     )
-    body = PAGE_HEAD.format(title_suffix=" — Styring")
-    body += f'<div class="header-row"><div><h1>Styring</h1><div class="sub">{esc(conf.get("KIOSK_NAME", "Kiosk"))}</div></div></div>'
+    body = PAGE_HEAD.format(title_suffix=" — Kiosk")
+    body += render_page_header("Kiosk", conf, "Styr skærm, profiler, hardware og kioskens driftsfunktioner.")
     active_profile_url = next((item.get("url", "") for item in profiles if item.get("name") == active_profile), "")
     body += render_nav("/control") + render_message(message, error) + f'<p class="status">Aktiv visning: <strong>{esc(active_profile_url or "Ingen profil")}</strong></p>'
     body += f"""
@@ -1423,8 +1448,8 @@ def render_control(conf, message=None, error=None):
 <fieldset><legend>Kioskprofiler</legend>
   <p class="status">Hver profil har sin egen URL og zoom. Warden verifierer den valgte URL og bruger den lokale offline-side, hvis dashboardet ikke kan nås.</p>
   <div class="row">{''.join(f'<form method="post" action="/profile-switch"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><button class="{"primary" if item.get("name")==active_profile else ""}" type="submit">{esc(item.get("name","Profil"))} · {esc(item.get("zoom",100))}%</button></form><form method="post" action="/profile-remove"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><button type="submit" title="Fjern profil">×</button></form>' for item in profiles)}</div>
-  {''.join(f'<form method="post" action="/profile-add"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><label>{esc(item.get("name","Profil"))} URL</label><input type="text" name="url" value="{esc(item.get("url",""))}" required><label>Zoom</label><select name="zoom">{"''".join(f'<option value="{z}"{" selected" if z == int(item.get("zoom",100)) else ""}>{z}%</option>' for z in (50,75,90,100,110,125,150,175,200))}</select><div class="row"><button type="submit">Opdatér profil</button></div></form>' for item in profiles)}
-  <form method="post" action="/profile-add"><label>Nyt profilnavn</label><input type="text" name="name" required maxlength="40"><label>URL</label><input type="text" name="url" required placeholder="https://..."><label>Zoom</label><select name="zoom">{''.join(f'<option value="{z}"{" selected" if z == 100 else ""}>{z}%</option>' for z in (50,75,90,100,110,125,150,175,200))}</select><div class="row"><button type="submit">Tilføj profil</button></div></form>
+  {''.join(f'<form method="post" action="/profile-add"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><label>{esc(item.get("name","Profil"))} URL</label><input type="text" name="url" value="{esc(item.get("url",""))}" required><label>Zoom</label><select name="zoom">{render_zoom_options(item.get("zoom",100))}</select><div class="row"><button type="submit">Opdatér profil</button></div></form>' for item in profiles)}
+  <form method="post" action="/profile-add"><label>Nyt profilnavn</label><input type="text" name="name" required maxlength="40"><label>URL</label><input type="text" name="url" required placeholder="https://..."><label>Zoom</label><select name="zoom">{render_zoom_options()}</select><div class="row"><button type="submit">Tilføj profil</button></div></form>
 </fieldset>
 <fieldset><legend>Strømprofil</legend>
   <p class="status">Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.</p>
@@ -1481,7 +1506,7 @@ or open Warden from another device for diagnostics.</p></fieldset></div>
 
 
 def render_ha_fieldset(conf):
-    """Optional 'connect to Home Assistant' section of Indstillinger.
+    """Optional Home Assistant connection section on Connections.
 
     HA_POWER_ENTITY is always a real <select> populated from HA's own
     entity list once a token is saved - never a free-text field the user
@@ -1536,15 +1561,8 @@ def render_ha_fieldset(conf):
 
 
 def render_mqtt(conf, message=None, error=None):
-    body = PAGE_HEAD.format(title_suffix=" — MQTT")
-    body += f"""
-<div class="header-row">
-  <div>
-    <h1>MQTT</h1>
-    <div class="sub">{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</div>
-  </div>
-</div>
-"""
+    body = PAGE_HEAD.format(title_suffix=" — Forbindelser")
+    body += render_page_header("Forbindelser", conf, "Opsæt MQTT og den valgfrie forbindelse til Home Assistant.")
     body += render_nav("/mqtt") + render_message(message, error)
     topic = f'home/kiosk/{conf.get("KIOSK_ID", "kiosk")}'
     body += f"""
@@ -1570,21 +1588,15 @@ def render_mqtt(conf, message=None, error=None):
     <div class="grid"><div class="tile"><span>Base topic</span><strong>{esc(topic)}</strong></div><div class="tile"><span>Kiosk-id</span><strong>{esc(conf.get('KIOSK_ID', 'kiosk'))}</strong></div></div>
   </fieldset>
 </form>
+{render_ha_fieldset(conf)}
 </div>
 """
     return body + PAGE_TAIL
 
 
 def render_settings(conf, message=None, error=None):
-    body = PAGE_HEAD.format(title_suffix=" — Indstillinger")
-    body += f"""
-<div class="header-row">
-  <div>
-    <h1>Indstillinger</h1>
-    <div class="sub">{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</div>
-  </div>
-</div>
-"""
+    body = PAGE_HEAD.format(title_suffix=" — System")
+    body += render_page_header("System", conf, "Tilpas identitet, lokale porte, skærm, login og strømfunktioner.")
     body += render_nav("/settings")
     body += render_message(message, error)
 
@@ -1617,8 +1629,6 @@ def render_settings(conf, message=None, error=None):
     <div class="row"><button class="primary" type="submit">Gem og genstart</button></div>
   </fieldset>
 </form>
-
-{render_ha_fieldset(conf)}
 
 <form method="post" action="/change-password">
   <fieldset>
@@ -1664,14 +1674,7 @@ def render_port_change(conf, new_port):
 
 def render_vnc(conf, message=None, error=None, active=None):
     body = PAGE_HEAD.format(title_suffix=" — Fjernstyring")
-    body += f"""
-<div class="header-row">
-  <div>
-    <h1>Fjernstyring</h1>
-    <div class="sub">{esc(conf.get('KIOSK_NAME','Kiosk'))}</div>
-  </div>
-</div>
-"""
+    body += render_page_header("Fjernstyring", conf, "Åbn en midlertidig fjernsession til kioskens aktuelle skærm.")
     active = vnc_is_active() if active is None else active
     body += render_nav("/vnc")
     body += render_message(message, error)
@@ -1989,9 +1992,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if conf.get("HA_URL") and conf.get("HA_TOKEN"):
                 ok, msg = ha_client.test_connection(conf["HA_URL"], conf["HA_TOKEN"])
                 if ok:
-                    return self._send_html(render_settings(conf, message=f"Home Assistant-forbindelse gemt. {msg}"))
-                return self._send_html(render_settings(conf, error=msg))
-            return self._send_html(render_settings(conf, message="Home Assistant-forbindelse gemt."))
+                    return self._send_html(render_mqtt(conf, message=f"Home Assistant-forbindelse gemt. {msg}"))
+                return self._send_html(render_mqtt(conf, error=msg))
+            return self._send_html(render_mqtt(conf, message="Home Assistant-forbindelse gemt."))
 
         if parsed.path == "/change-password":
             username = fields.get("username", [""])[0].strip()
