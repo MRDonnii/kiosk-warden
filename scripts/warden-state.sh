@@ -51,35 +51,10 @@ verify_page() {
   "$CHROME_LIFECYCLE" verify >/dev/null
 }
 
-verify_screenshot() {
-  local shot colors
-  shot="$(mktemp --suffix=.png)"
-  # A compositor screenshot can be solid black while an internal laptop panel
-  # is DPMS-off. Chrome's own surface capture verifies the page without showing
-  # an unfinished dashboard and does not depend on the display backend.
-  if "$CHROME_LIFECYCLE" capture "$shot" >/dev/null 2>&1; then
-    :
-  elif command -v import >/dev/null; then
-    import -window root "$shot" >/dev/null 2>&1 || { rm -f "$shot"; return 1; }
-  elif command -v gnome-screenshot >/dev/null; then
-    gnome-screenshot -f "$shot" >/dev/null 2>&1 || { rm -f "$shot"; return 1; }
-  else
-    rm -f "$shot"
-    return 0
-  fi
-  [[ -s "$shot" ]] || { rm -f "$shot"; return 1; }
-  if command -v identify >/dev/null; then
-    colors="$(identify -format '%k' "$shot" 2>/dev/null || echo 0)"
-    [[ "$colors" =~ ^[0-9]+$ ]] && (( colors > 8 )) || { rm -f "$shot"; return 1; }
-  fi
-  rm -f "$shot"
-}
-
 verify_wake() {
   wait_geometry || { write_verification false geometry "display is below the configured minimum"; return 1; }
   verify_page || { write_verification false page "Chrome URL, document or renderer is not ready"; return 1; }
-  verify_screenshot || { write_verification false screenshot "Chrome surface is blank or could not be captured"; return 1; }
-  write_verification true complete "geometry, page, renderer and Chrome surface verified"
+  write_verification true complete "geometry, page and renderer verified"
 }
 
 wait_verify_wake() {

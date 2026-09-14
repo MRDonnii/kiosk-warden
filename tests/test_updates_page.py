@@ -68,8 +68,8 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('id="restartWardenManual"', control)
         self.assertIn("Genstart Kiosk Warden", control)
         self.assertIn("Genstart maskine", control)
-        self.assertIn("Skærmbillede", control)
-        self.assertIn("/screenshot.jpg", control)
+        self.assertNotIn("Skærmbillede", control)
+        self.assertNotIn("/screenshot.jpg", control)
         self.assertNotIn("Hurtige handlinger", dashboard)
         self.assertNotIn("/screenshot.jpg", dashboard)
         self.assertIn('id="usageChart"', dashboard)
@@ -200,15 +200,10 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('window.BeastPower.setState', lifecycle)
         self.assertIn("animationer, livekameraer og rendering virker kun", SERVER.render_control({"KIOSK_NAME": "Test kiosk"}))
 
-    def test_health_check_recovers_a_solid_grey_surface(self):
+    def test_health_check_does_not_capture_or_store_screenshots(self):
         health = (ROOT / "scripts" / "health-check.sh").read_text()
-        self.assertIn("grey_surface()", health)
-        self.assertIn("colors <= 8", health)
-        self.assertIn("Blank or solid-grey Chrome surface", health)
-        self.assertIn('screen_state', health)
-        self.assertLess(health.index('command -v import'), health.index('command -v gnome-screenshot'))
-        self.assertNotIn("trap 'rm -f", health)
-        self.assertIn('local shot colors result=1', health)
+        self.assertNotIn("grey_surface()", health)
+        self.assertNotIn("screenshot", health.lower())
 
     def test_mint_dpms_wake_order_keeps_dpms_enabled(self):
         control = (ROOT / "scripts" / "mqtt-control.sh").read_text()
@@ -253,16 +248,19 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn('Chrome is starting', health)
         self.assertIn('WAKING', health)
 
-    def test_wake_uses_chrome_surface_capture_while_display_is_off(self):
+    def test_wake_verifies_renderer_without_screenshot_capture(self):
         lifecycle = (ROOT / "scripts" / "chrome-lifecycle.py").read_text()
         state = (ROOT / "scripts" / "warden-state.sh").read_text()
         self_test = (ROOT / "scripts" / "kiosk-self-test.sh").read_text()
-        self.assertIn('"Page.captureScreenshot"', lifecycle)
-        self.assertIn('base64.b64decode(encoded, validate=True)', lifecycle)
-        self.assertIn('CHROME_LIFECYCLE" capture "$shot"', state)
-        self.assertLess(state.index('CHROME_LIFECYCLE" capture "$shot"'), state.index('command -v import'))
+        self.assertNotIn('Page.captureScreenshot', lifecycle)
+        self.assertNotIn('verify_screenshot', state)
+        self.assertNotIn('take-screenshot.sh', self_test)
         self.assertIn('wake_verification.json', state)
         self.assertIn('wake_verification.json', self_test)
+        discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
+        updater = (ROOT / "scripts" / "self-update.sh").read_text()
+        self.assertIn('publish_config image screenshot_image ""', discovery)
+        self.assertIn('rm -f "$KIOSK_DIR/take-screenshot.sh"', updater)
 
     def test_installer_supports_a_conflict_checked_webui_port(self):
         installer = (ROOT / "install.sh").read_text()

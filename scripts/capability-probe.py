@@ -72,7 +72,6 @@ def probe():
         "sensors": {"illuminance": bool(ambient), "illuminance_path": ambient,
                     "battery": bool(battery), "battery_path": battery},
         "audio": {"output": bool(sink), "sink": sink or None, "microphone": bool(source), "source": source or None},
-        "capture": {"screenshot": bool(shutil.which("gnome-screenshot") or shutil.which("import") or shutil.which("xwd"))},
     }
     return data
 

@@ -60,14 +60,6 @@ capabilities_entity() {
   publish_config sensor capabilities "$payload"
 }
 
-image_entity() {
-  local payload
-  payload="$(jq -cn --arg name "Screenshot" --arg uniq "${KIOSK_ID}_screenshot_image" --arg img "$BASE_TOPIC/image/screenshot" \
-    --arg av "$BASE_TOPIC/online/status" --argjson dev "$device_json" \
-    '{name:$name, unique_id:$uniq, image_topic:$img, content_type:"image/jpeg", availability_topic:$av, payload_available:"online", payload_not_available:"offline", device:$dev}')"
-  publish_config image screenshot_image "$payload"
-}
-
 binary_sensor_entity() {
   local payload
   payload="$(jq -cn --arg name "Kiosk Health" --arg uniq "${KIOSK_ID}_health" --arg stat "$BASE_TOPIC/health/status" \
@@ -167,7 +159,6 @@ sensor uptime_minutes "Up Time" "stats/uptime_minutes" "min" "mdi:timer-outline"
 sensor chrome_running "Chrome Running" "stats/chrome_running" "" "mdi:google-chrome"
 sensor errors "Errors" "diagnostic/errors" "" "mdi:alert-circle" "" "" "diagnostic"
 sensor heartbeat "Heartbeat" "diagnostic/heartbeat" "" "mdi:heart-pulse" "" "" "diagnostic"
-sensor screenshot "Screenshot" "state/screenshot" "" "mdi:image" "" "" "diagnostic"
 sensor version "Version" "diagnostic/version" "" "mdi:tag" "" "" "diagnostic"
 capabilities_entity
 
@@ -185,12 +176,10 @@ fi
 
 sensor health_detail "Health Detail" "health/detail" "" "mdi:clipboard-pulse" "" "" "diagnostic"
 sensor last_recovery "Last Recovery" "diagnostic/last_recovery" "" "mdi:restore" "" "" "diagnostic"
-sensor screenshot_path "Screenshot Path" "diagnostic/screenshot_path" "" "mdi:file-image" "" "" "diagnostic"
 sensor last_backup "Last Backup" "diagnostic/last_backup" "" "mdi:backup-restore" "" "" "diagnostic"
 sensor backup_path "Backup Path" "diagnostic/backup_path" "" "mdi:folder-zip" "" "" "diagnostic"
 
 light_entity
-image_entity
 binary_sensor_entity
 smartdash_connection_entity
 smartdash_rendering_switch
@@ -219,8 +208,13 @@ button restart_chrome "Restart Chrome" "restart_chrome" "mdi:restart"
 button restart_warden "Restart Kiosk Warden" "restart_warden" "mdi:shield-refresh"
 button restart_codex_remote "Genstart Codex Remote" "restart" "mdi:remote-desktop" "$CODEX_REMOTE_TOPIC/command"
 button hard_reload "Hard Reload" "hard_reload" "mdi:reload-alert"
-button screenshot_button "Take Screenshot" "screenshot" "mdi:camera"
 button backup "Backup" "backup" "mdi:backup-restore"
+
+# Remove retained discovery left by versions that exposed screenshot entities.
+publish_config sensor screenshot ""
+publish_config sensor screenshot_path ""
+publish_config image screenshot_image ""
+publish_config button screenshot_button ""
 
 mqtt_pub "$BASE_TOPIC/online/status" "online" -r
 source "$HOME/kiosk/kiosk.conf"

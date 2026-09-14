@@ -32,7 +32,6 @@ if jq -e --argjson minw "${KIOSK_MIN_WIDTH:-1024}" --argjson minh "${KIOSK_MIN_H
   record resolution true "$(jq -r '"\(.width)x\(.height)@\(.refresh_hz)"' <<<"$after")"
 else record resolution false "$after"; fi
 if "$KIOSK_DIR/chrome-lifecycle.py" verify >/dev/null 2>&1; then record renderer_layout true verified; else record renderer_layout false invalid; fi
-if "$KIOSK_DIR/take-screenshot.sh" >/dev/null 2>&1 && [[ -s "$KIOSK_DIR/screenshots/latest.jpg" ]]; then record screenshot true created; else record screenshot false failed; fi
 ports="$($KIOSK_DIR/port-check.sh 2>/dev/null || echo '[]')"
 if jq -e 'all(.[]; .conflict == false)' <<<"$ports" >/dev/null; then record ports true clear; else record ports false conflict; fi
 ended="$(date +%s%3N)"; duration=$((ended-started))
