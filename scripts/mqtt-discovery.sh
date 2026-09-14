@@ -2,6 +2,15 @@
 set -euo pipefail
 source "$HOME/kiosk/mqtt-lib.sh"
 
+# Screenshot capture was removed in v1.18.26. Discovery is executed from the
+# freshly installed files even when an older updater owns the current process,
+# so this is the reliable first-update migration point.
+rm -f "$HOME/kiosk/take-screenshot.sh"
+if [[ -d "$HOME/kiosk/screenshots" ]]; then
+  find "$HOME/kiosk/screenshots" -maxdepth 1 -type f -delete
+  rmdir "$HOME/kiosk/screenshots" 2>/dev/null || true
+fi
+
 hardware_model="$(cat /sys/devices/virtual/dmi/id/product_name 2>/dev/null || tr -d '\0' </proc/device-tree/model 2>/dev/null || uname -m)"
 os_name="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Linux}")"
 device_json="$(jq -cn --arg id "$KIOSK_ID" --arg name "$KIOSK_NAME" --arg manufacturer "Linux Kiosk" \

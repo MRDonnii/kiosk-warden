@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.18.27 — 2026-09-14
+
+- Run the legacy screenshot cleanup from the freshly installed discovery script, so a kiosk upgrading with an older in-memory updater removes the old script and files on its first update.
+- Includes the screenshot-free wake/self-test and exact wake-stage diagnostics from v1.18.26.
+
 ## v1.18.26 — 2026-09-14
 
 - Remove screenshot capture, storage, WebUI controls and MQTT entities; remote control is the supported visual inspection path.
