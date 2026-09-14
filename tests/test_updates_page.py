@@ -260,6 +260,7 @@ class UpdatesPageTest(unittest.TestCase):
         discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
         updater = (ROOT / "scripts" / "self-update.sh").read_text()
         self.assertIn('publish_config image screenshot_image ""', discovery)
+        self.assertIn('rm -f "$HOME/kiosk/take-screenshot.sh"', discovery)
         self.assertIn('rm -f "$KIOSK_DIR/take-screenshot.sh"', updater)
 
     def test_installer_supports_a_conflict_checked_webui_port(self):
