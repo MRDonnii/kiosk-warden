@@ -174,7 +174,7 @@ echo
 echo "== Installerer apt-pakker =="
 sudo apt-get update -y
 required_packages=(git mosquitto-clients jq bc curl gnupg xdotool wmctrl unclutter
-  x11-xserver-utils xinput xprintidle evtest lm-sensors openssh-server dbus-x11 imagemagick python3 zip
+  x11-xserver-utils xinput xprintidle evtest lm-sensors openssh-server dbus-x11 python3 zip
   python3-websocket x11vnc novnc websockify)
 sudo apt-get install -y "${required_packages[@]}"
 if getent group input >/dev/null 2>&1; then
@@ -183,7 +183,7 @@ fi
 
 # Desktop conveniences and hardware telemetry differ between Ubuntu, Mint,
 # Debian and Raspberry Pi OS. Missing optional packages must not abort install.
-for package in htop gnome-screenshot onboard power-profiles-daemon linux-tools-common; do
+for package in htop onboard power-profiles-daemon linux-tools-common; do
   apt-cache show "$package" >/dev/null 2>&1 && sudo apt-get install -y "$package" || true
 done
 
@@ -207,10 +207,15 @@ command -v google-chrome-stable >/dev/null 2>&1 || command -v google-chrome >/de
   || { echo "Ingen kompatibel Chrome/Chromium-browser blev installeret." >&2; exit 1; }
 
 echo "== Kopierer scripts til ~/kiosk =="
-mkdir -p "$HOME/kiosk/backups" "$HOME/kiosk/screenshots"
+mkdir -p "$HOME/kiosk/backups"
 cp "$SRC_DIR"/scripts/*.sh "$HOME/kiosk/"
 cp "$SRC_DIR"/scripts/*.py "$HOME/kiosk/"
 chmod +x "$HOME"/kiosk/*.sh "$HOME"/kiosk/*.py
+rm -f "$HOME/kiosk/take-screenshot.sh"
+if [[ -d "$HOME/kiosk/screenshots" ]]; then
+  find "$HOME/kiosk/screenshots" -maxdepth 1 -type f -delete
+  rmdir "$HOME/kiosk/screenshots" 2>/dev/null || true
+fi
 cp "$SRC_DIR/VERSION" "$HOME/kiosk/version"
 [[ -f "$HOME/kiosk/update_channel" ]] || printf 'stable\n' > "$HOME/kiosk/update_channel"
 cp "$SRC_DIR/icon.svg" "$HOME/kiosk/icon.svg"

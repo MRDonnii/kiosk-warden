@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.18.26 — 2026-09-14
+
+- Remove screenshot capture, storage, WebUI controls and MQTT entities; remote control is the supported visual inspection path.
+- Verify wake from Chrome's document, renderer and layout state while the physical panel remains off, avoiding false blank-screen failures on internal laptop displays.
+- Record the exact failed wake stage in diagnostics instead of the generic `state/recovery failed` result.
+
 ## v1.18.25 — 2026-09-14
 
 - Verify wake from Chrome's rendered surface while the physical panel remains off, avoiding false blank-screen failures on internal laptop displays.

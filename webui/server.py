@@ -30,7 +30,6 @@ import ha_client
 HOME = os.path.expanduser("~")
 KIOSK_DIR = os.path.join(HOME, "kiosk")
 CONF_PATH = os.path.join(KIOSK_DIR, "kiosk.conf")
-SCREENSHOT_PATH = os.path.join(KIOSK_DIR, "screenshots", "latest.jpg")
 ICON_PATH = os.path.join(KIOSK_DIR, "icon.svg")
 CHANGELOG_PATH = os.path.join(KIOSK_DIR, "CHANGELOG.md")
 VERSION_PATH = os.path.join(KIOSK_DIR, "version")
@@ -130,7 +129,7 @@ ENGLISH_TEXT = {
     "Aktiv visning": "Active view", "Ingen profil": "No profile",
     "Kiosktilstand og diagnostik": "Kiosk state and diagnostics", "Tilstandsmaskine": "State machine",
     "Seneste selvtest": "Latest self-test", "Wake-tid": "Wake time",
-    "Selvtesten gennemfører en rigtig OFF→ON-cyklus og kontrollerer backend/DPMS, opløsning, Chrome-side, renderer/layout, screenshot og serviceporte.": "The self-test performs a real OFF→ON cycle and checks the backend/DPMS, resolution, Chrome page, renderer/layout, screenshot, and service ports.",
+    "Selvtesten gennemfører en rigtig OFF→ON-cyklus og kontrollerer backend/DPMS, opløsning, Chrome-side, renderer/layout og serviceporte.": "The self-test performs a real OFF→ON cycle and checks the backend/DPMS, resolution, Chrome page, renderer/layout, and service ports.",
     "Kør OFF→ON-test": "Run OFF→ON test", "Trinvis recovery": "Step-by-step recovery", "Lav sikker diagnostik-ZIP": "Create safe diagnostics ZIP", "Download seneste ZIP": "Download latest ZIP",
     "Skærm og touch": "Display and touch", "Aktiv skærm": "Active display", "Opløsning": "Resolution", "Refresh rate": "Refresh rate",
     "Touchscreen": "Touchscreen", "Kalibrering": "Calibration", "Seneste input": "Latest input", "Ikke registreret": "Not detected",
@@ -170,9 +169,7 @@ ENGLISH_TEXT = {
     "Styring": "Control", "Strømprofil": "Power profile", "Strømbesparelse": "Power Saver", "Balanceret": "Balanced", "Ydelse": "Performance",
     "Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.": "Power Saver uses the least energy. Balanced and Performance progressively allow more CPU performance.",
     "Aktiv profil": "Active profile", "Skift strømprofil": "Change power profile", "Kiosk og Warden": "Kiosk and Warden",
-    "Genindlæs side": "Reload page", "Genstart Chrome": "Restart Chrome", "Tag screenshot": "Take screenshot", "Backup config": "Back up config",
-    "Skærmbillede": "Screenshot", "Seneste billede af den aktive kiosk-skærm. Brug Tag screenshot ovenfor for at opdatere det.": "Latest image of the active kiosk screen. Use Take screenshot above to refresh it.",
-    "Seneste screenshot af kiosk-skærmen": "Latest screenshot of the kiosk screen", "Der er ikke taget et screenshot endnu.": "No screenshot has been taken yet.",
+    "Genindlæs side": "Reload page", "Genstart Chrome": "Restart Chrome", "Backup config": "Back up config",
     "Maskine": "Machine", "Genstart maskine": "Restart machine", "Sluk maskine": "Shut down machine", "Kiosk Warden genstarter…": "Kiosk Warden is restarting…",
     "Indstillinger": "Settings", "Navn på kiosken": "Kiosk name", "bruges i MQTT-topics": "used in MQTT topics",
     "Web-UI port": "Web UI port", "Porten skal være mellem 1024 og 65535.": "The port must be between 1024 and 65535.",
@@ -1437,7 +1434,6 @@ def render_control(conf, message=None, error=None):
     except (OSError, ValueError):
         smartdash = {}
     profile = current_power_profile()
-    has_screenshot = os.path.exists(SCREENSHOT_PATH)
     has_diagnostics = os.path.isdir(DIAGNOSTICS_DIR) and any(name.endswith(".zip") for name in os.listdir(DIAGNOSTICS_DIR))
     try:
         state = json.loads(read_file(WARDEN_STATE_PATH, '{"state":"UNKNOWN"}'))
@@ -1492,7 +1488,7 @@ def render_control(conf, message=None, error=None):
     body += f"""
 <fieldset><legend>Kiosktilstand og diagnostik</legend>
   <div class="grid"><div class="tile"><span>Tilstandsmaskine</span><strong>{esc(state.get('state', 'UNKNOWN'))}</strong></div><div class="tile"><span>Seneste selvtest</span><strong>{esc(self_test.get('result', '—'))}</strong></div><div class="tile"><span>Wake-tid</span><strong>{esc(str(self_test.get('wake_time_ms', '—')) + (' ms' if self_test.get('wake_time_ms') is not None else ''))}</strong></div></div>
-  <p class="status">Selvtesten gennemfører en rigtig OFF→ON-cyklus og kontrollerer backend/DPMS, opløsning, Chrome-side, renderer/layout, screenshot og serviceporte.</p>
+  <p class="status">Selvtesten gennemfører en rigtig OFF→ON-cyklus og kontrollerer backend/DPMS, opløsning, Chrome-side, renderer/layout og serviceporte.</p>
   <div class="row"><form method="post" action="/action"><input type="hidden" name="do" value="self_test"><button class="primary" type="submit">🧪 Kør OFF→ON-test</button></form><form method="post" action="/action"><input type="hidden" name="do" value="recover"><button type="submit">🩹 Trinvis recovery</button></form><form method="post" action="/action"><input type="hidden" name="do" value="diagnostics"><button type="submit">📦 Lav sikker diagnostik-ZIP</button></form>{'<a class="nav-btn" href="/diagnostics/latest.zip">⬇ Download seneste ZIP</a>' if has_diagnostics else ''}</div>
 </fieldset>
 <fieldset><legend>Skærm og touch</legend><div class="grid">
@@ -1531,13 +1527,8 @@ def render_control(conf, message=None, error=None):
   <form method="post" action="/action"><input type="hidden" name="do" value="reload"><button type="submit">🔄 Genindlæs side</button></form>
   <form method="post" action="/action"><input type="hidden" name="do" value="restart_chrome"><button type="submit">🔁 Genstart Chrome</button></form>
   <button class="primary" type="button" id="restartWardenManual">🛡️ Genstart Kiosk Warden</button>
-  <form method="post" action="/action"><input type="hidden" name="do" value="screenshot"><button type="submit">📷 Tag screenshot</button></form>
   <form method="post" action="/action"><input type="hidden" name="do" value="backup"><button type="submit">🗄️ Backup config</button></form>
 </div><div class="countdown" id="manualRestartCountdown"></div></fieldset>
-<fieldset><legend>Skærmbillede</legend>
-  <p class="status">Seneste billede af den aktive kiosk-skærm. Brug Tag screenshot ovenfor for at opdatere det.</p>
-  {f'<img class="shot" src="/screenshot.jpg?_={secrets.token_hex(4)}" alt="Seneste screenshot af kiosk-skærmen">' if has_screenshot else '<div class="status">Der er ikke taget et screenshot endnu.</div>'}
-</fieldset>
 <fieldset><legend>Maskine</legend><div class="row">
   <form method="post" action="/action" onsubmit="return confirm('Genstarte maskinen nu?');"><input type="hidden" name="do" value="reboot"><button class="danger" type="submit">⟳ Genstart maskine</button></form>
   <form method="post" action="/action" onsubmit="return confirm('Slukke maskinen nu?');"><input type="hidden" name="do" value="shutdown"><button class="danger" type="submit">⏻ Sluk maskine</button></form>
@@ -1898,8 +1889,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self._authenticated(conf):
             return self._login_redirect(self.path)
 
-        if parsed.path == "/screenshot.jpg":
-            return self._serve_screenshot()
         if parsed.path == "/diagnostics/latest.zip":
             return self._serve_latest_diagnostics()
         if parsed.path == "/api/warden-status":
@@ -2206,8 +2195,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 chrome_focus_and_key("F5")
             elif action == "restart_chrome":
                 run("systemctl", "--user", "restart", "kiosk-chrome.service")
-            elif action == "screenshot":
-                run(os.path.join(KIOSK_DIR, "take-screenshot.sh"), timeout=20)
             elif action == "backup":
                 run(os.path.join(KIOSK_DIR, "backup-kiosk.sh"), timeout=30)
             elif action == "self_test":
@@ -2260,20 +2247,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "image/svg+xml")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "public, max-age=86400")
-        self.end_headers()
-        self.wfile.write(data)
-
-    def _serve_screenshot(self):
-        if not os.path.exists(SCREENSHOT_PATH):
-            self.send_response(404)
-            self.end_headers()
-            return
-        with open(SCREENSHOT_PATH, "rb") as f:
-            data = f.read()
-        self.send_response(200)
-        self.send_header("Content-Type", "image/jpeg")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 

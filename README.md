@@ -4,8 +4,8 @@
 
 Warden uses a locked state machine (`OFF`, `WAKING`, `ON`, `SLEEPING`, and
 `RECOVERING`). A wake is shown only after the minimum resolution, expected
-Chrome URL, completed document, renderer state, dashboard width, and a
-non-blank screenshot have been verified. Recovery proceeds through resize,
+Chrome URL, completed document, renderer state, and dashboard width have been
+verified. Recovery proceeds through resize,
 renderer resume, reload, and finally a Chrome restart.
 
 The Control page can run a real OFF→ON acceptance test and create a sanitized
@@ -29,16 +29,14 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
 - Publishes CPU/RAM/temperature/uptime/IP stats to MQTT every N seconds.
 - Exposes Home Assistant MQTT-discovery entities: screen on/off, window mode
   (Kiosk/Fullscreen/Windowed), theme, zoom, volume, on-screen keyboard, URL
-  text field, reboot/shutdown/refresh buttons, screenshot image entity, and
-  health/diagnostic sensors.
+  text field, reboot/shutdown/refresh buttons, and health/diagnostic sensors.
 - Turns on a touch on-screen keyboard by default on install, using
   `onboard` so it works the same on GNOME, Cinnamon (Linux Mint), MATE, or
   Xfce — toggle it off/on later from the web UI or Home Assistant.
 - Watches itself: a health-check loop polls Chrome via remote debugging every
   20s, reloads on a blank/error page, and restarts Chrome after repeated
   failures. A separate watchdog restarts Chrome if the process dies outright.
-- Takes on-demand screenshots and config backups, both triggerable from
-  Home Assistant.
+- Takes config backups, triggerable from Home Assistant.
 - Ships a small built-in **web UI** for setup and local control — no SSH or
   terminal needed after the first install.
 - Bundles browser-based **VNC remote control** (x11vnc + noVNC): click
@@ -52,7 +50,7 @@ Turns a plain Ubuntu desktop machine into a kiosk that:
   restart recovery is reserved for a missing process or dashboard page.
 - The animation, live-camera, and rendering pause bridge only works with **HA
   Smartdash**. Screen DPMS control still works for other dashboards, but
-  Warden cannot pause their internal visual work.
+Warden cannot pause their internal visual work.
 - Publishes retained `Smartdash Connection` diagnostics and an available-only
   `Smartdash Rendering` MQTT switch in Home Assistant. The switch sends
   `active`/`idle` through the same local Chrome bridge used by automatic screen
@@ -72,7 +70,7 @@ systems, and Raspberry Pi OS Desktop on `amd64`, `arm64`, or `armhf`. The
 installer selects Google Chrome on `amd64` and Chromium on ARM. Raspberry Pi OS
 Bookworm and newer default to Wayland; Kiosk Warden switches Raspberry Pi OS to
 the X11/Openbox backend during installation because its DPMS, xdotool,
-screenshot, and x11vnc controls currently require X11. Reboot after installation
+and x11vnc controls currently require X11. Reboot after installation
 to activate that change. Raspberry Pi OS Lite is not supported without first
 installing a desktop environment.
 
@@ -168,10 +166,9 @@ From the web UI you can:
 - Edit `KIOSK_NAME`, `KIOSK_ID`, `KIOSK_URL`, MQTT host/port/user/password,
   and the stats interval — saving restarts the affected services and
   re-publishes Home Assistant discovery automatically.
-- Use the dedicated **Kiosk** page to reload the dashboard, restart Chrome
-  or all Kiosk Warden services, take a screenshot, create a config backup, or
-  reboot/shut down the machine. The latest screenshot is displayed on the same
-  page, keeping Overview focused on essential live status.
+- Use the dedicated **Kiosk** page to reload the dashboard, restart Chrome or
+  all Kiosk Warden services, create a config backup, or reboot/shut down the
+  machine. Use **Remote Control** when visual inspection is needed.
 - Switch the machine between **Strømbesparelse**, **Balanceret** and **Ydelse**;
   the same power-profile control is published to Home Assistant over MQTT.
 - Change the web UI password.
@@ -281,14 +278,13 @@ Base topic: `home/kiosk/<KIOSK_ID>`
 .../diagnostic/*        (errors, heartbeat, version, last_backup, last_recovery, ...)
 .../stats/web_ui_url    (complete Web UI address, for example http://192.0.2.10:8080)
 .../command             (reload, hard_reload, restart_chrome, restart_warden, screen_on, screen_off,
-                          fullscreen, home, reboot, shutdown, screenshot, backup,
+                          fullscreen, home, reboot, shutdown, backup,
                           Kiosk/Fullscreen/Windowed, Dark/Light/Auto, or a raw http(s) URL)
 .../set_url
 .../set_zoom
 .../set_theme
 .../set_volume
 .../set_power_profile   (Strømbesparelse, Balanceret or Ydelse)
-.../image/screenshot    (retained JPEG, also mirrored to homeassistant/image/... discovery)
 .../update/state        (JSON: installed_version/latest_version, checked every 30 min)
 .../update/install      (send "install" to trigger self-update.sh, same as the HA update entity's button)
 ```

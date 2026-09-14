@@ -293,10 +293,6 @@ set_profile_zoom() {
   publish_state url "$(sed -n 's/^KIOSK_URL="\(.*\)"$/\1/p' "$HOME/kiosk/kiosk.conf")"
 }
 
-take_screenshot() {
-  "$HOME/kiosk/take-screenshot.sh" >/dev/null 2>&1 || true
-}
-
 backup_kiosk() {
   "$HOME/kiosk/backup-kiosk.sh" >/dev/null 2>&1 || true
 }
@@ -329,7 +325,6 @@ handle_command() {
     Kiosk|Fullscreen|Windowed|Maximized|kiosk|fullscreen|windowed|maximized) set_window_mode "$1" ;;
     Dark|Light|Auto|dark|light|auto) set_theme "$1" ;;
     http://*|https://*) set_kiosk_url "$1" ;;
-    screenshot) take_screenshot ;;
     backup) backup_kiosk ;;
     self_test) "$HOME/kiosk/kiosk-self-test.sh" >/dev/null 2>&1 || true ;;
     diagnostics) "$HOME/kiosk/create-diagnostics.sh" >/dev/null 2>&1 || true ;;

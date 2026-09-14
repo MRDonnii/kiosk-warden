@@ -207,6 +207,12 @@ install_release() {
   backup="$(snapshot_current)" || { echo 'ERROR could not create pre-update backup'; return 1; }
   write_status installing 70 "Installerer validerede releasefiler…"
   for file in "$repo"/scripts/*.sh "$repo"/scripts/*.py; do replace_atomic "$file" "$KIOSK_DIR/$(basename "$file")"; done
+  # v1.18.26 removed screenshot capture in favour of temporary remote control.
+  rm -f "$KIOSK_DIR/take-screenshot.sh"
+  if [[ -d "$KIOSK_DIR/screenshots" ]]; then
+    find "$KIOSK_DIR/screenshots" -maxdepth 1 -type f -delete
+    rmdir "$KIOSK_DIR/screenshots" 2>/dev/null || true
+  fi
   replace_atomic "$repo/VERSION" "$KIOSK_DIR/version" 644; replace_atomic "$repo/icon.svg" "$KIOSK_DIR/icon.svg" 644; replace_atomic "$repo/CHANGELOG.md" "$KIOSK_DIR/CHANGELOG.md" 644
   mkdir -p "$KIOSK_DIR/webui" "$HOME/.config/systemd/user"
   for file in "$repo"/webui/*.py; do replace_atomic "$file" "$KIOSK_DIR/webui/$(basename "$file")"; done
