@@ -123,6 +123,11 @@ http://localhost:8080         — from the kiosk machine
 http://<kiosk-ip>:8080        — from any device on the same network (phone, laptop)
 ```
 
+The port can be changed later under **Settings → Web UI port**. Warden checks
+that the new port is valid and free, restarts only the Web UI after returning
+the confirmation page, and redirects the browser to the new address. If a host
+firewall is enabled, the new TCP port must also be allowed there.
+
 It binds to `0.0.0.0` by default so you can finish setup from your phone
 without plugging in a keyboard. **The first thing you must do is open it and
 set a password** — until a password is set, the page only shows the

@@ -16,6 +16,7 @@ import os
 import re
 import secrets
 import shutil
+import socket
 import socketserver
 import subprocess
 import threading
@@ -119,6 +120,10 @@ ENGLISH_TEXT = {
     "Seneste screenshot af kiosk-skærmen": "Latest screenshot of the kiosk screen", "Der er ikke taget et screenshot endnu.": "No screenshot has been taken yet.",
     "Maskine": "Machine", "Genstart maskine": "Restart machine", "Sluk maskine": "Shut down machine", "Kiosk Warden genstarter…": "Kiosk Warden is restarting…",
     "Indstillinger": "Settings", "Navn på kiosken": "Kiosk name", "bruges i MQTT-topics": "used in MQTT topics",
+    "Web-UI port": "Web UI port", "Porten skal være mellem 1024 og 65535.": "The port must be between 1024 and 65535.",
+    "Web-UI porten er allerede i brug.": "The Web UI port is already in use.",
+    "Når porten ændres, genstarter kun Web-UI'en, og browseren viderestilles automatisk.": "When the port changes, only the Web UI restarts and the browser is redirected automatically.",
+    "Web-UI porten er ændret": "The Web UI port has changed", "Forbinder til den nye adresse…": "Connecting to the new address…",
     "URL kiosken skal vise": "URL displayed by the kiosk", "MQTT brugernavn": "MQTT username",
     "MQTT password (tomt = behold nuværende)": "MQTT password (empty = keep current)", "Stats-interval (sekunder)": "Stats interval (seconds)",
     "Gem og genstart": "Save and restart", "Skift password": "Change password", "Nyt password": "New password",
@@ -649,11 +654,24 @@ def render_tile(icon, label, value, level="neutral"):
     )
 
 
+def webui_port_available(port):
+    """Return whether a new WebUI listener can bind on all interfaces."""
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind((BIND_HOST, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
+
+
 def validate_settings(fields):
     kiosk_id = fields.get("KIOSK_ID", [""])[0].strip()
     kiosk_url = fields.get("KIOSK_URL", [""])[0].strip()
     mqtt_port = fields.get("MQTT_PORT", [""])[0].strip()
     stats_interval = fields.get("STATS_INTERVAL", [""])[0].strip()
+    webui_port = fields.get("KIOSK_WEBUI_PORT", [str(BIND_PORT)])[0].strip()
     if not re.match(r"^[a-z0-9_]+$", kiosk_id):
         return "Kiosk-id må kun indeholde a-z, 0-9 og _."
     if not re.match(r"^https?://", kiosk_url):
@@ -662,6 +680,10 @@ def validate_settings(fields):
         return "MQTT port skal være et tal."
     if not stats_interval.isdigit():
         return "Stats-interval skal være et tal."
+    if not webui_port.isdigit() or not 1024 <= int(webui_port) <= 65535:
+        return "Porten skal være mellem 1024 og 65535."
+    if int(webui_port) != BIND_PORT and not webui_port_available(int(webui_port)):
+        return "Web-UI porten er allerede i brug."
     return None
 
 
@@ -1256,6 +1278,9 @@ def render_settings(conf, message=None, error=None):
     <input type="password" name="MQTT_PASS" placeholder="••••••••">
     <label>Stats-interval (sekunder)</label>
     <input type="number" name="STATS_INTERVAL" value="{esc(conf.get('STATS_INTERVAL',''))}" required>
+    <label>Web-UI port</label>
+    <input type="number" name="KIOSK_WEBUI_PORT" min="1024" max="65535" value="{esc(conf.get('KIOSK_WEBUI_PORT', BIND_PORT))}" required>
+    <div class="status">Når porten ændres, genstarter kun Web-UI'en, og browseren viderestilles automatisk.</div>
     <label>Brugerfladesprog</label>
     <select name="UI_LANGUAGE"><option value="en"{' selected' if conf.get('UI_LANGUAGE', 'en') == 'en' else ''}>English</option><option value="da"{' selected' if conf.get('UI_LANGUAGE') == 'da' else ''}>Dansk</option></select>
     <div class="row"><button class="primary" type="submit">Gem og genstart</button></div>
@@ -1289,6 +1314,27 @@ def render_settings(conf, message=None, error=None):
 
 """
     body += "</div>"
+    body += PAGE_TAIL
+    return body
+
+
+def render_port_change(conf, new_port):
+    body = PAGE_HEAD.format(title_suffix=" — Web-UI port")
+    body += f"""
+<div class="narrow">
+  <div class="brand"><img src="/icon.svg" alt=""><span>Kiosk Warden</span></div>
+  <fieldset>
+    <legend>Web-UI porten er ændret</legend>
+    <p>Forbinder til den nye adresse…</p>
+    <p class="status"><a id="newWebuiUrl" href="#">Fortsæt manuelt</a></p>
+  </fieldset>
+</div>
+<script>
+  const target = `${{location.protocol}}//${{location.hostname}}:{int(new_port)}/settings`;
+  document.getElementById('newWebuiUrl').href = target;
+  setTimeout(() => location.replace(target), 3500);
+</script>
+"""
     body += PAGE_TAIL
     return body
 
@@ -1465,7 +1511,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             err = validate_settings(fields)
             if err:
                 return self._send_html(render_settings(conf, error=err))
-            for key in ["KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL"]:
+            previous_conf = dict(conf)
+            old_webui_port = int(conf.get("KIOSK_WEBUI_PORT", BIND_PORT))
+            for key in ["KIOSK_NAME", "KIOSK_ID", "KIOSK_URL", "MQTT_HOST", "MQTT_USER", "MQTT_PORT", "STATS_INTERVAL", "KIOSK_WEBUI_PORT"]:
                 if key in fields:
                     conf[key] = fields[key][0].strip()
             conf["UI_LANGUAGE"] = "da" if fields.get("UI_LANGUAGE", ["en"])[0] == "da" else "en"
@@ -1475,9 +1523,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
             conf["BASE_TOPIC"] = f'home/kiosk/{conf["KIOSK_ID"]}'
             conf["CODEX_REMOTE_TOPIC"] = f'home/codex/{conf["KIOSK_ID"]}/remote_control'
             write_conf(conf)
-            run("systemctl", "--user", "restart", "kiosk-mqtt-stats.service", "kiosk-mqtt-control.service")
-            run("systemctl", "--user", "restart", "kiosk-chrome.service", "kiosk-watchdog.service", "kiosk-health.service")
-            run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
+            new_webui_port = int(conf["KIOSK_WEBUI_PORT"])
+            non_port_changed = any(
+                conf.get(key, "") != previous_conf.get(key, "")
+                for key in CONF_ORDER if key != "KIOSK_WEBUI_PORT"
+            )
+            if non_port_changed:
+                run("systemctl", "--user", "restart", "kiosk-mqtt-stats.service", "kiosk-mqtt-control.service")
+                run("systemctl", "--user", "restart", "kiosk-chrome.service", "kiosk-watchdog.service", "kiosk-health.service")
+                run(os.path.join(KIOSK_DIR, "mqtt-discovery.sh"))
+            if new_webui_port != old_webui_port:
+                unit = f"kiosk-webui-port-change-{int(time.time())}"
+                result = subprocess.run(
+                    ["systemd-run", "--user", "--collect", "--on-active=2s", "--unit", unit,
+                     "/usr/bin/systemctl", "--user", "restart", "kiosk-webui.service"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if result.returncode != 0:
+                    conf["KIOSK_WEBUI_PORT"] = str(old_webui_port)
+                    write_conf(conf)
+                    return self._send_html(render_settings(conf, error=result.stderr.strip() or "Kunne ikke genstarte Web-UI."))
+                return self._send_html(render_port_change(conf, new_webui_port))
             return self._redirect("/settings")
 
         if parsed.path == "/save-ha":
