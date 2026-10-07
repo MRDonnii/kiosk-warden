@@ -9,6 +9,7 @@ import sys
 import tempfile
 import threading
 import urllib.parse
+import re
 import unittest
 
 
@@ -192,6 +193,13 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertNotIn('xrandr --output "$output" --off', backend)
         self.assertIn('xdotool getdisplaygeometry', state)
         self.assertLess(state.index('screen_prepare_on'), state.index('CHROME_LIFECYCLE" active'))
+        wake = state[state.index("\nwake() {"):state.index("\nsleep_screen() {")]
+        # The panel must be lit before the page resumes: with DPMS off a WebGL page
+        # stalls on the GPU and never passes verification while the screen is dark.
+        shows = [m.start() for m in re.finditer(r"^\s*screen_show\s*$", wake, re.M)]
+        self.assertEqual(len(shows), 2)
+        self.assertLess(shows[0], wake.index('CHROME_LIFECYCLE" active'))
+        self.assertLess(wake.index("wait_verify_wake"), shows[1])
         lifecycle = (ROOT / "scripts" / "chrome-lifecycle.py").read_text()
         self.assertIn('"method": "Runtime.evaluate"', lifecycle)
         self.assertIn("kiosk-warden-power", lifecycle)

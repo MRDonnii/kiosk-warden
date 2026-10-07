@@ -89,6 +89,12 @@ wake() {
   write_state WAKING "wake requested by $source"; touch "$WAKE_FILE"
   screen_prepare_on || true
   wait_geometry || true
+  # Light the panel before resuming the page. While DPMS is off the GPU process
+  # gets no vsync, so a page that compiles WebGL shaders on resume (a 3D view
+  # after a reload) blocks on it for 15-25 s and verification times out while
+  # the screen stays dark. screen_show runs again below, because a Chrome
+  # restart during recovery turns the panel off again while screen_state is OFF.
+  screen_show
   "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
   if ! wait_verify_wake; then recover_staged "wake verification failed" || { write_state RECOVERING "wake recovery exhausted"; return 1; }; fi
   screen_show

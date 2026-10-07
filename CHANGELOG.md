@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.19.4 — 2026-10-07
+
+- Turn the screen on before resuming the page when waking, instead of only after the page has been verified. While the panel is in DPMS off, the GPU process gets no vsync, so a page that has to compile WebGL shaders on resume (HA Smartdash's 3D view after a reload) blocked on the GPU and stayed unresponsive for 15–25 s. Wake verification timed out repeatedly and the screen stayed dark the whole time. Measured on an Intel UHD 630 kiosk: the page and GPU process were idle (1–3 % CPU) during the stall, and the same wake takes about 2 s with the panel on.
+- The screen is lit again after verification, because a Chrome restart during recovery turns the panel off while the screen state is still OFF.
+- Add a regression test for the wake order.
+
 ## v1.19.3 — 2026-10-07
 
 - Fix the Page Zoom select and Profile Zoom number in Home Assistant rejecting each other's zoom state: they share `state/page_zoom`, which carries `100` or `100%` depending on what set the zoom last. The select now adds the missing `%` and the number strips it, which stops about six "Invalid option" errors a minute in the Home Assistant log.
