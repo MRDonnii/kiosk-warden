@@ -478,6 +478,13 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("Profile Zoom", discovery)
         self.assertIn('const destination = {destination} || location.href;', lifecycle)
 
+    def test_zoom_entities_accept_states_with_and_without_percent(self):
+        discovery = (ROOT / "scripts" / "mqtt-discovery.sh").read_text()
+        self.assertIn('number_entity profile_zoom "Profile Zoom" "state/page_zoom"', discovery)
+        self.assertIn('select_entity page_zoom "Page Zoom" "state/page_zoom"', discovery)
+        self.assertIn('value_template:"{{ value | replace(\\"%\\",\\"\\") | int }}"', discovery)
+        self.assertIn('if [[ "$object" == "page_zoom" ]]; then payload="$(jq -c \'. + {value_template:"{{ value if value.endswith(\\"%\\") else value ~ \\"%\\" }}"}\'', discovery)
+
     def test_capability_probe_stdout_is_valid_and_non_mutating(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = dict(os.environ, HOME=tmp)

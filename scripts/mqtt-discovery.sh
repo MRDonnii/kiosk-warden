@@ -134,16 +134,21 @@ select_entity() {
   payload="$(jq -cn --arg name "$name" --arg uniq "${KIOSK_ID}_${object}" --arg cmd "$BASE_TOPIC/$command_topic" \
     --arg stat "$BASE_TOPIC/$state_topic" --arg av "$BASE_TOPIC/online/status" --argjson opts "$options_json" --argjson dev "$device_json" --arg icon "$icon" \
     '{name:$name, unique_id:$uniq, command_topic:$cmd, state_topic:$stat, options:$opts, availability_topic:$av, payload_available:"online", payload_not_available:"offline", icon:$icon, device:$dev}')"
+  # page_zoom shares state/page_zoom with the profile_zoom number, and the topic carries "100" or "100%" depending on what
+  # set the zoom last: the select adds the "%" its options carry, number_entity strips it (Claude AI, 2026-10-06; Home
+  # Assistant logged ~6 "Invalid option" errors a minute).
+  if [[ "$object" == "page_zoom" ]]; then payload="$(jq -c '. + {value_template:"{{ value if value.endswith(\"%\") else value ~ \"%\" }}"}' <<<"$payload")"; fi
   publish_config select "$object" "$payload"
 }
 
 number_entity() {
   local object="$1" name="$2" state_topic="$3" command_topic="$4" min="$5" max="$6" step="$7" unit="$8" icon="$9"
   local payload
+  # States may carry a unit ("100%" on state/page_zoom, see select_entity); the number takes the bare value.
   payload="$(jq -cn --arg name "$name" --arg uniq "${KIOSK_ID}_${object}" --arg cmd "$BASE_TOPIC/$command_topic" \
     --arg stat "$BASE_TOPIC/$state_topic" --argjson min "$min" --argjson max "$max" --argjson step "$step" --arg unit "$unit" \
     --arg av "$BASE_TOPIC/online/status" --argjson dev "$device_json" --arg icon "$icon" \
-    '{name:$name, unique_id:$uniq, command_topic:$cmd, state_topic:$stat, min:$min, max:$max, step:$step, mode:"slider", availability_topic:$av, payload_available:"online", payload_not_available:"offline", icon:$icon, device:$dev}
+    '{name:$name, unique_id:$uniq, command_topic:$cmd, state_topic:$stat, value_template:"{{ value | replace(\"%\",\"\") | int }}", min:$min, max:$max, step:$step, mode:"slider", availability_topic:$av, payload_available:"online", payload_not_available:"offline", icon:$icon, device:$dev}
      + (if $unit != "" then {unit_of_measurement:$unit} else {} end)')"
   publish_config number "$object" "$payload"
 }
