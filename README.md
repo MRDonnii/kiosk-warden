@@ -1,8 +1,5 @@
 # kiosk-warden
 
-> [!IMPORTANT]
-> This project is retained as legacy software and is no longer developed independently. Existing releases and installation history remain available, but new deployments should not depend on future updates from this repository.
-
 ## Kiosk lifecycle and recovery
 
 Warden uses a locked state machine (`OFF`, `WAKING`, `ON`, `SLEEPING`, and

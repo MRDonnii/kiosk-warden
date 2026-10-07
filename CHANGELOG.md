@@ -4,6 +4,7 @@
 
 - Fix the Page Zoom select and Profile Zoom number in Home Assistant rejecting each other's zoom state: they share `state/page_zoom`, which carries `100` or `100%` depending on what set the zoom last. The select now adds the missing `%` and the number strips it, which stops about six "Invalid option" errors a minute in the Home Assistant log.
 - Add a regression test for both zoom value templates.
+- Kiosk Warden is maintained again: remove the legacy notice from the README.
 
 ## v1.19.2 — 2026-09-14
 
