@@ -306,6 +306,12 @@ handle_update_install() {
     "$HOME/kiosk/self-update.sh" >/dev/null 2>&1 || true
 }
 
+# Operating system updates (Home Assistant's Install button on System Updates); system-updates.sh reports the progress.
+handle_system_updates_install() {
+  systemd-run --user --collect --unit="kiosk-system-update-$(date +%s)" \
+    "$HOME/kiosk/system-updates.sh" install >/dev/null 2>&1 || true
+}
+
 handle_codex_remote_command() {
   case "$1" in
     restart) restart_codex_remote ;;
@@ -372,4 +378,5 @@ listen_topic "$BASE_TOPIC/set_smartdash_rendering" set_smartdash_rendering &
 smartdash_status_loop &
 listen_topic "$CODEX_REMOTE_TOPIC/command" handle_codex_remote_command &
 listen_topic "$BASE_TOPIC/update/install" handle_update_install &
+listen_topic "$BASE_TOPIC/system_updates/install" handle_system_updates_install &
 listen_topic "$BASE_TOPIC/command" handle_command

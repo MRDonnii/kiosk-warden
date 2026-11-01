@@ -303,6 +303,8 @@ SUDOERS_FILE=/etc/sudoers.d/kiosk-warden
 echo "$USER ALL=(root) NOPASSWD: /sbin/reboot, /sbin/poweroff" | sudo tee "$SUDOERS_FILE" >/dev/null
 sudo chmod 0440 "$SUDOERS_FILE"
 sudo visudo -c -f "$SUDOERS_FILE"
+# Lets Home Assistant's Install button on System Updates install the operating system updates (see the README).
+sudo "$HOME/kiosk/setup-system-updates.sh"
 
 echo "== Deaktiverer sleep/suspend/hibernate =="
 sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target

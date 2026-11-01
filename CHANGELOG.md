@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.21.0 — 2026-11-01
+
+- Install the operating system updates from Home Assistant: the System Updates entity gets an **Install** button with progress once the one-time setup `sudo ~/kiosk/setup-system-updates.sh` has run. Until then it shows the updates and how to set it up.
+- The setup installs a root-owned helper (`/usr/local/sbin/kiosk-warden-system-update`) and a sudoers rule that allows exactly that file, without arguments. The helper runs `apt-get upgrade --with-new-pkgs` and `snap refresh`, waits for a running unattended upgrade, repairs an interrupted dpkg run first and restarts no services.
+- When the browser package was updated, the browser is restarted the next time the screen is off. A new kernel turns on `Reboot Required` and waits for the Reboot button.
+- `install.sh` runs the setup on new installations; `--remove` undoes it.
+
 ## v1.20.0 — 2026-11-01
 
 - Show the pending operating system updates in Home Assistant: a new `update.<kiosk>_system_updates` entity reports how many apt packages and snaps are waiting (for example "40 opdateringer"), with a short summary naming the packages people know (new kernel, Chrome, Xorg, GNOME Shell, …) and the full package list as attributes. A new `Reboot Required` binary sensor turns on when the system asks for a restart.

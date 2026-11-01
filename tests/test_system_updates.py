@@ -59,6 +59,32 @@ class SystemUpdatesTest(unittest.TestCase):
         self.assertIn("Kræver genstart bagefter.", text)
         self.assertLessEqual(len(text.strip()), 255)
 
+    def test_publish_without_setup_has_no_install_button_and_says_how(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kiosk = pathlib.Path(tmp)
+            log = kiosk / "mqtt.log"
+            (kiosk / "mqtt-lib.sh").write_text(
+                'KIOSK_ID=test_kiosk\nBASE_TOPIC=home/kiosk/test_kiosk\n'
+                f'mqtt_pub() {{ printf "%s\\t%s\\n" "$1" "$2" >> "{log}"; }}\n')
+            (kiosk / "apt.txt").write_text(APT_SIMULATION)
+            (kiosk / "snap.txt").write_text(SNAP_LIST)
+            env = dict(os.environ, KIOSK_DIR=str(kiosk), APT_SIMULATION_FILE=str(kiosk / "apt.txt"),
+                       SNAP_LIST_FILE=str(kiosk / "snap.txt"), KIOSK_WARDEN_HELPER=str(kiosk / "no-helper"),
+                       KIOSK_WARDEN_RUN_DIR=str(kiosk / "run"))
+            subprocess.run(["bash", str(SCRIPT), "publish"], env=env, check=True, capture_output=True)
+            topics = dict(line.split("\t", 1) for line in log.read_text().splitlines())
+            config = json.loads(topics["homeassistant/update/test_kiosk/system_updates/config"])
+            self.assertNotIn("command_topic", config)
+            state = json.loads(topics["home/kiosk/test_kiosk/system_updates/state"])
+            self.assertEqual(state["latest_version"], "5 opdateringer")
+            self.assertFalse(state["in_progress"])
+            self.assertTrue(state["release_summary"].startswith("Installation kræver engangsopsætning"))
+            self.assertLessEqual(len(state["release_summary"]), 255)
+            attributes = json.loads(topics["home/kiosk/test_kiosk/system_updates/attributes"])
+            self.assertEqual(attributes["install"], "missing")
+            self.assertIn("google-chrome-stable 155.0.8059.79-1 → 156.0.8078.79-1", attributes["packages"])
+            self.assertIn("linux-image-7.0.0-42-generic ny: 7.0.0-42.42~24.04.1", attributes["packages"])
+
     def test_summary_when_nothing_is_pending(self):
         state = {"apt": [], "snaps": [], "count": 0, "security": 0, "new_kernel": False, "reboot_required": True}
         text = run("summarize", stdin=json.dumps(state), files=False).strip()

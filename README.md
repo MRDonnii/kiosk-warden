@@ -229,7 +229,26 @@ waiting (for example *40 opdateringer*), a short summary of the notable ones and
 the full list in its attributes, and `binary_sensor.kiosk_..._reboot_required`
 turns on when the system wants a restart. The numbers come from a simulated
 upgrade run as the kiosk user once an hour (`scripts/system-updates.sh check`
-prints them as JSON), so nothing is installed and no extra rights are needed.
+prints them as JSON).
+
+Installing them from Home Assistant (the entity's **Install** button, with
+progress) needs a one-time setup on the kiosk:
+
+```bash
+sudo ~/kiosk/setup-system-updates.sh
+```
+
+It installs `scripts/system-update-root.sh` as the root-owned
+`/usr/local/sbin/kiosk-warden-system-update` and a sudoers rule that lets the
+kiosk user run exactly that file, with no arguments, without a password. The
+helper runs `apt-get upgrade --with-new-pkgs` (new kernels included) and
+`snap refresh`, restarts no services and logs to
+`/var/log/kiosk-warden-system-update.log`. When the browser package was updated,
+Kiosk Warden restarts the browser the next time the screen is off. A new kernel
+waits for a restart (`Reboot Required` turns on; the **Reboot** button does it).
+`sudo ~/kiosk/setup-system-updates.sh --remove` takes the rule and the helper
+away again. `install.sh` runs the setup on new installations; until it has run,
+the entity shows the updates without an Install button and says how to set it up.
 
 ## Layout
 
@@ -302,6 +321,7 @@ Base topic: `home/kiosk/<KIOSK_ID>`
 .../system_updates/state            (JSON: installed_version = the OS, latest_version = "N opdateringer", hourly)
 .../system_updates/attributes       (JSON: packages, snaps, security, new_kernel, reboot_required, ...)
 .../system_updates/reboot_required  (ON/OFF)
+.../system_updates/install          (send "install" to install them, same as the HA entity's Install button)
 ```
 
 Test manually:
