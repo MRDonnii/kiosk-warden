@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.20.0 — 2026-11-01
+
+- Show the pending operating system updates in Home Assistant: a new `update.<kiosk>_system_updates` entity reports how many apt packages and snaps are waiting (for example "40 opdateringer"), with a short summary naming the packages people know (new kernel, Chrome, Xorg, GNOME Shell, …) and the full package list as attributes. A new `Reboot Required` binary sensor turns on when the system asks for a restart.
+- The count comes from a simulated upgrade (`apt-get -s upgrade --with-new-pkgs`), so phased and held packages are left out exactly as a real upgrade would. It runs as the kiosk user, needs no extra rights and is refreshed once an hour and when Kiosk Warden starts.
+- The entity only shows the updates; installing them is not part of this release.
+
 ## v1.19.4 — 2026-10-07
 
 - Turn the screen on before resuming the page when waking, instead of only after the page has been verified. While the panel is in DPMS off, the GPU process gets no vsync, so a page that has to compile WebGL shaders on resume (HA Smartdash's 3D view after a reload) blocked on the GPU and stayed unresponsive for 15–25 s. Wake verification timed out repeatedly and the screen stayed dark the whole time. Measured on an Intel UHD 630 kiosk: the page and GPU process were idle (1–3 % CPU) during the stall, and the same wake takes about 2 s with the panel on.

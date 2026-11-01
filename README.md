@@ -221,6 +221,16 @@ the web UI at all. Both paths run `scripts/self-update.sh` in its own
 `systemd-run --user` scope, so it survives restarting `kiosk-webui.service`
 or `kiosk-mqtt-control.service` on itself.
 
+### Operating system updates
+
+Kiosk Warden also reports the operating system's own updates to Home Assistant:
+`update.kiosk_..._system_updates` shows how many apt packages and snaps are
+waiting (for example *40 opdateringer*), a short summary of the notable ones and
+the full list in its attributes, and `binary_sensor.kiosk_..._reboot_required`
+turns on when the system wants a restart. The numbers come from a simulated
+upgrade run as the kiosk user once an hour (`scripts/system-updates.sh check`
+prints them as JSON), so nothing is installed and no extra rights are needed.
+
 ## Layout
 
 ```
@@ -289,6 +299,9 @@ Base topic: `home/kiosk/<KIOSK_ID>`
 .../set_power_profile   (Strømbesparelse, Balanceret or Ydelse)
 .../update/state        (JSON: installed_version/latest_version, checked every 30 min)
 .../update/install      (send "install" to trigger self-update.sh, same as the HA update entity's button)
+.../system_updates/state            (JSON: installed_version = the OS, latest_version = "N opdateringer", hourly)
+.../system_updates/attributes       (JSON: packages, snaps, security, new_kernel, reboot_required, ...)
+.../system_updates/reboot_required  (ON/OFF)
 ```
 
 Test manually:

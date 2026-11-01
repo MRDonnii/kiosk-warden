@@ -49,6 +49,9 @@ ha_power_reading() {
 
 UPDATE_CHECK_INTERVAL=1800
 last_update_check=0
+# Operating system updates (apt + snap): a simulated upgrade takes a few seconds, so once an hour is plenty.
+SYSTEM_UPDATES_INTERVAL=3600
+last_system_updates_check=0
 
 check_for_update() {
   local now state channel
@@ -60,6 +63,14 @@ check_for_update() {
   channel="$(cat "$HOME/kiosk/update_channel" 2>/dev/null || echo stable)"
   state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null)" || return 0
   mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress} | with_entries(select(.value != null))' <<<"$state")" -r || true
+}
+
+check_system_updates() {
+  local now
+  now="$(date +%s)"
+  (( now - last_system_updates_check < SYSTEM_UPDATES_INTERVAL )) && return 0
+  last_system_updates_check="$now"
+  "$HOME/kiosk/system-updates.sh" publish >/dev/null 2>&1 || true
 }
 
 prev="$(read_cpu_total_idle)"
@@ -130,4 +141,5 @@ while true; do
   ha_power="$(ha_power_reading)"
   [[ -n "$ha_power" ]] && mqtt_pub "$BASE_TOPIC/stats/pc_power_w" "$ha_power" || true
   check_for_update
+  check_system_updates
 done

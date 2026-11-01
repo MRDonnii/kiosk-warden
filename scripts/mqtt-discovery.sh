@@ -253,6 +253,8 @@ mqtt_pub "$BASE_TOPIC/state/kiosk_profile" "$("$HOME/kiosk/profile-manager.py" s
 mqtt_pub "$BASE_TOPIC/health/status" "$(cat "$HOME/kiosk/health_state" 2>/dev/null || echo ON)" -r
 mqtt_pub "$BASE_TOPIC/health/detail" "$(cat "$HOME/kiosk/health_detail" 2>/dev/null || echo Pending)" -r
 
+"$HOME/kiosk/system-updates.sh" publish >/dev/null 2>&1 || true
+
 channel="$(cat "$HOME/kiosk/update_channel" 2>/dev/null || echo stable)"
 update_state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null || true)"
 [[ -n "$update_state" ]] && mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress} | with_entries(select(.value != null))' <<<"$update_state")" -r
