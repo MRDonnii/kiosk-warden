@@ -254,6 +254,7 @@ mqtt_pub "$BASE_TOPIC/health/status" "$(cat "$HOME/kiosk/health_state" 2>/dev/nu
 mqtt_pub "$BASE_TOPIC/health/detail" "$(cat "$HOME/kiosk/health_detail" 2>/dev/null || echo Pending)" -r
 
 "$HOME/kiosk/system-updates.sh" publish >/dev/null 2>&1 || true
+"$HOME/kiosk/claude-code-update.sh" publish >/dev/null 2>&1 || true
 
 channel="$(cat "$HOME/kiosk/update_channel" 2>/dev/null || echo stable)"
 update_state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null || true)"

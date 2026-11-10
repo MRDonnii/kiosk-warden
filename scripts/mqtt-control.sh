@@ -312,6 +312,12 @@ handle_system_updates_install() {
     "$HOME/kiosk/system-updates.sh" install >/dev/null 2>&1 || true
 }
 
+# Claude Code CLI (Home Assistant's Install button on Claude Code); claude-code-update.sh reports the progress.
+handle_claude_code_install() {
+  systemd-run --user --collect --unit="kiosk-claude-code-update-$(date +%s)" \
+    "$HOME/kiosk/claude-code-update.sh" install >/dev/null 2>&1 || true
+}
+
 handle_codex_remote_command() {
   case "$1" in
     restart) restart_codex_remote ;;
@@ -379,4 +385,5 @@ smartdash_status_loop &
 listen_topic "$CODEX_REMOTE_TOPIC/command" handle_codex_remote_command &
 listen_topic "$BASE_TOPIC/update/install" handle_update_install &
 listen_topic "$BASE_TOPIC/system_updates/install" handle_system_updates_install &
+listen_topic "$BASE_TOPIC/claude_code/install" handle_claude_code_install &
 listen_topic "$BASE_TOPIC/command" handle_command

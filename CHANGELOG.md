@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.22.0 — 2026-11-10
+
+- Claude Code CLI as a Home Assistant update: when the native install (`~/.local/bin/claude`) is on the kiosk, `update.<kiosk>_claude_code` shows the installed and the latest version (the npm dist-tag of the channel set in `~/.claude/settings.json`, `latest` by default) and gets an **Install** button that runs `claude update` as the kiosk user – no root needed. Checked hourly with the system updates; a failed update is shown in the summary. Without Claude Code the entity is removed again.
+
 ## v1.21.0 — 2026-11-01
 
 - Install the operating system updates from Home Assistant: the System Updates entity gets an **Install** button with progress once the one-time setup `sudo ~/kiosk/setup-system-updates.sh` has run. Until then it shows the updates and how to set it up.

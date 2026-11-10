@@ -250,6 +250,13 @@ waits for a restart (`Reboot Required` turns on; the **Reboot** button does it).
 away again. `install.sh` runs the setup on new installations; until it has run,
 the entity shows the updates without an Install button and says how to set it up.
 
+When Claude Code's native install (`~/.local/bin/claude`) is on the kiosk,
+`update.kiosk_..._claude_code` shows its installed and latest version (the npm
+dist-tag of the channel in `~/.claude/settings.json`, `latest` by default). Its
+**Install** button runs `claude update` as the kiosk user; running Claude
+sessions keep their version until they are started again
+(`scripts/claude-code-update.sh check` prints the versions as JSON).
+
 ## Layout
 
 ```

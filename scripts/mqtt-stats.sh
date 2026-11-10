@@ -71,6 +71,7 @@ check_system_updates() {
   (( now - last_system_updates_check < SYSTEM_UPDATES_INTERVAL )) && return 0
   last_system_updates_check="$now"
   "$HOME/kiosk/system-updates.sh" publish >/dev/null 2>&1 || true
+  "$HOME/kiosk/claude-code-update.sh" publish >/dev/null 2>&1 || true
 }
 
 prev="$(read_cpu_total_idle)"
