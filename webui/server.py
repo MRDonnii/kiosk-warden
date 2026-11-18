@@ -1813,7 +1813,7 @@ def render_kontrolrum_card(conf):
     if info["enabled"]:
         off_form = """<form method="post" action="/kontrolrum/off" onsubmit="return confirm('Slå login fra Kontrolrum fra? Nøglen slettes.')"><div class="row"><button type="submit">Slå fra</button></div></form>"""
     key_label = "Ny nøgle" if info["enabled"] else "Lav SSO-nøgle"
-    key_confirm = """ onsubmit="return confirm('Lav en ny nøgle? Den gamle holder op med at virke med det samme.')"""" if info["enabled"] else ""
+    key_confirm = ' onsubmit="return confirm(\'Lav en ny nøgle? Den gamle holder op med at virke med det samme.\')"' if info["enabled"] else ""
     return f"""
 <fieldset id="kontrolrum">
   <legend>Login fra Kontrolrum</legend>
