@@ -170,6 +170,8 @@ class KontrolrumSsoTests(unittest.TestCase):
         name, token = cookie.split("=", 1)
         encoded, signature = token.split(".", 1)
         self.assertFalse(self.logged_in(f"{name}={encoded[:-2]}xx.{signature}"))
+        forged = ("A" if signature[0] != "A" else "B") + signature[1:]
+        self.assertFalse(self.logged_in(f"{name}={encoded}.{forged}"), "right content, wrong signature")
 
     def test_the_session_is_not_an_ordinary_session(self):
         token = self.cookie().split("=", 1)[1]
