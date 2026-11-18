@@ -21,11 +21,19 @@ import shutil
 import socket
 import socketserver
 import subprocess
+import sys
 import threading
 import time
 import urllib.parse
 
 import ha_client
+
+# Sign-in from Kontrolrum is an extra: if the module cannot be loaded, the web UI
+# carries on with its normal login and the endpoint answers 404.
+try:
+    import kontrolrum_sso
+except Exception:  # noqa: BLE001 - whatever is wrong with it must stay here
+    kontrolrum_sso = None
 
 HOME = os.path.expanduser("~")
 KIOSK_DIR = os.path.join(HOME, "kiosk")
@@ -239,6 +247,7 @@ ENGLISH_TEXT = {
     "Forespørgslen er for stor.": "The request is too large.",
 }
 
+KONTROLRUM_SSO_PATH = os.path.join(KIOSK_DIR, "kontrolrum-sso.json")
 SESSION_COOKIE = "warden_session"
 SESSION_TTL = 12 * 60 * 60
 REMEMBER_TTL = 30 * 24 * 60 * 60
@@ -323,15 +332,66 @@ def create_session(conf, duration=SESSION_TTL):
     return f"{encoded}.{signed}"
 
 
-def valid_session(token, conf):
+def _create_kontrolrum_sso():
+    if kontrolrum_sso is None:
+        return None
+    try:
+        return kontrolrum_sso.KontrolrumSso(KONTROLRUM_SSO_PATH, "kioskwarden")
+    except Exception:  # noqa: BLE001 - never stop the web UI for this
+        return None
+
+
+SSO = _create_kontrolrum_sso()
+
+
+def _kontrolrum_session_key(conf):
+    # A key of its own: a version without this code cannot accept these sessions
+    # as ordinary ones, which would drop the binding to Kontrolrum's address.
+    material = "kiosk-warden-kontrolrum-session-v1:" + conf.get("WEBUI_PASSWORD_HASH", "")
+    return hashlib.sha256(material.encode()).digest()
+
+
+def _kontrolrum_signature(conf, encoded):
+    digest = hmac.new(_kontrolrum_session_key(conf), encoded.encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+
+def create_kontrolrum_session(conf, binding, user, duration=SESSION_TTL):
+    expires = int(time.time()) + max(1, int(duration))
+    claims = json.dumps({"p": binding["p"], "k": binding["k"], "u": user}, separators=(",", ":"))
+    payload = f"{expires}:{secrets.token_urlsafe(24)}:{claims}".encode()
+    encoded = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+    return f"{encoded}.{_kontrolrum_signature(conf, encoded)}"
+
+
+def valid_kontrolrum_session(token, conf, peer):
+    """A session from Kontrolrum: signed, unexpired, and used from Kontrolrum's
+    own address with the current key by a user who is still ticked."""
+    if SSO is None or not peer:
+        return False
+    try:
+        encoded, supplied = token.split(".", 1)
+        if not hmac.compare_digest(supplied.encode(), _kontrolrum_signature(conf, encoded).encode()):
+            return False
+        padded = encoded + "=" * (-len(encoded) % 4)
+        expires, _, claims = base64.urlsafe_b64decode(padded).decode().split(":", 2)
+        claims = json.loads(claims)
+        if int(expires) <= int(time.time()) or claims.get("u") != (conf.get("WEBUI_USERNAME") or "admin"):
+            return False
+        return SSO.session_problem({"p": claims.get("p"), "k": claims.get("k")}, peer, claims.get("u")) == ""
+    except Exception:  # noqa: BLE001 - a fault here refuses the session, nothing more
+        return False
+
+
+def valid_session(token, conf, peer=None):
     if not token or "." not in token or not conf.get("WEBUI_PASSWORD_HASH"):
         return False
     encoded, supplied_signature = token.split(".", 1)
     expected = base64.urlsafe_b64encode(
         hmac.new(_session_key(conf), encoded.encode(), hashlib.sha256).digest()
     ).decode().rstrip("=")
-    if not hmac.compare_digest(supplied_signature, expected):
-        return False
+    if not hmac.compare_digest(supplied_signature.encode(), expected.encode()):
+        return valid_kontrolrum_session(token, conf, peer)
     try:
         padded = encoded + "=" * (-len(encoded) % 4)
         expires = int(base64.urlsafe_b64decode(padded).decode().split(":", 1)[0])
@@ -1719,7 +1779,74 @@ def render_settings(conf, message=None, error=None):
 <div class="status">VNC-passworden styres automatisk af Kiosk Warden-login og skal ikke indtastes.</div>
 
 """
+    body += render_kontrolrum_card(conf)
     body += "</div>"
+    body += PAGE_TAIL
+    return body
+
+
+def render_kontrolrum_card(conf):
+    if SSO is None:
+        return ""
+    info = SSO.status()
+    username = conf.get("WEBUI_USERNAME") or "admin"
+    ticked = SSO.user_allowed(username)
+    if info["enabled"]:
+        state = f"Slået til. Nøgle {esc(info['fingerprint'])}…"
+    elif not info["readable"]:
+        state = "Indstillingerne kan ikke læses. Lav en ny SSO-nøgle."
+    else:
+        state = "Slået fra. Lav en SSO-nøgle, og sæt den ind i Kontrolrum."
+    used = info["last_used"]
+    used_text = "Ikke brugt endnu."
+    if used:
+        stamp = time.strftime("%d-%m-%Y %H:%M", time.localtime(used.get("at", 0)))
+        used_text = f"Senest brugt {esc(stamp)} fra {esc(used.get('ip', ''))} som {esc(used.get('user', ''))}."
+    rejected = ""
+    if info["rejected_ip"]:
+        stamp = time.strftime("%d-%m-%Y %H:%M", time.localtime(info["rejected_at"] or 0))
+        rejected = f'<div class="msg error">Seneste afviste forsøg {esc(stamp)} fra {esc(info["rejected_ip"])} ({esc(info["rejected_text"])}).</div>'
+    missing = ""
+    if info["enabled"] and not info["peers"]:
+        missing = '<div class="msg error">Skriv Kontrolrums IP-adresse herunder. Indtil da afvises alle login fra Kontrolrum.</div>'
+    off_form = ""
+    if info["enabled"]:
+        off_form = """<form method="post" action="/kontrolrum/off" onsubmit="return confirm('Slå login fra Kontrolrum fra? Nøglen slettes.')"><div class="row"><button type="submit">Slå fra</button></div></form>"""
+    key_label = "Ny nøgle" if info["enabled"] else "Lav SSO-nøgle"
+    key_confirm = """ onsubmit="return confirm('Lav en ny nøgle? Den gamle holder op med at virke med det samme.')"""" if info["enabled"] else ""
+    return f"""
+<fieldset id="kontrolrum">
+  <legend>Login fra Kontrolrum</legend>
+  <div class="status">Kontrolrum logger ind med en nøgle i stedet for et password. Det virker kun fra Kontrolrums egen adresse.</div>
+  <div class="status">{state}</div>
+  <div class="status">{used_text}</div>
+  {rejected}{missing}
+  <form method="post" action="/kontrolrum/key"{key_confirm}><div class="row"><button type="submit">{key_label}</button></div></form>
+  {off_form}
+  <form method="post" action="/kontrolrum/peers">
+    <label>Kontrolrums IP-adresse</label>
+    <input type="text" name="ips" value="{esc(', '.join(info['peers']))}" maxlength="400" autocomplete="off" spellcheck="false" placeholder="fx 10.0.0.28">
+    <div class="row"><button type="submit">Gem adresse</button></div>
+  </form>
+  <form method="post" action="/kontrolrum/user">
+    <label><input type="checkbox" name="allowed" value="true"{' checked' if ticked else ''}> {esc(username)} må logges ind fra Kontrolrum</label>
+    <div class="row"><button type="submit">Gem</button></div>
+  </form>
+</fieldset>
+"""
+
+
+def render_kontrolrum_key(conf, key):
+    body = PAGE_HEAD.format(title_suffix=" — Kontrolrum")
+    body += render_page_header("Login fra Kontrolrum", conf, "Sæt nøglen ind under Automatisk login på Kiosk Warden-tjenesten i Kontrolrum.")
+    body += render_nav("/settings")
+    body += f"""
+<div class="narrow">
+  <div class="msg error">Kopiér nøglen nu. Den vises kun denne ene gang.</div>
+  <fieldset><legend>SSO-nøgle</legend><code style="overflow-wrap:anywhere">{esc(key)}</code></fieldset>
+  <div class="row"><a href="/settings#kontrolrum">Færdig</a></div>
+</div>
+"""
     body += PAGE_TAIL
     return body
 
@@ -1835,7 +1962,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _send_json(self, payload, status=200):
+    def _send_json(self, payload, status=200, cookie=None):
         language = read_conf().get("UI_LANGUAGE", "en")
         if language == "en" and isinstance(payload, dict):
             payload = {key: localize_html(value, "en") if isinstance(value, str) else value for key, value in payload.items()}
@@ -1843,6 +1970,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
         self._security_headers()
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -1867,7 +1996,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return f"{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}"
 
     def _authenticated(self, conf):
-        return bool(conf.get("WEBUI_PASSWORD_HASH")) and valid_session(self._session_token(), conf)
+        return bool(conf.get("WEBUI_PASSWORD_HASH")) and valid_session(self._session_token(), conf, self.client_address[0])
 
     def _login_redirect(self, requested="/"):
         target = requested if requested.startswith("/") and not requested.startswith("//") else "/"
@@ -1880,6 +2009,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._serve_icon()
         if parsed.path == "/offline":
             return self._send_html(render_offline())
+        if parsed.path == "/login/kontrolrum":
+            self.send_response(404)
+            self.end_headers()
+            return
 
         conf = read_conf()
         password_set = bool(conf.get("WEBUI_PASSWORD_HASH"))
@@ -1936,9 +2069,64 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
+    def _kontrolrum_login(self, conf):
+        """POST /login/kontrolrum: sign-in from Kontrolrum. Whatever goes wrong
+        in here ends with this one request being refused."""
+        if SSO is None or not conf.get("WEBUI_PASSWORD_HASH"):
+            self.send_response(404)
+            self.end_headers()
+            return
+        client_ip = self.client_address[0]
+        username = conf.get("WEBUI_USERNAME") or "admin"
+
+        def find_user(name):
+            return username if hmac.compare_digest(str(name).encode(), username.encode()) else None
+
+        try:
+            refusal = SSO.gate(client_ip)
+            if refusal is not None:
+                return self._send_json({"error": refusal.error}, refusal.status)
+            try:
+                length = int(self.headers.get("Content-Length", 0) or 0)
+            except ValueError:
+                length = -1
+            raw = self.rfile.read(length) if 0 < length <= kontrolrum_sso.MAX_BODY else b""
+            outcome = SSO.login(client_ip, raw, find_user)
+            if not outcome.ok:
+                return self._send_json({"error": outcome.error}, outcome.status)
+            token = create_kontrolrum_session(conf, outcome.binding, outcome.user)
+        except Exception as error:  # noqa: BLE001 - see the docstring
+            print(f"kontrolrum sign-in failed: {type(error).__name__}", file=sys.stderr, flush=True)
+            return self._send_json({"error": "unavailable"}, 503)
+        print(f"kontrolrum sign-in from {client_ip}", file=sys.stderr, flush=True)
+        return self._send_json({"ok": True, "user": outcome.user}, cookie=self._session_cookie(token, SESSION_TTL))
+
+    def _kontrolrum_settings(self, path, fields, conf):
+        if SSO is None:
+            return self._send_html(render_settings(conf, error="Login fra Kontrolrum er ikke tilgængeligt."), status=503)
+        try:
+            if path == "/kontrolrum/key":
+                return self._send_html(render_kontrolrum_key(conf, SSO.create_key(conf.get("WEBUI_USERNAME") or "admin")))
+            if path == "/kontrolrum/off":
+                SSO.disable()
+                return self._send_html(render_settings(conf, message="Login fra Kontrolrum er slået fra."))
+            if path == "/kontrolrum/peers":
+                good, bad = kontrolrum_sso.parse_peers(fields.get("ips", [""])[0][:400])
+                if bad:
+                    return self._send_html(render_settings(conf, error="Kunne ikke læse: " + ", ".join(bad[:3])))
+                SSO.set_peers(good)
+                return self._send_html(render_settings(conf, message="Kontrolrums adresse er gemt."))
+            SSO.set_user(conf.get("WEBUI_USERNAME") or "admin", fields.get("allowed", [""])[0] == "true")
+            return self._send_html(render_settings(conf, message="Gemt."))
+        except (OSError, ValueError) as error:
+            detail = str(error) if isinstance(error, ValueError) else "Indstillingen kunne ikke gemmes."
+            return self._send_html(render_settings(conf, error=detail))
+
     def do_POST(self):
         parsed = urllib.parse.urlsplit(self.path)
         conf = read_conf()
+        if parsed.path == "/login/kontrolrum":
+            return self._kontrolrum_login(conf)
         try:
             length = int(self.headers.get("Content-Length", 0) or 0)
         except ValueError:
@@ -1996,6 +2184,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         expected_csrf = csrf_token(self._session_token(), conf)
         if not hmac.compare_digest(supplied_csrf, expected_csrf):
             return self._send_html("<h1>Sikkerhedskontrollen afviste forespørgslen. Genindlæs siden og prøv igen.</h1>", status=403)
+
+        if parsed.path in ("/kontrolrum/key", "/kontrolrum/off", "/kontrolrum/peers", "/kontrolrum/user"):
+            return self._kontrolrum_settings(parsed.path, fields, conf)
 
         if parsed.path == "/api/update-check":
             try:
