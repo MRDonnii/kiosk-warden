@@ -623,6 +623,8 @@ APP_JS = r"""// Kiosk Warden UI: appearance (Fleetdeck Command/Aurora), menus, "
       if (key === 'preset') { var p = PRESETS[val]; Object.keys(p).forEach(function (k) { put(k, p[k]); }); }
       else put(key, val);
       applyLook();
+      var openMenu = look.closest('.fd-menu');
+      if (openMenu) openMenu.removeAttribute('data-open');
       return;
     }
     var toggle = event.target.closest('[data-menu-toggle]');
