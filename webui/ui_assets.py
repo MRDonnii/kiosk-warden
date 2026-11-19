@@ -373,6 +373,41 @@ a.fd-nav, a.fd-top { cursor: pointer; }
 .fd-search .fd-drop { left: 0; right: 0; top: calc(100% + 6px); }
 .fd-search .fd-drop[hidden] { display: none; }
 .fd-search .fd-drop a[data-hit] { background: var(--menu-hover); }
+.fd-search .fd-drop { max-height: min(70vh, 520px); overflow-y: auto; width: max(100%, 300px); right: auto; }
+.fd-search .fd-drop small { margin-left: auto; padding-left: 12px; color: var(--dimmed); font-size: 12px; white-space: nowrap; }
+.fd-search .fd-drop .lbl[hidden] { display: none; }
+.fd-search input::-webkit-search-cancel-button { display: none; }
+@media (min-width: 48.0625em) and (max-width: 1280px) { [data-nav='top'] .fd-header .ctx .dim { display: none; } [data-nav='top'] .fd-header .ctx { flex: none; } }
+.fd-header .fd-brand { white-space: nowrap; }
+/* The search also sits in the top bar with the menu at the top (Fleetdeck):
+   right after the menu, a little narrower. With less room it folds to a
+   search button that opens over the menu while typing. */
+[data-nav='top'] .fd-search { flex: 0 1 300px; min-width: 180px; margin-left: 4px; }
+@media (min-width: 48.0625em) and (max-width: 1440px) { [data-nav='top'] .fd-search kbd { display: none; } }
+@media (min-width: 48.0625em) and (max-width: 1100px) {
+  [data-nav='top'] .fd-search { flex: none; width: 36px; min-width: 36px; padding: 0; justify-content: center; color: var(--text); cursor: pointer; }
+  [data-nav='top'] .fd-search > svg { pointer-events: none; }
+  [data-nav='top'] .fd-search input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  [data-nav='top'] .fd-search:focus-within { width: 300px; margin-left: -260px; z-index: 5; padding: 0 12px; justify-content: flex-start; color: var(--dimmed);
+    background: var(--default); box-shadow: var(--shadow-md); }
+  [data-nav='top'] .fd-search:focus-within input { position: static; opacity: 1; cursor: text; }
+  [data-nav='top'] .fd-search .fd-drop { left: auto; right: -1px; }
+}
+@media (min-width: 48.0625em) and (max-width: 900px) {
+  [data-nav='top'] .fd-header .fd-brand > span:not(.fd-logo) { display: none; }
+  [data-nav='top'] .fd-top { padding: 0 7px; }
+}
+/* Phone: a clear search button in the top bar opens the field as a row under it. */
+.topbar-search-btn { width: 34px; height: 34px; display: inline-grid; place-items: center; flex: none; }
+.topbar-search-btn[data-active] { color: var(--primary); }
+@media (max-width: 48em) {
+  .fd-search { display: none; }
+  .search-open .fd-search { display: flex; position: fixed; left: 12px; right: 12px; top: 68px; height: 44px; z-index: 120; background: var(--default); box-shadow: var(--shadow-md); }
+  .fd-search input { font-size: 16px; }
+  .fd-search kbd { display: none; }
+  .fd-search .fd-drop { left: -1px; right: -1px; width: auto; top: 50px; max-height: calc(100vh - 200px); }
+  .fd-header .topbar-search-btn { display: inline-grid !important; }
+}
 
 /* Buttons that are not part of the generic form style */
 button.fd-icon-btn { padding: 0; height: 34px; font: inherit; cursor: pointer; }
@@ -658,26 +693,58 @@ APP_JS = r"""// Kiosk Warden UI: appearance (Fleetdeck Command/Aurora), menus, "
   });
   if (media && media.addEventListener) media.addEventListener('change', function () { if (get('theme') === 'auto') applyLook(); });
 
-  // Page search (like Fleetdeck's Spotlight): matches page names and keywords.
+  // Page search (like Fleetdeck's Spotlight), in both menu placements: matches
+  // page names, menu groups and keywords (every word must match). Arrow keys
+  // choose, Enter opens. On the phone the search button opens the field.
   var search = document.getElementById('fdSearch');
   if (search) {
+    var root = document.documentElement;
     var drop = document.getElementById('fdSearchResults');
+    var none = drop.querySelector('.fd-search-none');
     var links = Array.prototype.slice.call(drop.querySelectorAll('a'));
-    var hits = [];
+    var hits = [], cur = 0;
+    var mark = function (i) {
+      cur = hits.length ? (i + hits.length) % hits.length : 0;
+      links.forEach(function (a) { a.removeAttribute('data-hit'); a.setAttribute('aria-selected', 'false'); });
+      if (hits[cur]) { hits[cur].setAttribute('data-hit', ''); hits[cur].setAttribute('aria-selected', 'true'); if (hits[cur].scrollIntoView) hits[cur].scrollIntoView({ block: 'nearest' }); }
+    };
     var refresh = function () {
-      var q = search.value.trim().toLowerCase();
-      hits = links.filter(function (a) { return !q || (a.textContent + ' ' + (a.getAttribute('data-keywords') || '')).toLowerCase().indexOf(q) !== -1; });
-      links.forEach(function (a) { a.hidden = hits.indexOf(a) === -1; a.removeAttribute('data-hit'); });
-      if (hits[0]) hits[0].setAttribute('data-hit', '');
-      drop.hidden = hits.length === 0;
+      var words = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      hits = links.filter(function (a) {
+        var hay = (a.textContent + ' ' + (a.getAttribute('data-keywords') || '')).toLowerCase();
+        return words.every(function (w) { return hay.indexOf(w) !== -1; });
+      });
+      links.forEach(function (a) { a.hidden = hits.indexOf(a) === -1; });
+      if (none) none.hidden = hits.length > 0;
+      drop.hidden = false;  // an empty field lists every page (like Spotlight)
+      search.setAttribute('aria-expanded', 'true');
+      mark(0);
+    };
+    var closeSearch = function () {
+      drop.hidden = true;
+      search.setAttribute('aria-expanded', 'false');
+      root.classList.toggle('search-open', false);
+      document.querySelectorAll('[data-search-open]').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); b.removeAttribute('data-active'); });
     };
     search.addEventListener('focus', refresh);
     search.addEventListener('input', refresh);
     search.addEventListener('keydown', function (event) {
-      if (event.key === 'Enter' && hits[0]) { event.preventDefault(); location.href = hits[0].href; }
-      if (event.key === 'Escape') { search.blur(); }
+      if (event.key === 'ArrowDown') { event.preventDefault(); mark(cur + 1); }
+      else if (event.key === 'ArrowUp') { event.preventDefault(); mark(cur - 1); }
+      else if (event.key === 'Enter' && hits[cur]) { event.preventDefault(); location.href = hits[cur].href; }
+      else if (event.key === 'Escape') { closeSearch(); search.blur(); }
     });
-    search.addEventListener('blur', function () { setTimeout(function () { drop.hidden = true; }, 150); });
+    search.addEventListener('blur', function () { setTimeout(closeSearch, 150); });
+    document.querySelectorAll('[data-search-open]').forEach(function (b) {
+      // mousedown: keep the field open (its blur would close it before the click).
+      b.addEventListener('mousedown', function (event) { if (root.classList.contains('search-open')) event.preventDefault(); });
+      b.addEventListener('click', function () {
+        if (root.classList.contains('search-open')) { closeSearch(); search.blur(); return; }
+        root.classList.toggle('search-open', true);
+        b.setAttribute('aria-expanded', 'true'); b.setAttribute('data-active', '');
+        search.focus();
+      });
+    });
   }
 
   // Tabs (Mantine Tabs) – the last chosen tab is remembered while the browser tab is open.

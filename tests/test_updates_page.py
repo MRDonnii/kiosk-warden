@@ -82,6 +82,29 @@ class UpdatesPageTest(unittest.TestCase):
         self.assertIn("refreshSmartdash", control)
         self.assertIn("animationer, livekameraer og rendering virker kun", control)
 
+    def test_search_in_top_bar_in_both_menu_placements(self):
+        """The search (Ctrl K) also shows with the menu at the top (Fleetdeck),
+        finds every page in the menu, and the phone gets a search button."""
+        conf = dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test")
+        nav = SERVER.render_nav("/", conf)
+        search = nav[nav.index('<label class="fd-search">'):]
+        search = search[:search.index("</label>")]
+        self.assertNotIn("top-hide", search)
+        self.assertNotIn("only-desktop", search)
+        self.assertLess(nav.index('class="fd-topnav'), nav.index('<label class="fd-search">'))
+        for path, label, *_ in SERVER._nav_items():
+            self.assertIn(f'<a href="{path}" role="option"', search)
+            self.assertIn(f"<span>{label}</span>", search)
+        self.assertIn('href="/settings#udseende" role="option"', search)
+        self.assertIn('data-keywords="Opsætning version', search)
+        self.assertIn('data-search-open aria-label="Søg"', nav)
+        css, js = SERVER.ui_assets.APP_CSS, SERVER.ui_assets.APP_JS
+        self.assertIn("[data-nav='top'] .fd-search { flex: 0 1 300px;", css)
+        self.assertIn(".search-open .fd-search { display: flex;", css)
+        self.assertIn("words.every(", js)
+        self.assertIn("event.key === 'ArrowDown'", js)
+        self.assertIn("[data-search-open]", js)
+
     def test_navigation_is_structured_and_bilingual(self):
         conf = dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test")
         nav = SERVER.render_nav("/mqtt")

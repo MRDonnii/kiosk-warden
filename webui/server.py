@@ -1172,6 +1172,34 @@ def _update_available():
     return bool(latest_version and version_newer(latest_version, current_version()))
 
 
+# Pages without their own menu entry that the search also finds.
+SEARCH_EXTRAS = [
+    ("/settings#udseende", "Udseende", "palette", "System", "tema mørkt lyst command aurora menu i toppen i siden"),
+    ("/settings", "Skift administrator-login", "user", "System", "konto login adgangskode password administrator bruger"),
+]
+
+
+def render_search(items=None):
+    """The search field in the top bar (Ctrl K), in both menu placements like
+    Fleetdeck: every page in the menu (name, group and keywords) and a few
+    settings without their own entry. On the phone a button opens it."""
+    items = _nav_items() if items is None else items
+    group_of = {path: group for group, group_items in NAV_GROUPS for path, *_ in group_items}
+    entries = [(p, lbl, ico, group_of.get(p, ""), keys) for p, lbl, ico, _, keys in items] + SEARCH_EXTRAS
+    links = "".join(
+        f'<a href="{p}" role="option" data-keywords="{esc((group + " " + keys).strip())}">{icon(ico)}<span>{esc(lbl)}</span>'
+        + (f'<small>{esc(group)}</small>' if group else "") + "</a>"
+        for p, lbl, ico, group, keys in entries
+    )
+    return (
+        f'<label class="fd-search">{icon("search")}'
+        '<input id="fdSearch" type="search" autocomplete="off" enterkeyhint="search" placeholder="Søg efter sider og indstillinger…" '
+        'aria-label="Søg" role="combobox" aria-expanded="false" aria-controls="fdSearchResults" aria-autocomplete="list">'
+        f'<kbd>Ctrl K</kbd><div class="fd-drop" id="fdSearchResults" role="listbox" hidden>{links}'
+        '<div class="lbl fd-search-none" hidden>Ingen sider passer</div></div></label>'
+    )
+
+
 def render_nav(active, conf=None):
     """Fleetdeck shell: top bar, side menu or top menu, mobile tab bar and the "Mere" sheet."""
     conf = read_conf() if conf is None else conf
@@ -1214,14 +1242,7 @@ def render_nav(active, conf=None):
         )
     top = '<div class="fd-topnav only-desktop">' + "".join(top_parts) + "</div>"
 
-    search_links = "".join(
-        f'<a href="{p}" data-keywords="{esc(keys)}">{icon(ico)}<span>{esc(lbl)}</span></a>' for p, lbl, ico, _, keys in items
-    ) + f'<a href="/settings#udseende" data-keywords="tema mørkt lyst command aurora menu">{icon("palette")}<span>Udseende</span></a>'
-    search = (
-        f'<label class="fd-search only-desktop top-hide">{icon("search")}'
-        f'<input id="fdSearch" type="search" autocomplete="off" placeholder="Søg efter sider og indstillinger…" aria-label="Søg">'
-        f'<kbd>Ctrl K</kbd><div class="fd-drop" id="fdSearchResults" hidden>{search_links}</div></label>'
-    )
+    search = render_search(items)
 
     tone, health = _header_status()
     username = conf.get("WEBUI_USERNAME", "admin") or "admin"
@@ -1232,6 +1253,7 @@ def render_nav(active, conf=None):
         f'<a class="fd-brand only-desktop top-only" href="/" style="margin-right:8px">{render_logo(26)}<span>Kiosk Warden</span></a>'
         + top + search
         + f'<span class="fd-mtitle only-mobile">{esc(current[1])}</span><div class="spacer"></div>'
+        f'<button class="fd-icon-btn topbar-search-btn only-mobile" type="button" data-search-open aria-label="Søg" aria-controls="fdSearch" aria-expanded="false">{icon("search")}</button>'
         f'<span class="ctx only-desktop" title="Aktiv kiosk">{icon("device-desktop")}<span><span class="dim">Aktiv kiosk:</span> {esc(conf.get("KIOSK_NAME", "Kiosk"))}</span></span>'
         f'<span class="fd-activity {tone}"><span class="fd-dot c-{tone}"></span><span>{esc(health)}</span></span>'
         '<span class="fd-menu end only-desktop"><button class="fd-icon-btn" type="button" data-menu-toggle aria-label="Udseende" aria-expanded="false">'
