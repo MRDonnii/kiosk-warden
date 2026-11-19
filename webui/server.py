@@ -27,6 +27,8 @@ import time
 import urllib.parse
 
 import ha_client
+import ui_assets
+from ui_assets import icon
 
 # Sign-in from Kontrolrum is an extra: if the module cannot be loaded, the web UI
 # carries on with its normal login and the endpoint answers 404.
@@ -245,6 +247,29 @@ ENGLISH_TEXT = {
     "Home Assistant-forbindelsen virker.": "The Home Assistant connection works.",
     "Sikkerhedskontrollen afviste forespørgslen. Genindlæs siden og prøv igen.": "The security check rejected the request. Reload the page and try again.",
     "Forespørgslen er for stor.": "The request is too large.",
+    # Fleetdeck redesign: menu, appearance and new labels. Short words carry their markup so
+    # the plain substring replacement cannot hit longer Danish words.
+    "Udseende": "Appearance", "</svg>Stil<": "</svg>Style<", ">Stil<": ">Style<", ">Tema<": ">Theme<",
+    ">Lyst<": ">Light<", ">Mørkt<": ">Dark<", "Som systemet": "Follow system", ">I siden<": ">Side<", ">I toppen<": ">Top<",
+    "– skarp og rolig": "– sharp and calm", "– farver og glas": "– colour and glass",
+    "Gemmes i denne browser. Standard er forslag A.": "Saved in this browser. Proposal A is the default.",
+    "A · Command, mørk, sidemenu": "A · Command, dark, side menu", "B · Aurora, lys, topmenu": "B · Aurora, light, top menu",
+    ">Forslag A<": ">Proposal A<", ">Forslag B<": ">Proposal B<", ">Forslag<": ">Proposal<",
+    "Søg efter sider og indstillinger…": "Search pages and settings…", 'aria-label="Søg"': 'aria-label="Search"',
+    ">Konto<": ">Account<", 'aria-label="Konto"': 'aria-label="Account"', ">Mere</button>": ">More</button>",
+    'aria-label="Faner"': 'aria-label="Tabs"', "</span>Opdatér</a>": "</span>Update</a>", "</span>Fjern</a>": "</span>Remote</a>",
+    "Åbn Opdateringer for at installere.": "Open Updates to install.", ">Åbn Opdateringer</a>": ">Open Updates</a>",
+    "Du kører en nyere version end den seneste udgivelse på": "You are running a newer version than the latest release on",
+    "Der er intet at installere.": "There is nothing to install.", "Nyere end seneste udgivelse": "Newer than latest release",
+    "<b>Ny version tilgængelig (": "<b>New version available (", "<div>Du kører ": "<div>You are running ",
+    ">Oppetid<": ">Uptime<", "fra Home Assistant": "from Home Assistant", "Chrome kører": "Chrome running", "Chrome stoppet": "Chrome stopped",
+    "Skærm og hardware": "Display and hardware", "Strøm og Smartdash": "Power and Smartdash",
+    "</svg>Drift</button>": "</svg>Operation</button>", "</svg>Profiler</button>": "</svg>Profiles</button>",
+    ">Aktiv</button>": ">Active</button>", ">Skift</button>": ">Switch</button>", "Ingen profiler endnu.": "No profiles yet.",
+    "Spørger om bekræftelse før genstart eller sluk.": "Asks for confirmation before restarting or shutting down.",
+    "Lokal administration · login kan ændres senere": "Local administration · login can be changed later",
+    "Lokal administration · sessionen udløber automatisk": "Local administration · the session expires automatically",
+    "Ingen release-noter tilgængelige.": "No release notes available.",
 }
 
 KONTROLRUM_SSO_PATH = os.path.join(KIOSK_DIR, "kontrolrum-sso.json")
@@ -906,15 +931,23 @@ def level_for(value, warn, crit):
     return "ok"
 
 
-def render_tile(icon, label, value, level="neutral"):
+def render_tile(icon_name, label, value, level="neutral", bar=None, sub=""):
+    """Fleetdeck KPI tile: dimmed icon + label, the value, optional mini bar (percent) and sub text."""
+    value_cls = " err" if level == "err" else (" warn" if level == "warn" else "")
+    bar_html = ""
+    if bar is not None:
+        width = max(0, min(100, float(bar)))
+        bar_html = f'<div class="fd-minibar"><i class="bar-{level}" style="width:{width:g}%"></i></div>'
+    sub_html = f'<div class="sub">{esc(sub)}</div>' if sub else ""
     return (
-        f'<div class="tile tile-{level}">'
-        f'<div class="tile-icon">{icon}</div>'
-        f'<div class="tile-body">'
-        f'<div class="tile-label">{esc(label)}</div>'
-        f'<div class="tile-value">{esc(value)}</div>'
-        f'</div></div>'
+        f'<div class="paper kpi tile-{level}">'
+        f'<div class="lbl">{icon(icon_name)}{esc(label)}</div>'
+        f'<div class="val{value_cls}">{esc(value)}</div>{bar_html}{sub_html}</div>'
     )
+
+
+def render_kv(icon_name, label, value_html):
+    return f'<div><div class="k">{icon(icon_name)}{esc(label)}</div><div class="v">{value_html}</div></div>'
 
 
 def webui_port_available(port):
@@ -967,166 +1000,58 @@ def esc(value):
     return html.escape(str(value), quote=True)
 
 
+ASSET_VERSION = hashlib.sha256((ui_assets.APP_CSS + ui_assets.APP_JS).encode("utf-8")).hexdigest()[:12]
+STATIC_ASSETS = {
+    "/static/app.css": ("text/css; charset=utf-8", ui_assets.APP_CSS.encode("utf-8")),
+    "/static/app.js": ("text/javascript; charset=utf-8", ui_assets.APP_JS.encode("utf-8")),
+    "/static/inter.woff2": ("font/woff2", ui_assets.INTER_WOFF2),
+}
+# Kiosk Warden's mark: a screen with a check, white on the Fleetdeck logo gradient.
+LOGO_PATHS = '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M9.5 10l2 2 3.5-3.5"/>'
+
+
+def render_logo(size=30, cls=""):
+    inner = round(size * 0.62)
+    return (f'<span class="fd-logo {cls}" style="width:{size}px;height:{size}px">'
+            f'<svg viewBox="0 0 24 24" width="{inner}" height="{inner}">{LOGO_PATHS}</svg></span>')
+
+
+# Appearance (Fleetdeck's "Udseende") is stored in this browser's localStorage. Standard is
+# forslag A: Command, dark, side menu. The tiny head script applies it before the first paint.
 PAGE_HEAD = """<!doctype html>
 <html lang="en">
 <head>
+<script>(function(){{var d=document.documentElement,g=function(k,v){{try{{return localStorage.getItem(k)||v}}catch(e){{return v}}}},t=g('kw-theme','dark');if(t==='auto')t=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-skin',g('kw-skin','command'));d.setAttribute('data-theme',t);d.setAttribute('data-nav',g('kw-nav','side'));}})();</script>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0d">
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
 <link rel="apple-touch-icon" href="/icon.svg">
+<link rel="preload" href="/static/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/app.css?v=@@ASSET@@">
+<script src="/static/app.js?v=@@ASSET@@" defer></script>
 <title>Kiosk Warden{title_suffix}</title>
-<style>
-  :root {{
-    color-scheme: light dark;
-    --accent: #2563eb; --accent-2: #7c3aed;
-    --ok: #22c55e; --warn: #f59e0b; --err: #ef4444;
-  }}
-  * {{ box-sizing: border-box; }}
-  body {{
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: min(1200px, 95vw); margin: 0 auto;
-    padding: 1.4rem 1rem 3rem; line-height: 1.45;
-    background:
-      radial-gradient(1100px circle at 12% -10%, rgba(37,99,235,.12), transparent 55%),
-      radial-gradient(900px circle at 100% 0%, rgba(124,58,237,.10), transparent 55%);
-    background-attachment: fixed;
-  }}
-  .narrow {{ max-width: 640px; }}
-  .brand {{ display:flex; align-items:center; gap:.55rem; margin-bottom: 1.2rem; }}
-  .brand img {{ width:1.6rem; height:1.6rem; display:block; filter: drop-shadow(0 1px 3px rgba(0,0,0,.25)); }}
-  .brand span {{ font-size:.78rem; letter-spacing:.09em; text-transform:uppercase; opacity:.55; font-weight:700; }}
-  .header-row {{ display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap; margin-bottom: .3rem; }}
-  h1 {{ font-size: 1.6rem; margin: 0 0 .15rem; letter-spacing: -.01em; }}
-  .sub {{ opacity: .6; font-size: .85rem; margin-bottom: 1.3rem; }}
-  .page-context {{ opacity:.48; font-size:.74rem; margin-top:-.9rem; }}
-  fieldset {{
-    border: 1px solid rgba(128,128,128,.26); border-radius: 16px; margin-bottom: 1.1rem;
-    padding: 1rem 1.1rem 1.2rem; background: rgba(128,128,128,.04);
-    backdrop-filter: blur(6px);
-  }}
-  legend {{ padding: 0 .5rem; font-weight: 700; font-size: .95rem; }}
-  label {{ display:block; margin-top:.75rem; font-size:.82rem; opacity: .8; }}
-  input[type=text], input[type=password], input[type=number] {{
-    width:100%; padding:.6rem .7rem; margin-top:.3rem; box-sizing:border-box;
-    border-radius:9px; border:1px solid rgba(128,128,128,.4); font-size: 1rem;
-    background: rgba(128,128,128,.05); color: inherit;
-  }}
-  select {{ width:100%; padding:.6rem .7rem; margin-top:.3rem; border-radius:9px;
-    border:1px solid rgba(128,128,128,.4); font-size:1rem; background:rgba(128,128,128,.05); color:inherit; }}
-  input:focus {{ outline: 2px solid var(--accent); outline-offset: 1px; }}
-  .row {{ display:flex; gap:.5rem; flex-wrap:wrap; margin-top: .7rem; }}
-  button {{
-    padding:.65rem 1.15rem; border-radius:10px; border:1px solid rgba(128,128,128,.4);
-    cursor:pointer; font-size:.92rem; font-weight:600; background: rgba(128,128,128,.08); color: inherit;
-    transition: filter .1s ease, transform .05s ease;
-  }}
-  button:hover {{ filter: brightness(1.1); }}
-  button:active {{ transform: scale(.98); }}
-  button.primary {{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; border-color: transparent;
-    box-shadow: 0 4px 14px rgba(37,99,235,.35); }}
-  button.accent {{ background: linear-gradient(135deg, #06b6d4, var(--accent-2)); color:#fff; border-color: transparent;
-    box-shadow: 0 4px 14px rgba(124,58,237,.3); }}
-  button:disabled {{ cursor:not-allowed; opacity:.38; filter:grayscale(.75); box-shadow:none; }}
-  button:disabled:hover {{ filter:grayscale(.75); }}
-  button:disabled:active {{ transform:none; }}
-  button.danger {{ background: linear-gradient(135deg, #ef4444, #b91c1c); color:#fff; border-color: transparent; }}
-  .msg {{ padding:.7rem 1rem; border-radius:10px; margin-bottom:1rem; font-size:.9rem; font-weight:600; }}
-  .msg.error {{ background:rgba(239,68,68,.15); color:#dc2626; }}
-  .msg.ok {{ background:rgba(34,197,94,.15); color:#16a34a; }}
-  img.shot {{ max-width:100%; border-radius:12px; border:1px solid rgba(128,128,128,.3); display:block; }}
-  .status {{ font-size:.85rem; opacity:.7; margin-top:.4rem; }}
-  a {{ color: var(--accent); }}
-  .pill {{ padding:.35rem .8rem; border-radius:999px; font-size:.78rem; font-weight:700; white-space:nowrap; }}
-  .pill.ok {{ background:rgba(34,197,94,.18); color:#16a34a; }}
-  .pill.err {{ background:rgba(239,68,68,.18); color:#dc2626; }}
-  .pill.warn {{ background:rgba(245,158,11,.18); color:#b45309; }}
-  .grid {{ display:grid; grid-template-columns: repeat(auto-fit, minmax(190px,1fr)); gap:.7rem; margin: 0 0 1.3rem; }}
-  .tile {{
-    display:flex; align-items:center; gap:.7rem;
-    background: rgba(128,128,128,.05); border:1px solid rgba(128,128,128,.2); border-left: 4px solid var(--accent);
-    border-radius: 12px; padding:.7rem .8rem;
-  }}
-  .tile-icon {{
-    width:2.2rem; height:2.2rem; border-radius:10px; font-size:1.25rem; flex-shrink:0;
-    display:flex; align-items:center; justify-content:center; background: rgba(37,99,235,.12);
-  }}
-  .tile-ok {{ border-left-color: var(--ok); }}
-  .tile-ok .tile-icon {{ background: rgba(34,197,94,.16); }}
-  .tile-ok .tile-value {{ color:#16a34a; }}
-  .tile-warn {{ border-left-color: var(--warn); }}
-  .tile-warn .tile-icon {{ background: rgba(245,158,11,.16); }}
-  .tile-warn .tile-value {{ color:#b45309; }}
-  .tile-err {{ border-left-color: var(--err); }}
-  .tile-err .tile-icon {{ background: rgba(239,68,68,.16); }}
-  .tile-err .tile-value {{ color:#dc2626; }}
-  .tile-body {{ min-width:0; }}
-  .tile-label {{ font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; opacity:.55; margin-bottom:.2rem; font-weight:700; }}
-  .tile-value {{ font-size:1.1rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-  .nav {{ display:flex; gap:.5rem; margin: 1.1rem 0 1.4rem; flex-wrap:wrap; }}
-  .nav a {{ text-decoration:none; }}
-  .nav-btn {{
-    display:inline-block; padding:.55rem 1.05rem; border-radius:10px; font-size:.85rem; font-weight:700;
-    background: rgba(128,128,128,.07); border:1px solid rgba(128,128,128,.25); color:inherit;
-  }}
-  .nav-btn.active {{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; border-color: transparent;
-    box-shadow: 0 4px 14px rgba(37,99,235,.3); }}
-  .update-banner {{
-    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; font-weight:700;
-    padding:.8rem 1.1rem; border-radius:12px; margin-bottom:1.1rem; box-shadow: 0 4px 14px rgba(37,99,235,.3);
-  }}
-  .changelog h2 {{ font-size:1.05rem; margin: 1.4rem 0 .4rem; }}
-  .changelog h2:first-child {{ margin-top: 0; }}
-  .changelog ul {{ padding-left:1.3rem; margin:.3rem 0 0; }}
-  .changelog li {{ margin:.3rem 0; }}
-  .changelog p {{ opacity:.75; font-size:.85rem; margin:.2rem 0 .6rem; }}
-  .version-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.7rem; margin-bottom:1rem; }}
-  .version-card {{ border:1px solid rgba(128,128,128,.24); border-radius:14px; padding:1rem; background:rgba(128,128,128,.05); }}
-  .version-card span {{ display:block; opacity:.6; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; }}
-  .version-card strong {{ display:block; font-size:1.35rem; margin-top:.25rem; }}
-  .release-notes {{ border-left:4px solid var(--accent); padding:.2rem 0 .2rem 1rem; margin:1rem 0; }}
-  .progress-shell {{ display:none; margin-top:1rem; }}
-  .progress-track {{ height:14px; overflow:hidden; border-radius:999px; background:rgba(128,128,128,.18); }}
-  .progress-fill {{ width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition:width .35s ease; }}
-  .progress-meta {{ display:flex; justify-content:space-between; gap:1rem; margin-top:.45rem; font-size:.82rem; }}
-  .restart-choice {{ display:none; margin-top:1rem; padding:1rem; border-radius:12px; background:rgba(34,197,94,.12); }}
-  .countdown {{ font-size:1.1rem; font-weight:800; color:var(--warn); }}
-  .charts {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr)); gap:.8rem; margin-bottom:1.1rem; }}
-  .chart-card {{ border:1px solid rgba(128,128,128,.24); border-radius:14px; padding:.8rem; background:rgba(128,128,128,.04); }}
-  .chart-title {{ font-size:.8rem; font-weight:700; margin-bottom:.45rem; opacity:.8; }}
-  canvas.telemetry-chart {{ display:block; width:100%; height:150px; }}
-  @media (max-width:600px) {{ .charts {{ grid-template-columns:1fr; }} }}
-  .login-shell {{ min-height:calc(100vh - 6rem); display:grid; place-items:center; }}
-  .login-card {{ width:min(430px, 100%); padding:2rem; border:1px solid rgba(128,128,128,.28); border-radius:24px;
-    background:rgba(20,24,34,.82); box-shadow:0 24px 80px rgba(0,0,0,.35); backdrop-filter:blur(18px); }}
-  .login-mark {{ width:64px; height:64px; margin:0 auto .8rem; display:grid; place-items:center; border-radius:18px;
-    background:linear-gradient(135deg,rgba(37,99,235,.24),rgba(124,58,237,.24)); }}
-  .login-mark img {{ width:44px; height:44px; }}
-  .login-product {{ text-align:center; text-transform:uppercase; letter-spacing:.13em; font-size:.72rem; font-weight:800; opacity:.55; }}
-  .login-card h1 {{ text-align:center; font-size:1.85rem; margin:.35rem 0 .15rem; }}
-  .login-card .sub {{ text-align:center; margin-bottom:1.25rem; }}
-  .login-button {{ width:100%; margin-top:1.25rem; padding:.8rem; }}
-  .login-note {{ text-align:center; opacity:.45; font-size:.72rem; margin:1.2rem 0 0; }}
-</style>
 </head>
 <body>
-<div class="brand"><img src="/icon.svg" alt=""><span>Kiosk Warden</span></div>
-"""
+<main class="fd-main">
+""".replace("@@ASSET@@", ASSET_VERSION)
 
-PAGE_TAIL = "</body></html>"
+PAGE_TAIL = "</main></body></html>"
 
 
 def render_message(message, error):
     out = ""
     if error:
-        out += f'<div class="msg error">{esc(error)}</div>'
+        out += f'<div class="msg error" role="alert">{icon("alert-triangle")}<div>{esc(error)}</div></div>'
     if message:
-        out += f'<div class="msg ok">{esc(message)}</div>'
+        out += f'<div class="msg ok" role="status">{icon("circle-check")}<div>{esc(message)}</div></div>'
     return out
 
 
 def render_first_run(message=None, error=None):
     body = PAGE_HEAD.format(title_suffix=" — Opsætning")
-    body += '<main class="login-shell"><section class="login-card">'
-    body += '<div class="login-mark"><img src="/icon.svg" alt=""></div><div class="login-product">Kiosk Warden</div>'
+    body += '<div class="login-shell"><section class="login-card">'
+    body += f'{render_logo(56, "login-mark")}<div class="login-product">Kiosk Warden</div>'
     body += "<h1>Velkommen</h1>"
     body += '<div class="sub">Opret administrator-login for at beskytte Kiosk Warden, før du gør noget andet.</div>'
     body += render_message(message, error)
@@ -1142,7 +1067,7 @@ def render_first_run(message=None, error=None):
 </form>
 <p class="login-note">Lokal administration · login kan ændres senere</p>
 """
-    body += "</section></main>"
+    body += "</section></div>"
     body += PAGE_TAIL
     return body
 
@@ -1151,9 +1076,9 @@ def render_login(conf, next_path="/", error=None):
     safe_next = next_path if next_path.startswith("/") and not next_path.startswith("//") else "/"
     body = PAGE_HEAD.format(title_suffix=" — Log ind")
     body += f"""
-<main class="login-shell">
+<div class="login-shell">
   <section class="login-card">
-    <div class="login-mark"><img src="/icon.svg" alt=""></div>
+    {render_logo(56, "login-mark")}
     <div class="login-product">Kiosk Warden</div>
     <h1>Log ind</h1>
     <p class="sub">{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</p>
@@ -1169,26 +1094,186 @@ def render_login(conf, next_path="/", error=None):
     </form>
     <p class="login-note">Lokal administration · sessionen udløber automatisk</p>
   </section>
-</main>
+</div>
 """
     return body + PAGE_TAIL
 
 
-def render_nav(active):
-    items = [
-        ("/", "🏠 Status"),
-        ("/control", "🎛️ Kiosk"),
-        ("/vnc", "🖱️ Fjernstyring"),
-        ("/mqtt", "📡 Forbindelser"),
-        ("/updates", "⬇️ Opdateringer"),
-        ("/settings", "⚙️ System"),
-        ("/logout", "↪ Log ud"),
-    ]
-    parts = []
-    for path, label in items:
-        cls = "nav-btn active" if path == active else "nav-btn"
-        parts.append(f'<a href="{path}"><span class="{cls}">{label}</span></a>')
-    return '<div class="nav">' + "".join(parts) + "</div>"
+# Menu (Fleetdeck AppShell): main pages, then the "Opsætning" group. Each entry:
+# (path, label, icon, short label for the mobile tab bar, search keywords).
+NAV_MAIN = [
+    ("/", "Status", "layout-dashboard", "Status", "oversigt cpu ram disk temperatur telemetri"),
+    ("/control", "Kiosk", "device-tv", "Kiosk", "skærm touch profiler strømprofil smartdash selvtest diagnostik genstart sluk"),
+    ("/vnc", "Fjernstyring", "pointer", "Fjern", "vnc fjernskrivebord skærm"),
+]
+NAV_GROUPS = [
+    ("Opsætning", [
+        ("/mqtt", "Forbindelser", "plug", "Forbindelser", "mqtt broker home assistant token"),
+        ("/updates", "Opdateringer", "download", "Opdatér", "version kanal beta stable changelog gendan"),
+        ("/settings", "System", "settings", "System", "navn port sprog login password lysstyrke backend udseende"),
+    ]),
+]
+TABBAR = ("/", "/control", "/vnc", "/updates")
+
+
+def _nav_items():
+    return NAV_MAIN + [item for _, items in NAV_GROUPS for item in items]
+
+
+def _look_menu_items():
+    """Fleetdeck's LookMenu: style, theme and menu position, saved in this browser."""
+    def item(key, value, label, note="", left=""):
+        note_html = f' <span class="note">{note}</span>' if note else ""
+        left_html = icon(left) if left else ""
+        return (f'<button type="button" data-look="{key}" data-value="{value}">{left_html}'
+                f'<span>{label}{note_html}</span>{icon("check", "chk off")}</button>')
+    return (
+        '<div class="lbl">Stil</div>'
+        + item("skin", "command", "Command", "– skarp og rolig")
+        + item("skin", "aurora", "Aurora", "– farver og glas")
+        + '<hr><div class="lbl">Tema</div>'
+        + item("theme", "light", "Lyst", left="sun")
+        + item("theme", "dark", "Mørkt", left="moon")
+        + item("theme", "auto", "Som systemet", left="sun-moon")
+        + '<hr><div class="lbl">Menu</div>'
+        + item("nav", "side", "I siden", left="layout-sidebar")
+        + item("nav", "top", "I toppen", left="layout-navbar")
+    )
+
+
+def render_look_panel():
+    """Fleetdeck's LookPanel (Udseende) with the two design proposals as shortcuts."""
+    def seg(key, options):
+        buttons = "".join(f'<button type="button" data-look="{key}" data-value="{value}">{label}</button>' for value, label in options)
+        return f'<div class="seg">{buttons}</div>'
+    return f"""
+<fieldset id="udseende">
+  <legend>Udseende</legend>
+  <p class="status">Gemmes i denne browser. Standard er forslag A.</p>
+  <div class="look-row"><span>Forslag</span>{seg("preset", [("a", "A · Command, mørk, sidemenu"), ("b", "B · Aurora, lys, topmenu")])}</div>
+  <div class="look-row"><span>Menu</span>{seg("nav", [("side", "I siden"), ("top", "I toppen")])}</div>
+  <div class="look-row"><span>Stil</span>{seg("skin", [("command", "Command"), ("aurora", "Aurora")])}</div>
+  <div class="look-row"><span>Tema</span>{seg("theme", [("light", "Lyst"), ("dark", "Mørkt"), ("auto", "Som systemet")])}</div>
+</fieldset>
+"""
+
+
+def _header_status():
+    """Health of the active kiosk for the top bar (same wording as before on Status)."""
+    state = read_file(os.path.join(KIOSK_DIR, "health_state"), "?")
+    tone = "ok" if state == "ON" else ("bad" if state == "OFF" else "warn")
+    label = {"ON": "Kører fint", "OFF": "Fejl"}.get(state, state if state not in ("", "?") else "Ukendt")
+    return tone, label
+
+
+def _update_available():
+    latest = get_cached_latest_version()
+    latest_version = latest.get("latest_version") if isinstance(latest, dict) else None
+    return bool(latest_version and version_newer(latest_version, current_version()))
+
+
+def render_nav(active, conf=None):
+    """Fleetdeck shell: top bar, side menu or top menu, mobile tab bar and the "Mere" sheet."""
+    conf = read_conf() if conf is None else conf
+    items = _nav_items()
+    current = next((item for item in items if item[0] == active), items[0])
+    updates = 1 if _update_available() else 0
+
+    def count(path, tag="span"):
+        if path == "/updates" and updates:
+            return '<span class="fd-count">1</span>' if tag == "span" else "<b>1</b>"
+        return ""
+
+    def nav_link(item):
+        path, label, ico, _, _ = item
+        on = " data-active" if path == active else ""
+        return f'<a class="fd-nav" href="{path}"{on}>{icon(ico)}<span>{esc(label)}</span>{count(path)}</a>'
+
+    side = (
+        '<nav class="fd-navbar" aria-label="Menu"><div class="fd-brandrow"><a class="fd-brand" href="/" style="font-size:17px">'
+        + render_logo(30) + '<span>Kiosk Warden</span></a></div><div class="grow">'
+        + "".join(nav_link(item) for item in NAV_MAIN)
+        + "".join(f'<div class="fd-group">{esc(group)}</div>' + "".join(nav_link(i) for i in group_items) for group, group_items in NAV_GROUPS)
+        + f'</div><div class="fd-foot">Kiosk Warden {esc(current_version())}</div></nav>'
+    )
+
+    top_parts = []
+    for path, label, _, _, _ in NAV_MAIN:
+        on = " data-active" if path == active else ""
+        top_parts.append(f'<a class="fd-top" href="{path}"{on}>{esc(label)}{count(path)}</a>')
+    for group, group_items in NAV_GROUPS:
+        on = " data-active" if any(i[0] == active for i in group_items) else ""
+        drop = "".join(
+            f'<a href="{p}"{" data-active" if p == active else ""}>{icon(ico)}<span>{esc(lbl)}</span>'
+            + ('<span class="badge b-blue" style="margin-left:auto">1</span>' if p == "/updates" and updates else "") + "</a>"
+            for p, lbl, ico, _, _ in group_items
+        )
+        top_parts.append(
+            f'<span class="fd-menu"><a class="fd-top" role="button" data-menu-toggle aria-expanded="false"{on}>{esc(group)}{count("/updates") if any(i[0] == "/updates" for i in group_items) else ""} {icon("chevron-down")}</a>'
+            f'<div class="fd-drop">{drop}</div></span>'
+        )
+    top = '<div class="fd-topnav only-desktop">' + "".join(top_parts) + "</div>"
+
+    search_links = "".join(
+        f'<a href="{p}" data-keywords="{esc(keys)}">{icon(ico)}<span>{esc(lbl)}</span></a>' for p, lbl, ico, _, keys in items
+    ) + f'<a href="/settings#udseende" data-keywords="tema mørkt lyst command aurora menu">{icon("palette")}<span>Udseende</span></a>'
+    search = (
+        f'<label class="fd-search only-desktop top-hide">{icon("search")}'
+        f'<input id="fdSearch" type="search" autocomplete="off" placeholder="Søg efter sider og indstillinger…" aria-label="Søg">'
+        f'<kbd>Ctrl K</kbd><div class="fd-drop" id="fdSearchResults" hidden>{search_links}</div></label>'
+    )
+
+    tone, health = _header_status()
+    username = conf.get("WEBUI_USERNAME", "admin") or "admin"
+    initials = esc(username[:2].upper())
+    header = (
+        '<header class="fd-header">'
+        f'<a class="only-mobile" href="/" aria-label="Kiosk Warden">{render_logo(26)}</a>'
+        f'<a class="fd-brand only-desktop top-only" href="/" style="margin-right:8px">{render_logo(26)}<span>Kiosk Warden</span></a>'
+        + top + search
+        + f'<span class="fd-mtitle only-mobile">{esc(current[1])}</span><div class="spacer"></div>'
+        f'<span class="ctx only-desktop" title="Aktiv kiosk">{icon("device-desktop")}<span><span class="dim">Aktiv kiosk:</span> {esc(conf.get("KIOSK_NAME", "Kiosk"))}</span></span>'
+        f'<span class="fd-activity {tone}"><span class="fd-dot c-{tone}"></span><span>{esc(health)}</span></span>'
+        '<span class="fd-menu end only-desktop"><button class="fd-icon-btn" type="button" data-menu-toggle aria-label="Udseende" aria-expanded="false">'
+        f'<span data-theme-icon="dark">{icon("moon")}</span><span data-theme-icon="light" hidden>{icon("sun")}</span></button>'
+        f'<div class="fd-drop" style="width:240px">{_look_menu_items()}</div></span>'
+        f'<span class="fd-menu end"><button class="fd-avatar" type="button" data-menu-toggle aria-label="Konto" aria-expanded="false">{initials}</button>'
+        f'<div class="fd-drop"><div class="who"><b>{esc(username)}</b><span class="dim">Administrator</span></div><hr>'
+        f'<a href="/settings#udseende">{icon("palette")}<span>Udseende</span></a><a href="/settings">{icon("user")}<span>Skift administrator-login</span></a><hr>'
+        f'<a class="danger" href="/logout">{icon("logout")}<span>Log ud</span></a></div></span>'
+        '</header>'
+    )
+
+    tabbar = ['<nav class="fd-tabbar" aria-label="Faner">']
+    for path in TABBAR:
+        item = next(i for i in items if i[0] == path)
+        on = " data-active data-current" if path == active else ""
+        tabbar.append(f'<a href="{path}"{on}><span>{icon(item[2])}{count(path, "b")}</span>{esc(item[3])}</a>')
+    tabbar.append(f'<button type="button" data-sheet-toggle{" data-active" if active not in TABBAR else ""}><span>{icon("dots")}</span>Mere</button></nav>')
+
+    rest = [i for i in NAV_MAIN if i[0] not in TABBAR]
+    sheet = '<div class="fd-sheet">' + "".join(nav_link(i) for i in rest)
+    for group, group_items in NAV_GROUPS:
+        visible = [i for i in group_items if i[0] not in TABBAR]
+        if visible:
+            sheet += f'<div class="fd-group">{esc(group)}</div>' + "".join(nav_link(i) for i in visible)
+    sheet += (
+        '<div class="fd-group">Udseende</div><div class="fd-look">'
+        + render_look_panel_compact()
+        + '</div><div class="fd-group">Konto</div>'
+        f'<a class="fd-nav" href="/settings">{icon("user")}<span>Skift administrator-login</span></a>'
+        f'<a class="fd-nav" href="/logout" style="color:var(--fd-bad)">{icon("logout")}<span>Log ud</span></a>'
+        f'<div class="fd-foot">Kiosk Warden {esc(current_version())}</div></div>'
+    )
+    return header + side + sheet + "".join(tabbar)
+
+
+def render_look_panel_compact():
+    def seg(key, options):
+        return '<div class="seg">' + "".join(f'<button type="button" data-look="{key}" data-value="{v}">{l}</button>' for v, l in options) + "</div>"
+    return (seg("preset", [("a", "Forslag A"), ("b", "Forslag B")])
+            + seg("skin", [("command", "Command"), ("aurora", "Aurora")])
+            + seg("theme", [("light", "Lyst"), ("dark", "Mørkt"), ("auto", "Som systemet")]))
 
 
 def render_zoom_options(selected=100):
@@ -1227,14 +1312,15 @@ def calibration_label(raw_matrix):
 
 
 def render_page_header(title, conf, description, aside=""):
+    # Fleetdeck page head: Title order 2 + dimmed sub. The active kiosk is shown in the top bar.
+    aside_html = f'<div class="aside">{aside}</div>' if aside else ""
     return f"""
-<div class="header-row">
+<div class="fd-head">
   <div>
-    <h1>{esc(title)}</h1>
-    <div class="sub">{esc(description)}</div>
-    <div class="page-context">Aktiv kiosk: <strong>{esc(conf.get('KIOSK_NAME', 'Kiosk'))}</strong></div>
+    <h1 class="fd-title">{esc(title)}</h1>
+    <div class="fd-sub">{esc(description)}</div>
   </div>
-  {aside}
+  {aside_html}
 </div>
 """
 
@@ -1300,37 +1386,40 @@ def render_updates(conf, message=None, error=None):
             versions.append(match.group(1))
     rollback_options = "".join(f'<option value="{esc(v)}">{esc(v)}</option>' for v in versions)
     update_ready = version_newer(latest_version, installed)
+    # Installed build is newer than the newest release on this channel (e.g. a build that was never released).
+    ahead = latest_version != "ukendt" and version_newer(installed, latest_version)
     body = PAGE_HEAD.format(title_suffix=" — Opdateringer")
     body += render_page_header(
         "Opdateringer", conf,
         "Vælg releasekanal, installer opdateringer eller gendan en tidligere version.",
-        f'<span class="pill {"warn" if update_ready else "ok"}">{"Ny version klar" if update_ready else "Opdateret"}</span>',
+        f'<span class="pill {"warn" if update_ready else ("info" if ahead else "ok")}">{"Ny version klar" if update_ready else ("Nyere end seneste udgivelse" if ahead else "Opdateret")}</span>',
     )
-    body += render_nav("/updates")
+    body += render_nav("/updates", conf)
     body += render_message(message, error)
     body += f"""
 <div class="version-grid">
   <div class="version-card"><span>Installeret</span><strong>v{esc(installed)}</strong></div>
   <div class="version-card"><span>Seneste på {esc(channel.title())}</span><strong>v{esc(latest_version)}</strong></div>
 </div>
+{f'<div class="msg ok" style="font-weight:400">{icon("info-circle")}<div>Du kører en nyere version end den seneste udgivelse på {esc(channel.title())}. Der er intet at installere.</div></div>' if ahead else ''}
 <fieldset>
   <legend>Release-kanal og installation</legend>
   <form method="post" action="/update">
     <label>Opdateringskanal</label>
     <select name="channel"><option value="stable"{' selected' if channel == 'stable' else ''}>Stable</option><option value="beta"{' selected' if channel == 'beta' else ''}>Beta</option></select>
-    <div class="row"><button type="button" id="checkUpdates">Tjek for updates</button><button type="submit" formaction="/update-channel">Gem kanal</button><button class="accent" type="submit" id="installUpdate"{' disabled' if not update_ready else ''}>⬇️ Installer v{esc(latest_version)}</button></div>
+    <div class="row"><button type="button" id="checkUpdates">{icon("refresh")}Tjek for updates</button><button type="submit" formaction="/update-channel">{icon("device-floppy")}Gem kanal</button><button class="accent" type="submit" id="installUpdate"{' disabled' if not update_ready else ''}>{icon("download")}Installer v{esc(latest_version)}</button></div>
   </form>
   <div class="progress-shell" id="updateProgress"><div class="progress-track"><div class="progress-fill" id="updateProgressFill"></div></div><div class="progress-meta"><span id="updateProgressText">Forbereder…</span><strong id="updateProgressPercent">0%</strong></div></div>
   <div class="restart-choice" id="restartChoice"><strong>Opdateringen er installeret.</strong><p>Vælg hvad der skal genstartes, eller fortsæt uden genstart.</p><div class="row"><button class="primary" type="button" id="restartWarden">Genstart Kiosk Warden</button><button type="button" id="restartMachine">Genstart maskinen</button><button type="button" id="restartLater">Senere</button></div><div class="countdown" id="restartCountdown"></div></div>
   <div class="release-notes changelog"><strong>Seneste release{' · Beta' if prerelease else ''}</strong>{render_markdown_lite(release_summary)}</div>
-  {f'<a href="{esc(release_url)}" target="_blank" rel="noreferrer">Se hele releasen på GitHub</a>' if release_url else ''}
+  {f'<a class="btn subtle" href="{esc(release_url)}" target="_blank" rel="noreferrer">{icon("external-link")}Se hele releasen på GitHub</a>' if release_url else ''}
 </fieldset>
 <fieldset>
   <legend>Gendan tidligere version</legend>
   <form method="post" action="/rollback">
     <label>Lokal snapshot</label>
     <select name="version" {'disabled' if not versions else ''}>{rollback_options or '<option>Ingen snapshots endnu</option>'}</select>
-    <div class="row"><button type="submit" {'disabled' if not versions else ''} onclick="return confirm('Gendan den valgte version?');">Gendan valgt version</button></div>
+    <div class="row"><button type="submit" {'disabled' if not versions else ''} onclick="return confirm('Gendan den valgte version?');">{icon("arrow-back-up")}Gendan valgt version</button></div>
   </form>
 </fieldset>
 <fieldset><legend>Komplet changelog</legend>
@@ -1398,84 +1487,97 @@ def render_dashboard(conf, message=None, error=None):
     history = telemetry_data()
     live = history[-1] if history else {}
 
-    pill_class = "ok" if health_state == "ON" else ("err" if health_state == "OFF" else "warn")
-    pill_label = {"ON": "Kører fint", "OFF": "Fejl"}.get(health_state, health_state or "Ukendt")
-
     body = PAGE_HEAD.format(title_suffix=" — Status")
-    body += render_page_header(
-        "Status", conf,
-        "Driftsstatus, ressourceforbrug og den aktive kiosks helbred.",
-        f'<span class="pill {pill_class}">{esc(pill_label)}</span>',
-    )
-    body += render_nav("/")
+    body += render_page_header("Status", conf, "Driftsstatus, ressourceforbrug og den aktive kiosks helbred.")
+    body += render_nav("/", conf)
 
     latest = get_cached_latest_version()
     current = current_version()
     latest_version = latest.get("latest_version") if isinstance(latest, dict) else None
+    body += '<div class="stack">'
     if latest_version and version_newer(latest_version, current):
         body += f"""
-<a href="/updates" style="text-decoration:none; color:inherit;">
-  <div class="update-banner">🔔 Ny version tilgængelig ({esc(latest_version)}) — åbn Opdateringer</div>
-</a>
+<div class="alert">{icon("bell")}<div style="flex:1"><b>Ny version tilgængelig ({esc(latest_version)})</b><div>Du kører {esc(current)}. Åbn Opdateringer for at installere.</div></div><a class="btn sm light" href="/updates">Åbn Opdateringer</a></div>
 """
 
     body += render_message(message, error)
 
     chrome_label = "Kører" if stats["chrome_running"] else "Stoppet"
-    chrome_level = "ok" if stats["chrome_running"] else "err"
     temp_val = f'{stats["cpu_temp"]}°C' if stats["cpu_temp"] is not None else "?"
     ram_val = f'{stats["ram_percent"]}%' if stats["ram_percent"] is not None else "?"
     disk_val = f'{stats["disk_percent"]}%' if stats["disk_percent"] is not None else "?"
+    cpu_val = f'{live.get("cpu")}%' if live.get("cpu") is not None else stats["loadavg"].split(" / ")[0]
+    healthy = health_state == "ON" and stats["chrome_running"]
+    hero_value = "Kører" if healthy else ("Fejl" if health_state == "OFF" or not stats["chrome_running"] else (health_state if health_state not in ("", "?") else "Ukendt"))
+    hero_sub = f'Chrome {chrome_label.lower()} · {health_state if health_state not in ("", "?") else "ukendt"}'
+    spark_rows = [row for row in history[-12:] if isinstance(row, dict)]
+    spark = "".join(f'<b style="height:{max(8, min(100, int(row.get("cpu") or 0)))}%"></b>' for row in spark_rows) if spark_rows else ""
 
-    body += '<div class="grid">'
-    body += render_tile("🌐", "IP", stats["ip"])
-    body += render_tile("⏱️", "Oppetid", stats["uptime"])
-    body += render_tile("🧠", "RAM", ram_val, level_for(stats["ram_percent"], 70, 90))
-    body += render_tile("💾", "Disk", disk_val, level_for(stats["disk_percent"], 80, 93))
-    body += render_tile("🌡️", "Temperatur", temp_val, level_for(stats["cpu_temp"], 65, 80))
-    body += render_tile("📈", "CPU", f'{live.get("cpu")}%' if live.get("cpu") is not None else stats["loadavg"].split(" / ")[0])
-    body += render_tile("🎮", "GPU", f'{live.get("gpu")}%' if live.get("gpu") is not None else "?")
-    body += render_tile("⚡", "CPU-frekvens", f'{live.get("cpu_mhz")} MHz' if live.get("cpu_mhz") is not None else "?")
-    body += render_tile("🌡️", "NVMe temperatur", f'{live.get("nvme_temp")}°C' if live.get("nvme_temp") is not None else "?")
-    body += render_tile("↕️", "Netværk", f'{live.get("network_kbps")} KiB/s' if live.get("network_kbps") is not None else "?")
-    body += render_tile("🖥️", "Chrome", chrome_label, chrome_level)
-    body += render_tile("🏷️", "Model", stats["model"])
+    body += '<div class="kpis">'
+    body += (f'<div class="paper kpi fd-kpi-hero"><div class="lbl">{icon("device-tv")}Kiosk</div><div class="val">{esc(hero_value)}</div>'
+             f'<div class="sub">{esc(hero_sub)}</div>' + (f'<div class="fd-spark" title="CPU">{spark}</div>' if spark else "") + '</div>')
+    body += render_tile("cpu", "CPU", cpu_val, level_for(live.get("cpu"), 80, 95), live.get("cpu"))
+    body += render_tile("box", "RAM", ram_val, level_for(stats["ram_percent"], 70, 90), stats["ram_percent"])
+    body += render_tile("package", "Disk", disk_val, level_for(stats["disk_percent"], 80, 93), stats["disk_percent"])
+    body += render_tile("temperature", "Temperatur", temp_val, level_for(stats["cpu_temp"], 65, 80), stats["cpu_temp"])
     ha_power_configured = bool(conf.get("HA_TOKEN") and conf.get("HA_POWER_ENTITY"))
     if ha_power_configured:
         power_val = f'{live.get("ha_power")} W' if live.get("ha_power") is not None else "?"
-        body += render_tile("⚡", "Effekt", power_val)
+        body += render_tile("bolt", "Effekt", power_val, sub="fra Home Assistant")
     body += "</div>"
 
-    body += f'<div class="status">{esc(health_detail)}</div>'
+    chrome_badge = f'<span class="badge {"b-ok" if stats["chrome_running"] else "b-bad"}">{esc(chrome_label)}</span>'
+    body += '<div class="paper flush"><div class="kv-grid">'
+    body += render_kv("world", "IP", esc(stats["ip"]))
+    body += render_kv("clock", "Oppetid", esc(stats["uptime"]))
+    body += render_kv("activity", "GPU", esc(f'{live.get("gpu")}%' if live.get("gpu") is not None else "?"))
+    body += render_kv("gauge", "CPU-frekvens", esc(f'{live.get("cpu_mhz")} MHz' if live.get("cpu_mhz") is not None else "?"))
+    body += render_kv("temperature", "NVMe temperatur", esc(f'{live.get("nvme_temp")}°C' if live.get("nvme_temp") is not None else "?"))
+    body += render_kv("wifi", "Netværk", esc(f'{live.get("network_kbps")} KiB/s' if live.get("network_kbps") is not None else "?"))
+    body += render_kv("device-desktop", "Chrome", chrome_badge)
+    body += render_kv("info-circle", "Model", esc(stats["model"]))
+    body += "</div></div>"
+
+    if health_detail:
+        body += f'<div class="status" style="margin:0">{esc(health_detail)}</div>'
+    window = '<small>seneste 60 minutter</small>'
+    def legend(*series):
+        return '<div class="legend">' + "".join(f'<span><i style="background:{color}"></i>{label}</span>' for label, color in series) + "</div>"
     power_chart = (
-        '<div class="chart-card"><div class="chart-title">Effekt (Home Assistant) · seneste 60 minutter</div>'
+        f'<div class="chart-card"><div class="chart-title">Effekt (Home Assistant){window}</div>{legend(("W", "#facc15"))}'
         '<canvas class="telemetry-chart" id="powerChart"></canvas></div>'
         if ha_power_configured else ""
     )
     power_draw = (
-        "drawChart('powerChart',rows,[{key:'ha_power',label:'W',color:'#facc15'}]);"
+        "drawChart('powerChart',rows,[{key:'ha_power',label:'W',color:'#facc15'}],0,true);"
         if ha_power_configured else ""
     )
     body += f"""
 <div class="charts">
-  <div class="chart-card"><div class="chart-title">CPU, RAM og GPU · seneste 60 minutter</div><canvas class="telemetry-chart" id="usageChart"></canvas></div>
-  <div class="chart-card"><div class="chart-title">CPU- og NVMe-temperatur · seneste 60 minutter</div><canvas class="telemetry-chart" id="temperatureChart"></canvas></div>
-  <div class="chart-card"><div class="chart-title">CPU-frekvens · seneste 60 minutter</div><canvas class="telemetry-chart" id="frequencyChart"></canvas></div>
-  <div class="chart-card"><div class="chart-title">Netværkstrafik · seneste 60 minutter</div><canvas class="telemetry-chart" id="networkChart"></canvas></div>
+  <div class="chart-card"><div class="chart-title">CPU, RAM og GPU{window}</div>{legend(("CPU", "#3b82f6"), ("RAM", "#8b5cf6"), ("GPU", "#22c55e"))}<canvas class="telemetry-chart" id="usageChart"></canvas></div>
+  <div class="chart-card"><div class="chart-title">CPU- og NVMe-temperatur{window}</div>{legend(("CPU °C", "#ef4444"), ("NVMe °C", "#f59e0b"))}<canvas class="telemetry-chart" id="temperatureChart"></canvas></div>
+  <div class="chart-card"><div class="chart-title">CPU-frekvens{window}</div>{legend(("MHz", "#06b6d4"))}<canvas class="telemetry-chart" id="frequencyChart"></canvas></div>
+  <div class="chart-card"><div class="chart-title">Netværkstrafik{window}</div>{legend(("KiB/s", "#a855f7"))}<canvas class="telemetry-chart" id="networkChart"></canvas></div>
   {power_chart}
 </div>
+</div>
 <script>
-function drawChart(id, rows, series, maxValue) {{
+function drawChart(id, rows, series, maxValue, fill) {{
   const canvas=document.getElementById(id), ratio=window.devicePixelRatio||1, width=canvas.clientWidth, height=canvas.clientHeight;
   canvas.width=width*ratio; canvas.height=height*ratio; const c=canvas.getContext('2d'); c.scale(ratio,ratio); c.clearRect(0,0,width,height);
-  c.strokeStyle='rgba(128,128,128,.22)'; c.lineWidth=1; for(let i=0;i<=4;i++){{const y=8+(height-20)*i/4;c.beginPath();c.moveTo(0,y);c.lineTo(width,y);c.stroke();}}
+  const css=getComputedStyle(document.documentElement); c.strokeStyle=css.getPropertyValue('--fd-border').trim()||'rgba(128,128,128,.22)';
+  c.lineWidth=1; for(let i=0;i<=4;i++){{const y=Math.round(6+(height-12)*i/4)+.5;c.beginPath();c.moveTo(0,y);c.lineTo(width,y);c.stroke();}}
   const visible=rows.slice(-360); if(visible.length<2)return;
   const values=visible.flatMap(r=>series.map(s=>Number(r[s.key])).filter(Number.isFinite)); const top=maxValue||Math.max(1,...values)*1.12;
-  for(const s of series){{c.strokeStyle=s.color;c.lineWidth=2;c.beginPath();let started=false;visible.forEach((r,i)=>{{const v=Number(r[s.key]);if(!Number.isFinite(v))return;const x=i*width/(visible.length-1),y=height-8-Math.min(top,v)*(height-20)/top;if(!started){{c.moveTo(x,y);started=true}}else c.lineTo(x,y)}});c.stroke();}}
-  c.font='11px system-ui'; let x=8; for(const s of series){{c.fillStyle=s.color;c.fillText(s.label,x,height-2);x+=c.measureText(s.label).width+16;}}
+  const fillSeries=fill||series.length===1;
+  for(const s of series){{const pts=[];visible.forEach((r,i)=>{{const v=Number(r[s.key]);if(!Number.isFinite(v))return;pts.push([i*width/(visible.length-1),height-6-Math.min(top,v)*(height-16)/top]);}});if(pts.length<2)continue;
+    if(fillSeries){{c.globalAlpha=.12;c.fillStyle=s.color;c.beginPath();c.moveTo(pts[0][0],height);pts.forEach(p=>c.lineTo(p[0],p[1]));c.lineTo(pts[pts.length-1][0],height);c.closePath();c.fill();c.globalAlpha=1;}}
+    c.strokeStyle=s.color;c.lineWidth=2;c.lineJoin='round';c.beginPath();pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.stroke();}}
 }}
-async function updateTelemetry(){{try{{const r=await fetch('/api/telemetry',{{cache:'no-store'}});if(!r.ok)return;const rows=await r.json();drawChart('usageChart',rows,[{{key:'cpu',label:'CPU',color:'#3b82f6'}},{{key:'ram',label:'RAM',color:'#8b5cf6'}},{{key:'gpu',label:'GPU',color:'#22c55e'}}],100);drawChart('temperatureChart',rows,[{{key:'cpu_temp',label:'CPU °C',color:'#ef4444'}},{{key:'nvme_temp',label:'NVMe °C',color:'#f59e0b'}}],100);drawChart('frequencyChart',rows,[{{key:'cpu_mhz',label:'MHz',color:'#06b6d4'}}]);drawChart('networkChart',rows,[{{key:'network_kbps',label:'KiB/s',color:'#a855f7'}}]);{power_draw}}}catch(_){{}}}}
-updateTelemetry();setInterval(updateTelemetry,10000);addEventListener('resize',updateTelemetry);
+let lastRows=null;
+function drawAll(rows){{drawChart('usageChart',rows,[{{key:'cpu',label:'CPU',color:'#3b82f6'}},{{key:'ram',label:'RAM',color:'#8b5cf6'}},{{key:'gpu',label:'GPU',color:'#22c55e'}}],100);drawChart('temperatureChart',rows,[{{key:'cpu_temp',label:'CPU °C',color:'#ef4444'}},{{key:'nvme_temp',label:'NVMe °C',color:'#f59e0b'}}],100);drawChart('frequencyChart',rows,[{{key:'cpu_mhz',label:'MHz',color:'#06b6d4'}}]);drawChart('networkChart',rows,[{{key:'network_kbps',label:'KiB/s',color:'#a855f7'}}]);{power_draw}}}
+async function updateTelemetry(){{try{{const r=await fetch('/api/telemetry',{{cache:'no-store'}});if(!r.ok)return;lastRows=await r.json();drawAll(lastRows);}}catch(_){{}}}}
+updateTelemetry();setInterval(updateTelemetry,10000);addEventListener('resize',()=>lastRows&&drawAll(lastRows));addEventListener('kw-look',()=>lastRows&&drawAll(lastRows));
 </script>
 """
 
@@ -1544,15 +1646,57 @@ def render_control(conf, message=None, error=None):
         for key, label in POWER_PROFILES.items()
     )
     body = PAGE_HEAD.format(title_suffix=" — Kiosk")
-    body += render_page_header("Kiosk", conf, "Styr skærm, profiler, hardware og kioskens driftsfunktioner.")
     active_profile_url = next((item.get("url", "") for item in profiles if item.get("name") == active_profile), "")
-    body += render_nav("/control") + render_message(message, error) + f'<p class="status">Aktiv visning: <strong>{esc(active_profile_url or "Ingen profil")}</strong></p>'
+    body += render_page_header(
+        "Kiosk", conf, "Styr skærm, profiler, hardware og kioskens driftsfunktioner.",
+        f'<button type="button" class="primary" id="restartWardenManual">{icon("shield-check")}Genstart Kiosk Warden</button>',
+    )
+    body += render_nav("/control", conf) + render_message(message, error)
+    body += f'<p class="status" style="margin:-12px 0 16px">Aktiv visning: <strong>{esc(active_profile_url or "Ingen profil")}</strong></p>'
+    body += '<div class="countdown" id="manualRestartCountdown" style="margin:-8px 0 12px"></div>'
+
+    def action(do, label, ico, cls="", confirm_text=""):
+        onsubmit = f' onsubmit="return confirm(\'{confirm_text}\');"' if confirm_text else ""
+        cls_attr = f' class="{cls}"' if cls else ""
+        return f'<form method="post" action="/action"{onsubmit}><input type="hidden" name="do" value="{do}"><button{cls_attr} type="submit">{icon(ico)}{label}</button></form>'
+
+    def profile_row(item):
+        name = item.get("name", "")
+        on = name == active_profile
+        return (
+            f'<div class="list-row"><span class="fd-dot {"c-ok" if on else "c-off"}"></span>'
+            f'<div style="min-width:0;flex:1"><b>{esc(name or "Profil")}</b> <span class="badge b-gray">{esc(item.get("zoom", 100))}%</span>'
+            f'<div class="xs dim" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{esc(item.get("url", ""))}</div></div>'
+            f'<form method="post" action="/profile-switch"><input type="hidden" name="name" value="{esc(name)}"><button class="{"light" if on else ""}" type="submit">{"Aktiv" if on else "Skift"}</button></form>'
+            f'<form method="post" action="/profile-remove"><input type="hidden" name="name" value="{esc(name)}"><button class="subtle icon-only" type="submit" title="Fjern profil" aria-label="Fjern profil">{icon("trash")}</button></form></div>'
+        )
+
+    tabs = [
+        ("tab-drift", "Drift", "activity"),
+        ("tab-skaerm", "Skærm og hardware", "device-desktop"),
+        ("tab-profiler", "Profiler", "device-tv"),
+        ("tab-strom", "Strøm og Smartdash", "bolt"),
+        ("tab-maskine", "Maskine", "power"),
+    ]
+    body += '<div class="tabs" role="tablist" data-tabs="control">' + "".join(
+        f'<button type="button" role="tab" id="{tid}-btn" aria-controls="{tid}" aria-selected="false">{icon(ico)}{label}</button>' for tid, label, ico in tabs
+    ) + "</div>"
     body += f"""
+<section class="tab-panel" id="tab-drift" role="tabpanel" aria-labelledby="tab-drift-btn"><div class="tab-cols"><div>
 <fieldset><legend>Kiosktilstand og diagnostik</legend>
-  <div class="grid"><div class="tile"><span>Tilstandsmaskine</span><strong>{esc(state.get('state', 'UNKNOWN'))}</strong></div><div class="tile"><span>Seneste selvtest</span><strong>{esc(self_test.get('result', '—'))}</strong></div><div class="tile"><span>Wake-tid</span><strong>{esc(str(self_test.get('wake_time_ms', '—')) + (' ms' if self_test.get('wake_time_ms') is not None else ''))}</strong></div></div>
+  <div class="grid g3"><div class="tile"><span>Tilstandsmaskine</span><strong>{esc(state.get('state', 'UNKNOWN'))}</strong></div><div class="tile"><span>Seneste selvtest</span><strong>{esc(self_test.get('result', '—'))}</strong></div><div class="tile"><span>Wake-tid</span><strong>{esc(str(self_test.get('wake_time_ms', '—')) + (' ms' if self_test.get('wake_time_ms') is not None else ''))}</strong></div></div>
   <p class="status">Selvtesten gennemfører en rigtig OFF→ON-cyklus og kontrollerer backend/DPMS, opløsning, Chrome-side, renderer/layout og serviceporte.</p>
-  <div class="row"><form method="post" action="/action"><input type="hidden" name="do" value="self_test"><button class="primary" type="submit">🧪 Kør OFF→ON-test</button></form><form method="post" action="/action"><input type="hidden" name="do" value="recover"><button type="submit">🩹 Trinvis recovery</button></form><form method="post" action="/action"><input type="hidden" name="do" value="diagnostics"><button type="submit">📦 Lav sikker diagnostik-ZIP</button></form>{'<a class="nav-btn" href="/diagnostics/latest.zip">⬇ Download seneste ZIP</a>' if has_diagnostics else ''}</div>
+  <div class="row">{action("self_test", "Kør OFF→ON-test", "player-play", "primary")}{action("recover", "Trinvis recovery", "first-aid-kit")}{action("diagnostics", "Lav sikker diagnostik-ZIP", "package")}{f'<a class="btn subtle" href="/diagnostics/latest.zip">{icon("download")}Download seneste ZIP</a>' if has_diagnostics else ''}</div>
 </fieldset>
+</div><div>
+<fieldset><legend>Kiosk og Warden</legend><div class="row">
+  {action("reload", "Genindlæs side", "refresh")}
+  {action("restart_chrome", "Genstart Chrome", "rotate-clockwise")}
+  {action("backup", "Backup config", "archive")}
+</div></fieldset>
+</div></div></section>
+
+<section class="tab-panel" id="tab-skaerm" role="tabpanel" aria-labelledby="tab-skaerm-btn" hidden><div class="tab-cols"><div>
 <fieldset><legend>Skærm og touch</legend><div class="grid">
   <div class="tile"><span>Aktiv skærm</span><strong>{esc(display_status.get('output', '—'))}</strong></div>
   <div class="tile"><span>Opløsning</span><strong>{esc(str(display_status.get('width', '—')) + '×' + str(display_status.get('height', '—')))}</strong></div>
@@ -1562,18 +1706,24 @@ def render_control(conf, message=None, error=None):
   <div class="tile"><span>Seneste input</span><strong>{esc(last_input)}</strong></div>
   <div class="tile"><span>Backend</span><strong>{esc(display_status.get('backend', '—'))}</strong></div>
 </div></fieldset>
+</div><div>
 <fieldset><legend>Hardware capabilities</legend><div class="grid">
   <div class="tile"><span>Touch wake</span><strong>{esc(touch_guardian_label(capabilities))}</strong></div>
   <div class="tile"><span>Lysstyrke</span><strong>{esc(capabilities.get('display',{}).get('brightness_backend') or 'Ikke tilgængelig')}</strong></div>
   <div class="tile"><span>Lyssensor</span><strong>{'Understøttet' if capabilities.get('sensors',{}).get('illuminance') else 'Ikke tilgængelig'}</strong></div>
   <div class="tile"><span>Mikrofon</span><strong>{'Understøttet' if capabilities.get('audio',{}).get('microphone') else 'Ikke tilgængelig'}</strong></div>
   <div class="tile"><span>Batteri</span><strong>{'Understøttet' if capabilities.get('sensors',{}).get('battery') else 'Ikke tilgængelig'}</strong></div>
-</div><div class="row"><form method="post" action="/action"><input type="hidden" name="do" value="probe_capabilities"><button type="submit">🔎 Kontroller hardware igen</button></form></div></fieldset>
+</div><div class="row"><form method="post" action="/action"><input type="hidden" name="do" value="probe_capabilities"><button type="submit">{icon("zoom-scan")}Kontroller hardware igen</button></form></div></fieldset>
+</div></div></section>
+
+<section class="tab-panel" id="tab-profiler" role="tabpanel" aria-labelledby="tab-profiler-btn" hidden><div class="tab-cols"><div>
 <fieldset><legend>Kioskprofiler</legend>
   <p class="status">Hver profil har sin egen URL og zoom. Warden verifierer den valgte URL og bruger den lokale offline-side, hvis dashboardet ikke kan nås.</p>
-  <div class="row">{''.join(f'<form method="post" action="/profile-switch"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><button class="{"primary" if item.get("name")==active_profile else ""}" type="submit">{esc(item.get("name","Profil"))} · {esc(item.get("zoom",100))}%</button></form><form method="post" action="/profile-remove"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><button type="submit" title="Fjern profil">×</button></form>' for item in profiles)}</div>
-  {''.join(f'<form method="post" action="/profile-add"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><label>{esc(item.get("name","Profil"))} URL</label><input type="text" name="url" value="{esc(item.get("url",""))}" required><label>Zoom</label><select name="zoom">{render_zoom_options(item.get("zoom",100))}</select><div class="row"><button type="submit">Opdatér profil</button></div></form>' for item in profiles)}
-  <form method="post" action="/profile-add"><label>Nyt profilnavn</label><input type="text" name="name" required maxlength="40"><label>URL</label><input type="text" name="url" required placeholder="https://..."><label>Zoom</label><select name="zoom">{render_zoom_options()}</select><div class="row"><button type="submit">Tilføj profil</button></div></form>
+  <div>{''.join(profile_row(item) for item in profiles) or '<p class="status">Ingen profiler endnu.</p>'}</div>
+  {''.join(f'<fieldset><legend>{esc(item.get("name","Profil"))}</legend><form method="post" action="/profile-add"><input type="hidden" name="name" value="{esc(item.get("name",""))}"><label>{esc(item.get("name","Profil"))} URL</label><input type="text" name="url" value="{esc(item.get("url",""))}" required><label>Zoom</label><select name="zoom">{render_zoom_options(item.get("zoom",100))}</select><div class="row"><button type="submit">{icon("device-floppy")}Opdatér profil</button></div></form></fieldset>' for item in profiles)}
+  <fieldset><legend>Tilføj profil</legend><form method="post" action="/profile-add"><label>Nyt profilnavn</label><input type="text" name="name" required maxlength="40"><label>URL</label><input type="text" name="url" required placeholder="https://..."><label>Zoom</label><select name="zoom">{render_zoom_options()}</select><div class="row"><button type="submit">{icon("plus")}Tilføj profil</button></div></form></fieldset>
+</fieldset>
+</div><div>
   <form method="post" action="/profile-automation">
     <fieldset><legend>Automatisk profilskift</legend>
       <label><input type="checkbox" name="enabled" value="true"{' checked' if profile_automation.get('enabled') else ''}> Aktivér automatisk profilskift</label>
@@ -1586,27 +1736,30 @@ def render_control(conf, message=None, error=None):
       <div class="row"><button class="primary" type="submit">Gem automatisk profilskift</button></div>
     </fieldset>
   </form>
-</fieldset>
+</div></div></section>
+
+<section class="tab-panel" id="tab-strom" role="tabpanel" aria-labelledby="tab-strom-btn" hidden><div class="tab-cols"><div>
 <fieldset><legend>Strømprofil</legend>
   <p class="status">Strømbesparelse bruger mindst strøm. Balanceret og Ydelse giver gradvist mere CPU-kraft.</p>
   <form method="post" action="/power-profile"><label>Aktiv profil</label><select name="profile">{options}</select><div class="row"><button class="primary" type="submit">Skift strømprofil</button></div></form>
 </fieldset>
+</div><div>
 <fieldset><legend>Smartdash-forbindelse</legend>
   <p class="status">Pause og genoptagelse af <strong>animationer, livekameraer og rendering virker kun, når kiosken viser HA Smartdash</strong>. Skærmens almindelige tænd/sluk via DPMS virker fortsat med andre dashboards, men Warden kan ikke stoppe deres interne animationer eller mediearbejde. HA Smartdash registreres automatisk via Chromes lokale debug-port og kan også styres fra Home Assistant gennem MQTT-entityen Smartdash Rendering.</p>
-  <div class="grid"><div class="tile"><span>Automatisk registrering</span><strong id="smartdashDetected">{'Forbundet' if smartdash.get('supported') else ('Afhængighed mangler' if smartdash.get('error') == 'missing_dependency' else 'Kontakt fejlede' if smartdash.get('error') else 'Ikke registreret')}</strong></div><div class="tile"><span>Tilstand</span><strong id="smartdashState">{esc(smartdash.get('state') or '—')}</strong></div><div class="tile"><span>Build</span><strong id="smartdashBuild">{esc(smartdash.get('release') or smartdash.get('build') or '—')}</strong></div></div>
+  <div class="grid g3" style="margin-top:12px"><div class="tile"><span>Automatisk registrering</span><strong id="smartdashDetected">{'Forbundet' if smartdash.get('supported') else ('Afhængighed mangler' if smartdash.get('error') == 'missing_dependency' else 'Kontakt fejlede' if smartdash.get('error') else 'Ikke registreret')}</strong></div><div class="tile"><span>Tilstand</span><strong id="smartdashState">{esc(smartdash.get('state') or '—')}</strong></div><div class="tile"><span>Build</span><strong id="smartdashBuild">{esc(smartdash.get('release') or smartdash.get('build') or '—')}</strong></div></div>
   {f'<p class="status" id="smartdashErrorDetail">{esc(smartdash.get("error_message"))}</p>' if smartdash.get('error') else '<p class="status" id="smartdashErrorDetail" style="display:none"></p>'}
-  <div class="row"><button type="button" id="refreshSmartdash">Kontroller igen</button></div>
+  <div class="row"><button type="button" id="refreshSmartdash">{icon("refresh")}Kontroller igen</button></div>
 </fieldset>
-<fieldset><legend>Kiosk og Warden</legend><div class="row">
-  <form method="post" action="/action"><input type="hidden" name="do" value="reload"><button type="submit">🔄 Genindlæs side</button></form>
-  <form method="post" action="/action"><input type="hidden" name="do" value="restart_chrome"><button type="submit">🔁 Genstart Chrome</button></form>
-  <button class="primary" type="button" id="restartWardenManual">🛡️ Genstart Kiosk Warden</button>
-  <form method="post" action="/action"><input type="hidden" name="do" value="backup"><button type="submit">🗄️ Backup config</button></form>
-</div><div class="countdown" id="manualRestartCountdown"></div></fieldset>
-<fieldset><legend>Maskine</legend><div class="row">
-  <form method="post" action="/action" onsubmit="return confirm('Genstarte maskinen nu?');"><input type="hidden" name="do" value="reboot"><button class="danger" type="submit">⟳ Genstart maskine</button></form>
-  <form method="post" action="/action" onsubmit="return confirm('Slukke maskinen nu?');"><input type="hidden" name="do" value="shutdown"><button class="danger" type="submit">⏻ Sluk maskine</button></form>
+</div></div></section>
+
+<section class="tab-panel" id="tab-maskine" role="tabpanel" aria-labelledby="tab-maskine-btn" hidden><div class="tab-cols"><div>
+<fieldset><legend>Maskine</legend>
+  <p class="status">Spørger om bekræftelse før genstart eller sluk.</p>
+  <div class="row">
+  {action("reboot", "Genstart maskine", "refresh", "danger", "Genstarte maskinen nu?")}
+  {action("shutdown", "Sluk maskine", "power", "danger", "Slukke maskinen nu?")}
 </div></fieldset>
+</div><div></div></div></section>
 <script>
 document.getElementById('refreshSmartdash').addEventListener('click', async () => {{
   const response = await fetch('/api/smartdash-status', {{cache:'no-store'}});
@@ -1685,20 +1838,20 @@ def render_ha_fieldset(conf):
     <label>Long-Lived Access Token (tomt ved gem = behold nuværende)</label>
     <input type="password" name="HA_TOKEN" placeholder="••••••••">
     {entity_field}
-    <div class="row"><button type="submit">Gem og test forbindelse</button></div>
+    <div class="row"><button class="primary" type="submit">{icon("device-floppy")}Gem og test forbindelse</button></div>
   </fieldset>
 </form>
-<form method="post" action="/test-ha"><div class="row"><button type="submit">Test Home Assistant-forbindelse</button></div></form>
+<form method="post" action="/test-ha"><div class="row" style="margin:0 0 16px"><button type="submit">{icon("plug")}Test Home Assistant-forbindelse</button></div></form>
 """
 
 
 def render_mqtt(conf, message=None, error=None):
     body = PAGE_HEAD.format(title_suffix=" — Forbindelser")
     body += render_page_header("Forbindelser", conf, "Opsæt MQTT og den valgfrie forbindelse til Home Assistant.")
-    body += render_nav("/mqtt") + render_message(message, error)
+    body += render_nav("/mqtt", conf) + render_message(message, error)
     topic = f'home/kiosk/{conf.get("KIOSK_ID", "kiosk")}'
     body += f"""
-<div class="narrow">
+<div class="tab-cols"><div>
 <form method="post" action="/save-mqtt">
   <fieldset>
     <legend>Broker</legend>
@@ -1712,17 +1865,18 @@ def render_mqtt(conf, message=None, error=None):
     <input type="password" name="MQTT_PASS" placeholder="••••••••">
     <label>Stats-interval (sekunder)</label>
     <input type="number" name="STATS_INTERVAL" value="{esc(conf.get('STATS_INTERVAL',''))}" required>
-    <div class="row"><button class="primary" type="submit">Gem og genstart MQTT</button></div>
+    <div class="row"><button class="primary" type="submit">{icon("device-floppy")}Gem og genstart MQTT</button></div>
   </fieldset>
+</form>
+<form method="post" action="/test-mqtt"><div class="row" style="margin:0 0 16px"><button type="submit">{icon("plug")}Test MQTT-forbindelse</button></div></form>
+</div><div>
   <fieldset>
     <legend>Home Assistant</legend>
     <p class="status">Kiosk-id bestemmer topic'et og bruges af MQTT discovery.</p>
-    <div class="grid"><div class="tile"><span>Base topic</span><strong>{esc(topic)}</strong></div><div class="tile"><span>Kiosk-id</span><strong>{esc(conf.get('KIOSK_ID', 'kiosk'))}</strong></div></div>
+    <div class="grid g2" style="margin-top:12px"><div class="tile"><span>Base topic</span><strong>{esc(topic)}</strong></div><div class="tile"><span>Kiosk-id</span><strong>{esc(conf.get('KIOSK_ID', 'kiosk'))}</strong></div></div>
   </fieldset>
-</form>
-<form method="post" action="/test-mqtt"><div class="row"><button type="submit">Test MQTT-forbindelse</button></div></form>
 {render_ha_fieldset(conf)}
-</div>
+</div></div>
 """
     return body + PAGE_TAIL
 
@@ -1730,10 +1884,10 @@ def render_mqtt(conf, message=None, error=None):
 def render_settings(conf, message=None, error=None):
     body = PAGE_HEAD.format(title_suffix=" — System")
     body += render_page_header("System", conf, "Tilpas identitet, lokale porte, skærm, login og strømfunktioner.")
-    body += render_nav("/settings")
+    body += render_nav("/settings", conf)
     body += render_message(message, error)
 
-    body += '<div class="narrow">'
+    body += '<div class="tab-cols"><div>'
     body += f"""
 <form method="post" action="/save">
   <fieldset>
@@ -1759,10 +1913,11 @@ def render_settings(conf, message=None, error=None):
     <select name="UI_LANGUAGE"><option value="en"{' selected' if conf.get('UI_LANGUAGE', 'en') == 'en' else ''}>English</option><option value="da"{' selected' if conf.get('UI_LANGUAGE') == 'da' else ''}>Dansk</option></select>
     <label>Automatisk logud efter 12 timer</label>
     <select name="WEBUI_AUTO_LOGOUT"><option value="true"{' selected' if conf.get('WEBUI_AUTO_LOGOUT', 'true') == 'true' else ''}>Til</option><option value="false"{' selected' if conf.get('WEBUI_AUTO_LOGOUT') == 'false' else ''}>Fra</option></select>
-    <div class="row"><button class="primary" type="submit">Gem og genstart</button></div>
+    <div class="row"><button class="primary" type="submit">{icon("device-floppy")}Gem og genstart</button></div>
   </fieldset>
 </form>
-
+</div><div>
+{render_look_panel()}
 <form method="post" action="/change-password">
   <fieldset>
     <legend>Skift administrator-login</legend>
@@ -1772,7 +1927,7 @@ def render_settings(conf, message=None, error=None):
     <input type="password" name="password" required minlength="8">
     <label>Gentag nyt password</label>
     <input type="password" name="password2" required minlength="8">
-    <div class="row"><button type="submit">Skift password</button></div>
+    <div class="row"><button type="submit">{icon("key")}Skift password</button></div>
   </fieldset>
 </form>
 
@@ -1780,7 +1935,7 @@ def render_settings(conf, message=None, error=None):
 
 """
     body += render_kontrolrum_card(conf)
-    body += "</div>"
+    body += "</div></div>"
     body += PAGE_TAIL
     return body
 
@@ -1855,7 +2010,7 @@ def render_port_change(conf, new_port):
     body = PAGE_HEAD.format(title_suffix=" — Web-UI port")
     body += f"""
 <div class="narrow">
-  <div class="brand"><img src="/icon.svg" alt=""><span>Kiosk Warden</span></div>
+  <div class="row" style="margin:0 0 16px">{render_logo(30)}<b style="font-size:17px">Kiosk Warden</b></div>
   <fieldset>
     <legend>Web-UI porten er ændret</legend>
     <p>Forbinder til den nye adresse…</p>
@@ -1876,20 +2031,19 @@ def render_vnc(conf, message=None, error=None, active=None):
     body = PAGE_HEAD.format(title_suffix=" — Fjernstyring")
     body += render_page_header("Fjernstyring", conf, "Åbn en midlertidig fjernsession til kioskens aktuelle skærm.")
     active = vnc_is_active() if active is None else active
-    body += render_nav("/vnc")
+    body += render_nav("/vnc", conf)
     body += render_message(message, error)
     if active:
         body += f"""
 <div class="row">
-  <button class="primary" type="button" onclick="document.getElementById('vncframe').requestFullscreen()">Fuld skærm</button>
-  <button type="button" onclick="reloadFrame()">Genopfrisk forbindelse</button>
+  <button class="primary" type="button" onclick="document.getElementById('vncframe').requestFullscreen()">{icon("maximize")}Fuld skærm</button>
+  <button type="button" onclick="reloadFrame()">{icon("refresh")}Genopfrisk forbindelse</button>
   <form method="post" action="/vnc/stop" style="display:inline">
-    <button type="submit">Stop VNC</button>
+    <button class="danger" type="submit">{icon("player-stop")}Stop VNC</button>
   </form>
 </div>
-<div style="margin-top:.8rem; border-radius:14px; overflow:hidden; border:1px solid rgba(128,128,128,.3);">
-  <iframe id="vncframe" allowfullscreen
-    style="width:100%; height:calc(100vh - 190px); min-height:420px; border:0; display:block; background:#000;"></iframe>
+<div class="vnc-frame">
+  <iframe id="vncframe" allowfullscreen></iframe>
 </div>
 <div class="status">VNC er aktiv og lukker automatisk, når siden lukkes.</div>
 <script>
@@ -1921,15 +2075,14 @@ def render_vnc(conf, message=None, error=None, active=None):
 </script>
 """
     else:
-        body += """
+        body += f"""
 <div class="row">
   <form method="post" action="/vnc/start" style="display:inline">
-    <button class="primary" type="submit">Start VNC</button>
+    <button class="primary" type="submit">{icon("player-play")}Start VNC</button>
   </form>
 </div>
-<div style="margin-top:.8rem; border-radius:14px; min-height:420px; display:grid; place-items:center;
-  border:1px solid rgba(128,128,128,.3); background:rgba(128,128,128,.06);">
-  <div class="status">VNC er slukket. Tryk på Start VNC for at forbinde.</div>
+<div class="vnc-empty">
+  <div>{icon("device-desktop")}<div class="status">VNC er slukket. Tryk på Start VNC for at forbinde.</div></div>
 </div>
 """
     body += PAGE_TAIL
@@ -1977,6 +2130,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _serve_static(self, path):
+        """Design assets (CSS, script, font) are public so the login page is styled too."""
+        content_type, data = STATIC_ASSETS[path]
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        # Links carry ?v=<hash of the assets>, so a new build is always fetched.
+        self.send_header("Cache-Control", "public, max-age=604800")
+        self._security_headers()
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _redirect(self, location, cookie=None):
         self.send_response(303)
         self.send_header("Location", location)
@@ -2007,6 +2172,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/icon.svg":
             return self._serve_icon()
+        if parsed.path in STATIC_ASSETS:
+            return self._serve_static(parsed.path)
         if parsed.path == "/offline":
             return self._send_html(render_offline())
         if parsed.path == "/login/kontrolrum":
