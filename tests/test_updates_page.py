@@ -40,7 +40,7 @@ class UpdatesPageTest(unittest.TestCase):
             conf = {"KIOSK_NAME": "Test kiosk"}
             updates = SERVER.render_updates(conf)
             settings = SERVER.render_settings(conf)
-            self.assertIn("⬇️ Opdateringer", updates)
+            self.assertIn("<span>Opdateringer</span>", updates)
             self.assertIn("Seneste på Stable", updates)
             self.assertIn('value="beta"', updates)
             self.assertIn("Dedicated update page", updates)
@@ -64,7 +64,7 @@ class UpdatesPageTest(unittest.TestCase):
             dashboard = SERVER.render_dashboard(conf)
         finally:
             SERVER.current_power_profile = original
-        self.assertIn("🎛️ Kiosk", control)
+        self.assertIn("<span>Kiosk</span>", control)
         self.assertIn("Strømbesparelse", control)
         self.assertIn('id="restartWardenManual"', control)
         self.assertIn("Genstart Kiosk Warden", control)
@@ -85,8 +85,13 @@ class UpdatesPageTest(unittest.TestCase):
     def test_navigation_is_structured_and_bilingual(self):
         conf = dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk", KIOSK_ID="test")
         nav = SERVER.render_nav("/mqtt")
-        expected = ["🏠 Status", "🎛️ Kiosk", "🖱️ Fjernstyring", "📡 Forbindelser", "⬇️ Opdateringer", "⚙️ System"]
-        self.assertEqual(sorted(nav.index(label) for label in expected), [nav.index(label) for label in expected])
+        side = nav[nav.index('class="fd-navbar"'):]
+        side = side[:side.index("</nav>")]
+        expected = [f"<span>{label}</span>" for label in ("Status", "Kiosk", "Fjernstyring", "Forbindelser", "Opdateringer", "System")]
+        self.assertEqual(sorted(side.index(label) for label in expected), [side.index(label) for label in expected])
+        self.assertIn('href="/mqtt" data-active', side)
+        self.assertIn('href="/logout"', nav)
+        self.assertNotIn('href="/logout"', side)
 
         connections_da = SERVER.render_mqtt(conf)
         system_da = SERVER.render_settings(conf)
@@ -97,9 +102,26 @@ class UpdatesPageTest(unittest.TestCase):
 
         connections_en = SERVER.localize_html(connections_da, "en")
         system_en = SERVER.localize_html(system_da, "en")
-        self.assertIn("📡 Connections", connections_en)
+        self.assertIn("<span>Connections</span>", connections_en)
         self.assertIn("Configure MQTT and the optional Home Assistant connection.", connections_en)
         self.assertIn("Configure identity, local ports, display, login, and power features.", system_en)
+
+    def test_fleetdeck_design_assets_and_appearance(self):
+        css = SERVER.ui_assets.APP_CSS
+        self.assertNotIn("border-left", css)
+        self.assertIn("[data-skin='aurora']", css)
+        self.assertIn("/static/inter.woff2", css)
+        self.assertEqual(SERVER.ui_assets.INTER_WOFF2[:4], b"wOF2")
+        for path in ("/static/app.css", "/static/app.js", "/static/inter.woff2"):
+            self.assertIn(path, SERVER.STATIC_ASSETS)
+        # Forslag A (Command, dark, side menu) is the default until another look is saved in the browser.
+        self.assertIn("g('kw-skin','command')", SERVER.PAGE_HEAD)
+        self.assertIn("g('kw-theme','dark')", SERVER.PAGE_HEAD)
+        self.assertIn("g('kw-nav','side')", SERVER.PAGE_HEAD)
+        settings = SERVER.render_settings(dict(SERVER.DEFAULTS, KIOSK_NAME="Test kiosk"))
+        self.assertIn('id="udseende"', settings)
+        self.assertIn('data-look="preset" data-value="b"', settings)
+        self.assertNotIn("🏠", SERVER.render_nav("/"))
 
     def test_profile_zoom_options_have_no_literal_separators(self):
         options = SERVER.render_zoom_options(100)
@@ -697,7 +719,8 @@ class UpdatesPageTest(unittest.TestCase):
             self.assertTrue(SERVER.version_newer("1.12.6", "1.12.5"))
             self.assertIn('id="installUpdate" disabled', page)
             self.assertNotIn("Ny version klar", page)
-            self.assertIn("button:disabled", page)
+            self.assertIn("/static/app.css", page)
+            self.assertIn("button:disabled", SERVER.ui_assets.APP_CSS)
 
     def test_completed_status_from_an_old_version_is_hidden(self):
         with tempfile.TemporaryDirectory() as tmp:
