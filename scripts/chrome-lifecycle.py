@@ -48,8 +48,8 @@ except ImportError:
 
 
 def main() -> int:
-    if len(sys.argv) not in {2, 3} or sys.argv[1] not in {"active", "idle", "status", "verify", "reload", "navigate"}:
-        print(f"Usage: {sys.argv[0]} active|idle|status|verify|reload|navigate URL", file=sys.stderr)
+    if len(sys.argv) not in {2, 3} or sys.argv[1] not in {"active", "idle", "status", "verify", "reload", "hard-reload", "navigate"}:
+        print(f"Usage: {sys.argv[0]} active|idle|status|verify|reload|hard-reload|navigate URL", file=sys.stderr)
         return 2
     state = sys.argv[1]
     navigate_url = sys.argv[2] if state == "navigate" and len(sys.argv) == 3 else ""
@@ -92,6 +92,15 @@ def main() -> int:
     connection = websocket.create_connection(
         page["webSocketDebuggerUrl"], timeout=3, suppress_origin=True
     )
+    if state == "hard-reload":
+        # Reload bypassing the browser cache (the page keeps its idle state: it is in sessionStorage).
+        try:
+            connection.send(json.dumps({"id": 1, "method": "Page.reload", "params": {"ignoreCache": True}}))
+            while json.loads(connection.recv()).get("id") != 1:
+                pass
+        finally:
+            connection.close()
+        return 0
     try:
         requested = json.dumps(state)
         destination = json.dumps(navigate_url or _conf_url())

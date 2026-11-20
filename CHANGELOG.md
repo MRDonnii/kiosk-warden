@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.24.2 — 2026-11-20
+
+- Home Assistant's **Refresh** and **Hard reload** buttons reload the page through Chrome's debug port. A key press only reaches a focused window, and in the X11 kiosk session F5 never reloaded the page, so Refresh did nothing (e.g. a periodic standby refresh). Hard reload bypasses the browser cache. The page keeps its idle state across the reload, so a refresh with the screen off stays dark and quiet.
+
 ## v1.24.1 — 2026-11-20
 
 - Self-healing screen: the root helper now reads LightDM's configuration correctly (LightDM prints it on stderr). Before, it always answered "autologin is not set up" and never restarted LightDM. Run `sudo ~/kiosk/setup-display-recovery.sh` once more to install the fixed helper.

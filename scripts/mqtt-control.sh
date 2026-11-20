@@ -326,8 +326,10 @@ handle_codex_remote_command() {
 
 handle_command() {
   case "$1" in
-    reload|refresh) focus_chrome; xdotool key F5 || true ;;
-    hard_reload) focus_chrome; xdotool key ctrl+F5 || true ;;
+    # Through Chrome's debug port: a key press only reaches a focused window, and in the X11 kiosk session (Openbox)
+    # F5 never reloaded the page, so Home Assistant's Refresh button did nothing. The keys stay as a fallback.
+    reload|refresh) "$CHROME_LIFECYCLE" reload >/dev/null 2>&1 || { focus_chrome; xdotool key F5 || true; } ;;
+    hard_reload) "$CHROME_LIFECYCLE" hard-reload >/dev/null 2>&1 || { focus_chrome; xdotool key ctrl+F5 || true; } ;;
     restart_chrome|home) restart_kiosk ;;
     screen_off|OFF) screen_off ;;
     screen_on|ON) screen_on ;;
