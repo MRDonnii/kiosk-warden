@@ -257,6 +257,40 @@ dist-tag of the channel in `~/.claude/settings.json`, `latest` by default). Its
 sessions keep their version until they are started again
 (`scripts/claude-code-update.sh check` prints the versions as JSON).
 
+### Self-healing screen (LightDM kiosks)
+
+LightDM logs the kiosk user in once per start. When the kiosk session later ends
+(the X server or Openbox exits for any reason), LightDM falls back to its login
+screen and does not log in again by itself: the screen shows the login screen,
+Chrome crash-loops with "Missing X server", and the kiosk stays dark until
+someone restarts LightDM or reboots. Kiosk Warden fixes this on its own:
+
+- The watchdog (`scripts/display-guard.sh`, run every 15 seconds) looks for a
+  graphical session on `seat0`. If there is none for 60 seconds (never in the
+  first 3 minutes after boot, when the autologin is still on its way), it
+  restarts LightDM through a small root helper, at most once every 5 minutes.
+- `scripts/display-recover-root.sh` is installed as the root-owned
+  `/usr/local/sbin/kiosk-warden-display-recover` and runs only without arguments
+  and without a password through one sudoers rule. It restarts LightDM only
+  when LightDM auto-logs in exactly that user, nobody has a graphical session,
+  LightDM did not just start, and not more than 3 times per hour and 2 minutes
+  apart. It never touches a running kiosk or someone who is logged in.
+- One-time setup (`install.sh` runs it on new installations; if the login screen
+  is showing right now, it is fixed immediately):
+
+  ```bash
+  sudo ~/kiosk/setup-display-recovery.sh
+  ```
+
+  `sudo ~/kiosk/setup-display-recovery.sh --remove` takes the rule and the
+  helper away again; `KIOSK_DISPLAY_RECOVERY=false` in `kiosk.conf` turns the
+  guard off.
+- Every recovery is written to `~/kiosk/recovery.log` and
+  `journalctl -t kiosk-warden-display-recover`. While the login screen shows,
+  the health detail says so (instead of "Chrome is not running") and, if the
+  setup is missing, how to run it. `~/kiosk/display-guard.sh` prints `ok`,
+  `missing` or `not-applicable`.
+
 ## Layout
 
 ```

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$HOME/kiosk/kiosk.conf"
+# Restarts LightDM when the kiosk session is gone and only the login screen is showing (see display-guard.sh).
+[[ -r "$HOME/kiosk/display-guard.sh" ]] && source "$HOME/kiosk/display-guard.sh"
 
 chrome_service_starting() {
   local entered now
@@ -10,6 +12,7 @@ chrome_service_starting() {
 }
 
 while true; do
+  if declare -F display_guard_tick >/dev/null; then display_guard_tick || true; fi
   if ! pgrep -f "$HOME/.config/chrome-kiosk" >/dev/null; then
     chrome_service_starting || systemctl --user restart kiosk-chrome.service || true
   fi

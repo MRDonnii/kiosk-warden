@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.24.0 — 2026-11-20
+
+- Self-healing screen on LightDM kiosks: when the kiosk session ends (X server or Openbox exits) LightDM shows its login screen and never logs in again by itself, so the screen stayed dark and Chrome crash-looped until someone restarted LightDM or rebooted. The watchdog now notices that there has been no graphical session for a minute and restarts LightDM, so the autologin starts the kiosk again within about two minutes.
+- It uses a small root-owned helper (`/usr/local/sbin/kiosk-warden-display-recover`) allowed by one sudoers rule, with no arguments and no password. The helper only acts when LightDM auto-logs in the kiosk user, nobody has a graphical session and LightDM did not just start, and never more than 3 times per hour. A running kiosk is never touched.
+- One-time setup: `sudo ~/kiosk/setup-display-recovery.sh` (`install.sh` runs it on new LightDM installations; it also fixes a login screen that is showing right now; `--remove` undoes it). `KIOSK_DISPLAY_RECOVERY=false` turns the guard off.
+- The health detail now says "No graphical session (login screen showing)" instead of "Chrome is not running", with the next step if the setup is missing. Recoveries are written to `recovery.log` and the journal.
+- A recovery no longer wakes a screen that was turned off. Before, a page that was only reloading in standby (e.g. a periodic refresh from Home Assistant) looked broken for a moment, the health check "recovered" it, and the dark kiosk ran its page at full power with the monitor on while Home Assistant still showed the screen as off. Now the recovery brings the page back in its idle state and keeps the monitor off (`chrome-lifecycle.py verify idle` checks an idle page).
+- The health check only recovers a problem it sees on two checks in a row (20 seconds apart), so a page that is just reloading is left alone instead of being reloaded or restarted on top.
+- Backups of `~/kiosk` no longer contain earlier backups (the exclude never matched), and `KIOSK_BACKUP_EXCLUDE` in `kiosk.conf` keeps extra files out, e.g. files that hold secrets.
+
+## v1.23.0 — 2026-11-16
+
+- X11-kiosksession til distroer, hvor GNOME ikke længere har X11 (fx Ubuntu 26.04 med GNOME 50): installationen ser det selv og sætter LightDM op med autologin og en lille Openbox-session, der kun kører kiosken. X startes uden markør (`-nocursor`), touch virker via libinput, og skærmstyring (xset/DPMS), xdotool, x11vnc og RustDesk virker som før. Tvinges med `KIOSK_SESSION=x11`, fravælges med `KIOSK_SESSION=desktop`.
+- Tilbage til GDM/GNOME: `sudo sh ~/kiosk/rollback-to-gdm.sh`.
+- I kiosksessionen slås GNOMEs velkomstguide efter opgradering , Bluetooth-mediestyringen (`mpris-proxy`) og firmware-pop-up'en fra snap fra, så de ikke melder fejl.
+- Opdateringen kopierer også systemd-mål (`*.target`).
+- Installationen kan køre helt uden terminal (fx fra Fleetdeck): den spørger kun, når en terminal faktisk kan åbnes, og bruger ellers standardværdierne.
+
 ## v1.22.0 — 2026-11-10
 
 - Claude Code CLI as a Home Assistant update: when the native install (`~/.local/bin/claude`) is on the kiosk, `update.<kiosk>_claude_code` shows the installed and the latest version (the npm dist-tag of the channel set in `~/.claude/settings.json`, `latest` by default) and gets an **Install** button that runs `claude update` as the kiosk user – no root needed. Checked hourly with the system updates; a failed update is shown in the summary. Without Claude Code the entity is removed again.

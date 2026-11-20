@@ -217,7 +217,7 @@ install_release() {
   replace_atomic "$repo/VERSION" "$KIOSK_DIR/version" 644; replace_atomic "$repo/icon.svg" "$KIOSK_DIR/icon.svg" 644; replace_atomic "$repo/CHANGELOG.md" "$KIOSK_DIR/CHANGELOG.md" 644
   mkdir -p "$KIOSK_DIR/webui" "$HOME/.config/systemd/user"
   for file in "$repo"/webui/*.py; do replace_atomic "$file" "$KIOSK_DIR/webui/$(basename "$file")"; done
-  for file in "$repo"/systemd/*.service "$repo"/systemd/*.timer; do replace_atomic "$file" "$HOME/.config/systemd/user/$(basename "$file")" 644; done
+  for file in "$repo"/systemd/*.service "$repo"/systemd/*.timer "$repo"/systemd/*.target; do replace_atomic "$file" "$HOME/.config/systemd/user/$(basename "$file")" 644; done
   git -C "$repo" rev-parse HEAD > "$KIOSK_DIR/.version"
   write_status dependencies 80 "Tjekker system-afhængigheder…"
   ensure_system_dependencies

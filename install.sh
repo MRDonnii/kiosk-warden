@@ -33,7 +33,7 @@ ask() {
   [[ "$silent" == "silent" ]] && readargs+=(-s)
   if [[ -t 0 ]]; then
     read "${readargs[@]}" val
-  elif [[ -r /dev/tty ]]; then
+  elif { : </dev/tty; } 2>/dev/null; then
     read "${readargs[@]}" val </dev/tty
   fi
   [[ "$silent" == "silent" ]] && echo >&2
@@ -53,9 +53,12 @@ webui_port_in_use() {
   timeout 1 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" >/dev/null 2>&1
 }
 
+# Er der en terminal at spørge i? /dev/tty kan godt være læsbar uden at kunne åbnes (fx når Fleetdeck installerer).
+has_tty() { [[ -t 0 ]] || { : </dev/tty; } 2>/dev/null; }
+
 select_webui_port() {
   local requested="${KIOSK_WEBUI_PORT:-8080}" interactive=0
-  [[ -t 0 || -r /dev/tty ]] && interactive=1
+  has_tty && interactive=1
   while true; do
     if ! valid_webui_port "$requested"; then
       echo "Web-UI-port skal være et helt tal mellem 1024 og 65535: $requested" >&2
@@ -127,7 +130,7 @@ if [[ -z "$CONFIGURE_NOW" ]]; then
   ans=""
   if [[ -t 0 ]]; then
     read -rp "Konfigurer nu i terminalen? [J/n]: " ans
-  elif [[ -r /dev/tty ]]; then
+  elif { : </dev/tty; } 2>/dev/null; then
     read -rp "Konfigurer nu i terminalen? [J/n]: " ans </dev/tty
   fi
   if [[ "$ans" =~ ^[Nn] ]]; then
@@ -275,7 +278,7 @@ chmod +x "$HOME/kiosk/webui/server.py"
 
 echo "== Installerer systemd user services =="
 mkdir -p "$HOME/.config/systemd/user"
-cp "$SRC_DIR"/systemd/*.service "$SRC_DIR"/systemd/*.timer "$HOME/.config/systemd/user/"
+cp "$SRC_DIR"/systemd/*.service "$SRC_DIR"/systemd/*.timer "$SRC_DIR"/systemd/*.target "$HOME/.config/systemd/user/"
 systemctl --user daemon-reload
 systemctl --user enable kiosk-chrome.service kiosk-mqtt-stats.service \
   kiosk-mqtt-control.service kiosk-watchdog.service kiosk-health.service kiosk-webui.service \
@@ -335,6 +338,48 @@ if [[ -n "${DISPLAY:-}" ]]; then
   echo "ON" > "$HOME/kiosk/keyboard_state"
 else
   echo "Ingen grafisk session lige nu — sæt den til fra web-UI'et (Keyboard) eller Home Assistant efter reboot."
+fi
+
+# GNOME 49+ (fx Ubuntu 26.04) har ingen X11-session: så bruger kiosken sin egen lille X11-session
+# (LightDM med autologin + Openbox, X uden markør; touch via libinput), så xdotool, xset/DPMS, x11vnc og RustDesk virker.
+# KIOSK_SESSION=x11 tvinger den, KIOSK_SESSION=desktop beholder skrivebordets egen session.
+gnome_has_x11() { ls /usr/share/xsessions/*.desktop >/dev/null 2>&1 && grep -lqiE 'gnome|ubuntu' /usr/share/xsessions/*.desktop 2>/dev/null; }
+KIOSK_SESSION="${KIOSK_SESSION:-auto}"
+if [[ "$KIOSK_SESSION" == "auto" ]]; then
+  KIOSK_SESSION=desktop
+  if [[ "$DISPLAY_MANAGER" == "gdm3" ]] && ! gnome_has_x11; then KIOSK_SESSION=x11; fi
+fi
+if [[ "$KIOSK_SESSION" == "x11" ]]; then
+  echo "== Installerer X11-kiosksession (LightDM + Openbox, ingen markør) for $USER =="
+  ts="$(date +%Y%m%d-%H%M%S)"
+  if [[ -f /etc/gdm3/custom.conf ]]; then sudo cp /etc/gdm3/custom.conf "/etc/gdm3/custom.conf.bak.$ts"; fi
+  echo "lightdm shared/default-x-display-manager select lightdm" | sudo debconf-set-selections
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::=--force-confold \
+    lightdm lightdm-gtk-greeter openbox xserver-xorg-core xserver-xorg-input-libinput xinit
+  sudo mkdir -p /usr/share/xsessions /etc/lightdm/lightdm.conf.d
+  printf '%s\n' '[Desktop Entry]' 'Name=Kiosk (X11)' \
+    'Comment=Kiosk Warden: Chrome-kiosk på X11 med Openbox – touch, ingen markør' \
+    "Exec=$HOME/kiosk/x11-kiosk-session.sh" 'Type=Application' 'DesktopNames=Kiosk' \
+    | sudo tee /usr/share/xsessions/kiosk-x11.desktop >/dev/null
+  printf '%s\n' '# Kiosk Warden: autologin i X11-kiosksessionen; X uden markør (touch virker stadig)' '[Seat:*]' \
+    "autologin-user=$USER" 'autologin-user-timeout=0' 'autologin-session=kiosk-x11' 'user-session=kiosk-x11' \
+    'xserver-command=X -nocursor' 'greeter-session=lightdm-gtk-greeter' \
+    | sudo tee /etc/lightdm/lightdm.conf.d/50-kiosk-warden.conf >/dev/null
+  sudo groupadd -f autologin
+  sudo usermod -aG autologin "$USER"
+  echo /usr/sbin/lightdm | sudo tee /etc/X11/default-display-manager >/dev/null
+  sudo systemctl disable gdm3 >/dev/null 2>&1 || true
+  sudo systemctl enable lightdm >/dev/null 2>&1 || sudo ln -sf /usr/lib/systemd/system/lightdm.service /etc/systemd/system/display-manager.service
+  # GNOME-tjenester uden mening i kiosksessionen (velkomstguiden efter opgradering, Bluetooth-mediestyring) fejler ellers ved hver login
+  systemctl --user mask gnome-initial-setup-upgrade-login.service mpris-proxy.service snap.firmware-updater.firmware-notifier.service >/dev/null 2>&1 || true
+  DISPLAY_MANAGER=lightdm-kiosk
+  echo "X11-kiosksession klar efter genstart. Tilbage til GDM: sudo sh ~/kiosk/rollback-to-gdm.sh"
+fi
+
+# LightDM kiosks (also the X11 kiosk session just set up above): lets the watchdog restart LightDM by itself when the kiosk session has ended and only the login screen
+# shows (see the README). Not fatal if it cannot run now; the watchdog logs how to do it later.
+if [[ "$DISPLAY_MANAGER" == lightdm* ]]; then
+  sudo "$HOME/kiosk/setup-display-recovery.sh" || echo "Run later: sudo ~/kiosk/setup-display-recovery.sh"
 fi
 
 if [[ "$DISPLAY_MANAGER" == "gdm3" && -f /etc/gdm3/custom.conf ]]; then

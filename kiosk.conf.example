@@ -33,3 +33,10 @@ WEBUI_PASSWORD_HASH=""
 HA_URL=""
 HA_TOKEN=""
 HA_POWER_ENTITY=""
+
+# LightDM kiosks only: the watchdog restarts LightDM when the kiosk session has ended and only the login screen shows
+# (needs the one-time "sudo ~/kiosk/setup-display-recovery.sh"). Set to false to turn it off.
+# KIOSK_DISPLAY_RECOVERY=true
+
+# Extra patterns (relative to $HOME) kept out of ~/kiosk backups, e.g. files that hold secrets.
+# KIOSK_BACKUP_EXCLUDE="kiosk/some-secret* kiosk/.other-secret*"

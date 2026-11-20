@@ -63,6 +63,15 @@ recover() {
   echo "$reason" >> "$HOME/kiosk/recovery.log"
 }
 
+# A problem has to be seen on two checks in a row (20 s apart) before it is recovered. A page that is only reloading
+# (Home Assistant's standby refresh) is blank or has no page for a moment; recovering it then reloaded or restarted
+# Chrome on top of the reload (and, before Kiosk Warden 1.24.0, also woke the dark screen).
+SEEN_PROBLEM=""
+confirm_recover() {
+  local reason="$1" kind="$2"
+  if [[ "$SEEN_PROBLEM" == "$kind" ]]; then SEEN_PROBLEM=""; recover "$reason"; else SEEN_PROBLEM="$kind"; fi
+}
+
 while true; do
   source "$HOME/kiosk/kiosk.conf"
   title="$(page_field title)"
@@ -72,10 +81,17 @@ while true; do
 
   if [[ "$chrome_running" != "on" ]]; then
     if chrome_service_starting; then
+      SEEN_PROBLEM=""
       publish_health "STARTING" "Chrome is starting"
     else
-      publish_health "OFF" "Chrome is not running"
-      recover "Chrome not running"
+      # Written by display-guard.sh (watchdog): "missing" = the kiosk session ended and only the login screen shows.
+      case "$(cat "$HOME/kiosk/display_session" 2>/dev/null)" in
+        missing|recovering) publish_health "OFF" "No graphical session (login screen showing); Kiosk Warden restarts LightDM" ;;
+        not-set-up) publish_health "OFF" "No graphical session (login screen showing); run: sudo ~/kiosk/setup-display-recovery.sh" ;;
+        rate-limited) publish_health "OFF" "No graphical session (login screen showing); automatic recovery gave up for now (3 restarts per hour)" ;;
+        *) publish_health "OFF" "Chrome is not running" ;;
+      esac
+      confirm_recover "Chrome not running" chrome
     fi
   elif [[ -f "$FALLBACK_FILE" ]]; then
     if primary_available; then
@@ -86,17 +102,18 @@ while true; do
     fi
   elif [[ -z "$url" ]]; then
     publish_health "OFF" "Chrome has no debuggable page"
-    recover "No Chrome page"
+    confirm_recover "No Chrome page" nopage
   elif [[ "$url" == "chrome-error://"* || "$title" == *"Aw, Snap"* || "$title" == *"This site can"* ]]; then
     publish_health "OFF" "Chrome error page: $title $url"
-    recover "Chrome error page: $title $url"
+    confirm_recover "Chrome error page: $title $url" error
   elif [[ "$url" != "$KIOSK_URL"* ]]; then
     publish_health "OFF" "Unexpected URL: $url"
-    recover "Unexpected URL: $url"
+    confirm_recover "Unexpected URL: $url" url
   elif [[ -z "$title" || "$title" == "about:blank" || "$title" == "New Tab" ]]; then
     publish_health "OFF" "Blank-looking page: title='$title' url='$url'"
-    recover "Blank-looking page: $title $url"
+    confirm_recover "Blank-looking page: $title $url" blank
   else
+    SEEN_PROBLEM=""
     printf '0\n' > "$FAIL_COUNT_FILE"
     publish_health "ON" "OK: $title"
   fi

@@ -42,13 +42,20 @@ wait_geometry() {
   return 1
 }
 
+# The page state a recovery has to bring back: a screen that was put to sleep stays asleep (its page idle, the monitor
+# off). Before 1.24.0 every recovery woke it: a page that was only reloading in standby (Home Assistant's refresh every
+# 10 minutes) looked broken for a moment, health-check "recovered" it, and the dark kiosk ran its 3D page and camera
+# streams at full power, with the monitor on, while Home Assistant still showed the screen as off.
+WANT=active
+want_state() { [[ "$(cat "$SCREEN_FILE" 2>/dev/null || echo ON)" == OFF ]] && echo idle || echo active; }
+
 verify_page() {
   local page url fallback
   page="$(chrome_page_json)"; [[ -n "$page" ]] || return 1
   url="$(jq -r '.url // ""' <<<"$page")"
   fallback="${KIOSK_WEBUI_SCHEME:-http}://127.0.0.1:${KIOSK_WEBUI_PORT:-8080}/offline"
   [[ "$url" == "$KIOSK_URL"* || ( -f "$KIOSK_DIR/fallback_active" && "$url" == "$fallback"* ) ]] || return 1
-  "$CHROME_LIFECYCLE" verify >/dev/null
+  "$CHROME_LIFECYCLE" verify "$WANT" >/dev/null
 }
 
 verify_wake() {
@@ -60,6 +67,8 @@ verify_wake() {
 wait_verify_wake() {
   local tries="${KIOSK_WAKE_VERIFY_TRIES:-8}"
   for _ in $(seq 1 "$tries"); do
+    # A reloaded page restores its idle state itself, a restarted Chrome does not: tell it again until it answers.
+    if [[ "$WANT" == idle ]]; then "$CHROME_LIFECYCLE" idle >/dev/null 2>&1 || true; fi
     verify_wake && return 0
     sleep 1
   done
@@ -69,10 +78,12 @@ wait_verify_wake() {
 recover_staged() {
   local reason="${1:-verification failed}" step
   write_state RECOVERING "$reason"
+  WANT="$(want_state)"
   for step in resize resume reload restart; do
     case "$step" in
-      resize) screen_prepare_on; wait_geometry || true ;;
-      resume) "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true ;;
+      # Switching the output on would wake a sleeping monitor.
+      resize) [[ "$WANT" == active ]] || continue; screen_prepare_on; wait_geometry || true ;;
+      resume) "$CHROME_LIFECYCLE" "$WANT" >/dev/null 2>&1 || true ;;
       reload) "$CHROME_LIFECYCLE" reload >/dev/null 2>&1 || true; sleep 3 ;;
       restart) systemctl --user restart kiosk-chrome.service; sleep 6 ;;
     esac
@@ -123,7 +134,10 @@ flock -w 30 9 || { echo 'State transition already in progress' >&2; exit 75; }
 case "${1:-status}" in
   on|wake) wake "${2:-command}" ;;
   off|sleep) sleep_screen ;;
-  recover) recover_staged "${2:-manual recovery}" && screen_show && write_state ON "recovery verified" ;;
+  recover)
+    recover_staged "${2:-manual recovery}" || exit 1
+    if [[ "$WANT" == idle ]]; then screen_hide || true; write_state OFF "recovery verified (screen kept off)"
+    else screen_show; write_state ON "recovery verified"; fi ;;
   verify) verify_wake ;;
   status) status ;;
   *) echo 'Usage: warden-state.sh on|off|recover|verify|status' >&2; exit 2 ;;

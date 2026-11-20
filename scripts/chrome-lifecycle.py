@@ -53,6 +53,8 @@ def main() -> int:
         return 2
     state = sys.argv[1]
     navigate_url = sys.argv[2] if state == "navigate" and len(sys.argv) == 3 else ""
+    # "verify idle" checks a page that should rest (screen off); plain "verify" expects it running.
+    expected = sys.argv[2] if state == "verify" and len(sys.argv) == 3 and sys.argv[2] in {"active", "idle"} else "active"
     if state == "navigate" and not navigate_url.startswith(("http://", "https://", "file://")):
         print("Navigation URL must use http, https, or file", file=sys.stderr)
         return 2
@@ -142,7 +144,7 @@ def main() -> int:
                 and int(viewport.get("width") or 0) >= min_width
                 and int(viewport.get("height") or 0) >= min_height
                 and float(layout.get("bodyWidth") or 0) >= max(320, min_width * 0.8)
-                and (not details.get("supported") or details.get("state") == "active")
+                and (not details.get("supported") or details.get("state") == expected)
             )
             return 0 if valid else 1
     finally:
