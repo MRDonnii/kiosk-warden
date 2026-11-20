@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.25.0 — 2026-11-20
+
+- **New look.** The web UI uses the same design as the other household apps: a new shell with a side menu (a fixed menu on wide screens, a menu that closes after a choice on phones) and a choice between two layouts.
+- **Search at the top.** A search field in the top bar searches every page; phones get a search button.
+- **Sign-in from Kontrolrum.** Kontrolrum can sign you in with a short-lived signed assertion instead of a stored password. Turn it on under Settings → Login from Kontrolrum: create a key, paste it into Kontrolrum, and choose which Kontrolrum addresses and users may sign in. Each assertion is used once, expires quickly and is bound to the address it came from; a forged or reused assertion is refused.
+- Backups leave out the sign-in key files.
+
 ## v1.24.2 — 2026-11-20
 
 - Home Assistant's **Refresh** and **Hard reload** buttons reload the page through Chrome's debug port. A key press only reaches a focused window, and in the X11 kiosk session F5 never reloaded the page, so Refresh did nothing (e.g. a periodic standby refresh). Hard reload bypasses the browser cache. The page keeps its idle state across the reload, so a refresh with the screen off stays dark and quiet.
