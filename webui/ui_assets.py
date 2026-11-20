@@ -512,13 +512,6 @@ fieldset .grid { margin: 0 0 4px; }
 .kv-grid .k { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dimmed); }
 .kv-grid .k svg.i { width: 14px; height: 14px; }
 .kv-grid .v { font-weight: 600; margin-top: 2px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
-.chart-card { background: var(--fd-card); border: 1px solid var(--fd-border); border-radius: var(--r-default); box-shadow: var(--fd-shadow); padding: 16px; min-width: 0; }
-[data-skin='aurora'] .chart-card { backdrop-filter: blur(16px); }
-.chart-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; font-size: 16px; font-weight: 650; color: var(--bright); }
-.chart-title small { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--dimmed); white-space: nowrap; }
-.chart-card .legend { margin: -2px 0 8px; }
-canvas.telemetry-chart { display: block; width: 100%; height: 170px; }
 .update-alert { color: inherit; }
 
 /* Kiosk page tabs (Mantine Tabs) */
@@ -586,7 +579,6 @@ canvas.telemetry-chart { display: block; width: 100%; height: 170px; }
 
 @media (max-width: 48em) {
   .tab-cols { grid-template-columns: minmax(0, 1fr); }
-  .charts { grid-template-columns: minmax(0, 1fr); }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .kpis > .fd-kpi-hero { grid-column: 1 / -1; }
   .kv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -613,6 +605,93 @@ label.fd-search { margin: 0; font-weight: 400; }
   .alert { flex-wrap: wrap; gap: 8px 16px; }
   .alert > div { flex: 1 1 calc(100% - 40px) !important; }
   .alert > .btn { margin-left: 36px; }
+}
+/* ---------- Grafer på Status (kg-): server-renderet SVG, farver pr. tema (valideret for farveblindhed) ---------- */
+[data-theme='light'] { --kg-s1: #2a78d6; --kg-s2: #eb6834; --kg-s3: #1baf7a; --kg-grid: #ececef; --kg-axis: #d4d4d8;
+  --kg-on: #b7d3f6; --kg-off: #dcdce1; --kg-hatch: #e4e4e7; --kg-tip: #fff; }
+[data-theme='dark'] { --kg-s1: #3987e5; --kg-s2: #d95926; --kg-s3: #199e70; --kg-grid: #202026; --kg-axis: #34343c;
+  --kg-on: #1c4a85; --kg-off: #2c2c33; --kg-hatch: #26262c; --kg-tip: #1c1c21; }
+.kg-panel { background: var(--fd-card); border: 1px solid var(--fd-border); border-radius: var(--r-default); box-shadow: var(--fd-shadow); padding: 16px 20px 18px; min-width: 0; --kg-l: 96px; }
+[data-skin='aurora'] .kg-panel { backdrop-filter: blur(16px); }
+.kg-panel [hidden] { display: none !important; }
+.kg-panel-head { display: flex; align-items: center; gap: 6px 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.kg-panel-head h2 { margin: 0; font-size: 16px; font-weight: 650; color: var(--bright); }
+.kg-panel-head .kg-note { font-size: 12px; color: var(--dimmed); }
+.kg-panel-head .seg { margin-left: auto; }
+.kg-body { transition: opacity .2s; }
+.kg-panel[data-loading] .kg-body { opacity: .45; }
+.kg-stack { display: grid; gap: 22px; }
+.kg-charts { margin-top: 22px; }
+.kg-block { min-width: 0; }
+.kg-block h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; color: var(--bright); display: flex; gap: 8px; align-items: baseline; }
+.kg-block h3 small { font-weight: 400; color: var(--dimmed); font-size: 12px; }
+.kg-empty { display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--dimmed); border: 1px dashed var(--fd-border); border-radius: var(--r-md, 8px); }
+.kg-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--dimmed); margin: 0 0 6px; }
+.kg-legend i { display: inline-block; width: 12px; height: 2px; border-radius: 2px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+.kg-legend i.band { height: 8px; opacity: .3; }
+.kg-chart { display: grid; grid-template-columns: var(--kg-l) minmax(0, 1fr) var(--kg-r, 76px); grid-template-rows: var(--kg-h, 150px) 22px; }
+.kg-y { grid-column: 1; grid-row: 1; position: relative; font-size: 11px; color: var(--dimmed); font-variant-numeric: tabular-nums; }
+.kg-y span { position: absolute; right: 8px; transform: translateY(-50%); white-space: nowrap; }
+.kg-plot { grid-column: 2; grid-row: 1; position: relative; outline: none; touch-action: pan-y; cursor: crosshair; }
+.kg-plot:focus-visible { box-shadow: 0 0 0 2px var(--primary); border-radius: 4px; }
+.kg-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.kg-svg line { vector-effect: non-scaling-stroke; stroke-width: 1; }
+.kg-svg .kg-grid { stroke: var(--kg-grid); } .kg-svg .kg-base { stroke: var(--kg-axis); }
+.kg-line { fill: none; stroke: var(--c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.kg-area { stroke: none; fill: var(--c); opacity: .10; } .kg-band { stroke: none; fill: var(--c); opacity: .16; }
+[data-theme='dark'] .kg-band { opacity: .26; }
+.kg-panel .s1 { --c: var(--kg-s1); } .kg-panel .s2 { --c: var(--kg-s2); } .kg-panel .s3 { --c: var(--kg-s3); }
+.kg-end, .kg-hdot { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px var(--fd-card); transform: translate(-50%, -50%); pointer-events: none; }
+.kg-endlab { position: absolute; left: calc(100% + 10px); transform: translateY(-50%); font-size: 12px; color: var(--dimmed); white-space: nowrap; }
+.kg-endlab b { color: var(--bright); font-weight: 600; }
+.kg-x { grid-column: 2; grid-row: 2; position: relative; font-size: 11px; color: var(--dimmed); font-variant-numeric: tabular-nums; }
+.kg-x span { position: absolute; top: 6px; transform: translateX(-50%); white-space: nowrap; }
+.kg-cross { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--dimmed); opacity: .6; display: none; pointer-events: none; }
+.kg-tip { position: absolute; top: 4px; z-index: 5; min-width: 150px; max-width: 320px; padding: 8px 10px; border-radius: var(--r-sm, 8px); background: var(--kg-tip);
+  border: 1px solid var(--fd-border); box-shadow: 0 8px 24px rgba(0,0,0,.18); font-size: 12px; pointer-events: none; }
+.kg-tip .h { color: var(--dimmed); margin-bottom: 4px; }
+.kg-tip .r { display: flex; align-items: center; gap: 8px; line-height: 1.6; white-space: nowrap; }
+.kg-tip .r.w { white-space: normal; align-items: flex-start; }
+.kg-tip .r i { width: 12px; height: 2px; border-radius: 2px; background: var(--c); flex: none; }
+.kg-tip .r b { color: var(--bright); font-weight: 650; font-variant-numeric: tabular-nums; } .kg-tip .r span { color: var(--dimmed); }
+.kg-tip .r i.st { height: 8px; width: 8px; }
+.kg-tip .r svg { width: 11px; height: 11px; fill: var(--fd-warn); flex: none; margin-top: 4px; }
+.kg-tip .mm { color: var(--dimmed); font-size: 11px; margin-left: auto; padding-left: 8px; }
+.kg-more { margin-top: 16px; font-size: 13px; }
+.kg-more summary { cursor: pointer; color: var(--text); font-size: 13px; }
+.kg-more > .kg-stack { margin-top: 14px; }
+.kg-table-wrap { max-height: 300px; overflow: auto; margin-top: 8px; border: 1px solid var(--fd-border); border-radius: var(--r-md, 8px); }
+.kg-table-wrap td, .kg-table-wrap th { font-variant-numeric: tabular-nums; padding: 6px 10px; white-space: nowrap; text-align: right; }
+.kg-table-wrap th[scope='row'], .kg-table-wrap thead th:first-child { text-align: left; font-weight: 500; }
+/* Tidslinje: Ingen data er skraveret, så det ikke kan forveksles med Skærm slukket */
+.kg-tl { grid-template-rows: auto 22px; }
+.kg-tl-lab { display: flex; flex-direction: column; }
+.kg-tl-lab span { position: static; transform: none; height: 18px; line-height: 18px; margin-bottom: 10px; text-align: right; padding-right: 8px; color: var(--dimmed); font-size: 12px; }
+.kg-tl-row, .kg-keys i.st-none { background: repeating-linear-gradient(135deg, transparent 0 4px, var(--kg-hatch) 4px 6px); }
+.kg-tl-row { position: relative; height: 18px; margin-bottom: 10px; border-radius: 4px; overflow: hidden; }
+.kg-tl-row i { position: absolute; top: 0; bottom: 0; }
+.kg-tl-row i + i { box-shadow: inset 2px 0 0 var(--fd-card); }
+.kg-tl-row i.st-bad { z-index: 1; min-width: 4px; border-radius: 1px; box-shadow: 0 0 0 1px var(--fd-card); }
+.kg-panel .st-ok { background: color-mix(in srgb, var(--fd-ok) 60%, var(--fd-card)); } .kg-panel .st-bad { background: var(--fd-bad); }
+.kg-panel .st-on { background: var(--kg-on); } .kg-panel .st-off { background: var(--kg-off); } .kg-panel .st-unk { background: var(--fd-off); }
+.kg-tl-ev { background: none; overflow: visible; border-top: 1px solid var(--kg-grid); border-radius: 0; }
+.kg-tl-ev .ev { position: absolute; top: 2px; width: 14px; height: 14px; transform: translateX(-50%); }
+.kg-tl-ev .ev svg { width: 14px; height: 14px; fill: var(--fd-warn); stroke: var(--fd-card); stroke-width: 1.5; }
+.kg-tl-ev .ev-bad svg { fill: var(--fd-bad); }
+.kg-stats { display: flex; gap: 12px 28px; flex-wrap: wrap; margin: 0 0 16px; }
+.kg-stats div { font-size: 12px; color: var(--dimmed); } .kg-stats b { display: flex; align-items: center; gap: 6px; font-size: 20px; font-weight: 650; color: var(--bright); font-variant-numeric: tabular-nums; }
+.kg-stats svg { width: 12px; height: 12px; fill: var(--fd-warn); }
+.kg-keys { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 12px; color: var(--dimmed); margin: 4px 0 0 var(--kg-l); }
+.kg-keys i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.kg-keys i.st-off, .kg-keys i.st-none { outline: 1px solid var(--fd-border); }
+.kg-keys svg { width: 11px; height: 11px; fill: var(--fd-warn); margin-right: 5px; vertical-align: -1px; }
+@media (forced-colors: active) { .kg-line { stroke: CanvasText; } .kg-tl-row i { forced-color-adjust: none; } }
+@media (max-width: 600px) {
+  .kg-panel { padding: 14px 12px; --kg-l: 64px; } .kg-chart { --kg-r: 8px; } .kg-endlab { display: none; }
+  .kg-panel-head .kg-note { flex-basis: 100%; } .kg-panel-head .seg { margin-left: 0; }
+  .kg-pane[data-range='7d'] .kg-x span:nth-child(even) { display: none; }
+  .kg-stats { gap: 12px 22px; } .kg-stats b { font-size: 17px; }
+  .kg-keys { margin-left: 0; }
 }
 """
 
@@ -770,6 +849,113 @@ APP_JS = r"""// Kiosk Warden UI: appearance (Fleetdeck Command/Aurora), menus, "
   });
 
   applyLook();
+})();
+// Grafer på Status (charts.py): fælles krydshår og tooltip, piletaster, tidsvalg og opdatering af et HTML-fragment.
+(function () {
+  var panel = document.getElementById('kgPanel');
+  if (!panel) return;
+  var body = panel.querySelector('.kg-body');
+  var charts = [], timer = null, busy = false, active = false;
+  var da = document.documentElement.lang === 'da', LOC = da ? 'da-DK' : 'en-GB';
+  var fmt = function (v, dec) { return v == null ? '–' : v.toLocaleString(LOC, { minimumFractionDigits: dec, maximumFractionDigits: dec }); };
+  var unit = function (u) { return u === '%' ? '%' : ' ' + u; };
+  var el = function (tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  var DAYS = da ? ['søn', 'man', 'tir', 'ons', 'tor', 'fre', 'lør'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+  function when(t, range) { var d = new Date(t * 1000), hm = p2(d.getHours()) + ':' + p2(d.getMinutes());
+    if (range === '7d') return DAYS[d.getDay()] + ' ' + d.getDate() + (da ? '. kl. ' : ' ') + hm;
+    return range === '1t' ? hm + ':' + p2(d.getSeconds()) : hm; }
+  function nearest(d, t) { var lo = 0, hi = d.t.length - 1; while (hi - lo > 1) { var m = (lo + hi) >> 1; if (d.t[m] < t) lo = m; else hi = m; }
+    return Math.abs(d.t[lo] - t) <= Math.abs(d.t[hi] - t) ? lo : hi; }
+  function clear(c) { c.cross.style.display = 'none'; c.tip.hidden = true; c.dots.forEach(function (x) { x.remove(); }); c.dots = []; }
+  function place(c, xPct) { c.tip.hidden = false; var w = c.plot.clientWidth, tw = c.tip.offsetWidth, x = xPct / 100 * w;
+    c.tip.style.left = (x + 14 + tw > w ? Math.max(0, x - 14 - tw) : x + 14) + 'px'; }
+  function show(c, t, withTip) {
+    if (!c.plot.offsetParent) return;
+    var d = c.d; if (t < d.t0 || t > d.t1) { clear(c); return; }
+    c.dots.forEach(function (x) { x.remove(); }); c.dots = [];
+    if (d.timeline) {
+      var xp = (t - d.t0) / (d.t1 - d.t0) * 100; c.cross.style.display = 'block'; c.cross.style.left = xp + '%';
+      if (!withTip) { c.tip.hidden = true; return; }
+      c.tip.replaceChildren(el('div', 'h', when(t, d.range)));
+      d.rows.forEach(function (row) { var s = (d.spans[row[1]] || []).find(function (s) { return s[0] <= t && t < s[1]; }); var r = el('div', 'r');
+        r.append(el('i', 'st ' + (s ? s[3] : 'st-none')), el('b', null, s ? s[2] : (da ? 'Ingen data' : 'No data')), el('span', null, row[0])); c.tip.append(r); });
+      var win = (d.t1 - d.t0) / 60;
+      d.ev.filter(function (e) { return Math.abs(e[0] - t) < win; }).forEach(function (e) { var r = el('div', 'r w');
+        r.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1 11 10H1Z"/></svg>');
+        var txt = el('span'); txt.append(el('b', null, e[3] + ' · ' + e[1]), document.createTextNode(e[2] ? ' – ' + e[2] : '')); r.append(txt); c.tip.append(r); });
+      place(c, xp); return;
+    }
+    var i = nearest(d, t), x = (d.t[i] - d.t0) / (d.t1 - d.t0) * 100;
+    if (Math.abs(d.t[i] - t) > d.gap) { clear(c); c.cross.style.display = 'block'; c.cross.style.left = ((t - d.t0) / (d.t1 - d.t0) * 100) + '%'; return; }
+    c.cross.style.display = 'block'; c.cross.style.left = x + '%';
+    d.s.forEach(function (s) { var v = s.v[i]; if (v == null) return; var dot = el('i', 'kg-hdot s' + s.slot);
+      dot.style.left = x + '%'; dot.style.top = (100 - (Math.min(Math.max(v, d.lo), d.hi) - d.lo) / (d.hi - d.lo) * 100) + '%'; c.plot.append(dot); c.dots.push(dot); });
+    if (!withTip) { c.tip.hidden = true; return; }
+    c.tip.replaceChildren(el('div', 'h', when(d.t[i], d.range)));
+    d.s.forEach(function (s) { var r = el('div', 'r s' + s.slot); r.append(el('i'), el('b', null, s.v[i] == null ? '–' : fmt(s.v[i], d.dec) + unit(d.unit)));
+      if (d.s.length > 1) r.append(el('span', null, s.label));
+      if (s.mm && s.mm[i]) r.append(el('span', 'mm', 'min ' + fmt(s.mm[i][0], d.dec) + (da ? ' · maks ' : ' · max ') + fmt(s.mm[i][1], d.dec)));
+      c.tip.append(r); });
+    place(c, x);
+  }
+  function sync(src, t) { active = true; charts.forEach(function (c) { if (c.el.dataset.group === src.el.dataset.group) show(c, t, c === src); }); }
+  function unsync() { active = false; charts.forEach(clear); }
+  function init() {
+    charts = Array.prototype.map.call(body.querySelectorAll('.kg-chart'), function (el) {
+      return { el: el, plot: el.querySelector('.kg-plot'), d: JSON.parse(el.querySelector('.kg-data').textContent),
+        cross: el.querySelector('.kg-cross'), tip: el.querySelector('.kg-tip'), dots: [] };
+    });
+    charts.forEach(function (c) {
+      var tAt = function (ev) { var r = c.plot.getBoundingClientRect(); return c.d.t0 + Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)) * (c.d.t1 - c.d.t0); };
+      c.plot.addEventListener('pointermove', function (ev) { c.cur = tAt(ev); sync(c, c.cur); });
+      c.plot.addEventListener('pointerdown', function (ev) { c.cur = tAt(ev); sync(c, c.cur); });
+      c.plot.addEventListener('pointerleave', function (ev) { if (ev.pointerType === 'mouse') unsync(); });
+      c.plot.addEventListener('blur', unsync);
+      c.plot.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') { unsync(); return; }
+        if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return; ev.preventDefault();
+        var span = c.d.t1 - c.d.t0, step = c.d.t ? span / Math.max(1, c.d.t.length) : span / 96;
+        c.cur = Math.min(c.d.t1, Math.max(c.d.t0, (c.cur == null ? c.d.t1 : c.cur) + (ev.key === 'ArrowLeft' ? -step : step))); sync(c, c.cur);
+      });
+    });
+  }
+  document.addEventListener('pointerdown', function (ev) { if (active && !ev.target.closest('.kg-plot')) unsync(); });
+  function range() { return panel.dataset.range; }
+  function schedule() {
+    clearTimeout(timer);
+    var b = panel.querySelector('[data-kg-range="' + range() + '"]');
+    timer = setTimeout(function () { load(range(), true); }, (b ? +b.dataset.refresh : 60) * 1000);
+  }
+  function load(key, quiet) {
+    if (busy) { if (!quiet) panel.setAttribute('data-loading', ''); return; }
+    if (quiet && (document.hidden || active)) { schedule(); return; }
+    busy = true; if (!quiet) panel.setAttribute('data-loading', '');
+    fetch('/api/charts?range=' + encodeURIComponent(key), { cache: 'no-store', credentials: 'same-origin' })
+      .then(function (r) {
+        if (r.redirected) { location.reload(); throw new Error('login'); }  // the session ran out
+        if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function (text) {
+        var open = {}; body.querySelectorAll('details[data-k]').forEach(function (d) { open[d.dataset.k] = d.open; });
+        var scroll = body.querySelector('.kg-table-wrap'); var top = scroll ? scroll.scrollTop : 0;
+        unsync(); body.innerHTML = text;
+        body.querySelectorAll('details[data-k]').forEach(function (d) { if (open[d.dataset.k]) d.open = true; });
+        scroll = body.querySelector('.kg-table-wrap'); if (scroll) scroll.scrollTop = top;
+        init();
+      })
+      .catch(function () {})
+      .then(function () { busy = false; panel.removeAttribute('data-loading');
+        if (range() !== key) load(range(), false); else schedule(); });  // a period picked while loading
+  }
+  panel.addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-kg-range]'); if (!b) return;
+    var key = b.dataset.kgRange; panel.dataset.range = key;
+    panel.querySelectorAll('[data-kg-range]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+    document.cookie = 'kw_range=' + key + '; path=/; max-age=31536000; SameSite=Lax';
+    load(key, false);
+  });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) load(range(), true); });
+  init(); schedule();
 })();
 """
 

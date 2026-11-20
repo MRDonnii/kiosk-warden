@@ -4,6 +4,8 @@ set -euo pipefail
 KIOSK_DIR="${KIOSK_DIR:-$HOME/kiosk}"
 source "$KIOSK_DIR/kiosk.conf"
 source "$KIOSK_DIR/screen-backend.sh"
+# Recoveries also go to events.jsonl (the timeline on the Status page).
+source "$KIOSK_DIR/kiosk-event.sh" 2>/dev/null || kiosk_event() { :; }
 STATE_FILE="$KIOSK_DIR/warden_state.json"
 LOCK_FILE="$KIOSK_DIR/warden-state.lock"
 CHROME_LIFECYCLE="$KIOSK_DIR/chrome-lifecycle.py"
@@ -89,9 +91,12 @@ recover_staged() {
     esac
     if wait_verify_wake; then
       printf '%s %s: %s\n' "$(date -Iseconds)" "$step" "$reason" >>"$KIOSK_DIR/recovery.log"
+      kiosk_event recovery "$step" "$reason" warden
       return 0
     fi
   done
+  printf '%s failed: %s\n' "$(date -Iseconds)" "$reason" >>"$KIOSK_DIR/recovery.log"
+  kiosk_event recovery failed "$reason" warden
   return 1
 }
 

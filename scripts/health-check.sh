@@ -2,6 +2,7 @@
 set -euo pipefail
 export LC_ALL=C
 source "$HOME/kiosk/mqtt-lib.sh"
+source "$HOME/kiosk/kiosk-event.sh" 2>/dev/null || kiosk_event() { :; }
 
 STATE_FILE="$HOME/kiosk/health_state"
 DETAIL_FILE="$HOME/kiosk/health_detail"
@@ -54,13 +55,16 @@ recover() {
   failures=$((failures + 1))
   printf '%s\n' "$failures" > "$FAIL_COUNT_FILE"
 
+  # warden-state.sh logs the step that worked (or that every step failed) itself.
   if ! "$HOME/kiosk/warden-state.sh" recover "$reason" >/dev/null 2>&1; then
-    activate_fallback || true
+    if activate_fallback; then
+      printf '%s fallback: %s\n' "$(date -Iseconds)" "$reason" >>"$HOME/kiosk/recovery.log"
+      kiosk_event recovery fallback "$reason" health-check
+    fi
   fi
   (( failures >= 2 )) && printf '0\n' > "$FAIL_COUNT_FILE"
 
   date -Iseconds > "$LAST_RECOVERY_FILE"
-  echo "$reason" >> "$HOME/kiosk/recovery.log"
 }
 
 # A problem has to be seen on two checks in a row (20 s apart) before it is recovered. A page that is only reloading

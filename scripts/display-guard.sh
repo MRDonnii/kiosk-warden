@@ -51,7 +51,8 @@ display_guard_tick() {
   rc=0
   $cmd >/dev/null 2>&1 || rc=$?
   case "$rc" in
-    0)  _dg_log "no graphical session for $((now - DISPLAY_BROKEN_SINCE))s (login screen showing); restarted lightdm"; _dg_state recovering ;;
+    0)  _dg_log "no graphical session for $((now - DISPLAY_BROKEN_SINCE))s (login screen showing); restarted lightdm"; _dg_state recovering
+        if declare -F kiosk_event >/dev/null; then kiosk_event recovery lightdm "No graphical session (login screen showing)" display-guard; fi ;;
     10) _dg_log "root helper sees a session or a login in progress; waiting" ;;
     11) _dg_log "root helper is rate limited (3 restarts per hour); giving up for now"; _dg_state rate-limited ;;
     12|13) _dg_log "autologin is not set up for this user or lightdm is not the display manager (helper answered $rc)"; _dg_state not-set-up ;;

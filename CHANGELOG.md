@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.26.0 — 2026-11-20
+
+- **New charts on Status.** One panel, "Health and load", with a shared time axis and a choice of 1 hour, 6 hours, 24 hours or 7 days. At the top are the key figures for the period: how much of the time the kiosk was OK, recoveries, Chrome restarts, how much of the time the screen was on, and the highest CPU. Under them a timeline shows the kiosk (OK/error), Chrome (running/stopped) and the screen (on/off) with a ▲ for every recovery, followed by Load (CPU/RAM/GPU), Temperature (CPU/NVMe) and Power (when Home Assistant is set up).
+- Hover (or tap, or use the arrow keys) for a crosshair across all charts and a tooltip with every value at that moment. Network, CPU frequency and disk are under "More measurements", and "Show as table" lists the values as text. The charts have axes with numbers, follow the light and dark theme, and use colours that stay apart for colour-blind readers.
+- **History that survives restarts.** The average, minimum and maximum of every measurement per minute are kept in `~/kiosk/telemetry/` (one file per day, 8 days, about 2 MB) and loaded again when the WebUI starts, so updates and reboots no longer wipe the charts. A pause shows as a gap instead of a straight line. Disk use is part of the history now.
+- **Event log.** `~/kiosk/events.jsonl` records every change of the kiosk's health, Chrome and the screen, and every recovery (from the health check, the watchdog, the wake/recovery steps and the login-screen guard), with a time. It keeps 8 days. URL queries, credentials in URLs and token or password values are removed from the reasons. The health check no longer writes lines without a time to `recovery.log`, and the diagnostics bundle includes the last events.
+- The charts are drawn on the server and cached per period, and the page fetches a fresh copy every 10 seconds to 5 minutes (depending on the period) only while it is visible, so the kiosk does no extra work for them. The old charts (always the last 60 minutes, no axes) are gone.
+- Numbers on Status use the format of the chosen language (7,9% in Danish, 7.9% in English).
+- Backups leave out the telemetry history.
+
 ## v1.25.0 — 2026-11-20
 
 - **New look.** The web UI uses the same design as the other household apps: a new shell with a side menu (a fixed menu on wide screens, a menu that closes after a choice on phones) and a choice between two layouts.

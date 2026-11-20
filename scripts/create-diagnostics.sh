@@ -20,6 +20,7 @@ capture input.txt sh -c 'printf "last_input_epoch="; xprintidle 2>/dev/null | aw
 [[ -f "$KIOSK_DIR/capabilities.json" ]] && cp "$KIOSK_DIR/capabilities.json" "$work/capabilities.json"
 [[ -f "$KIOSK_DIR/profiles.json" ]] && cp "$KIOSK_DIR/profiles.json" "$work/profiles.json"
 [[ -f "$KIOSK_DIR/recovery.log" ]] && tail -n 200 "$KIOSK_DIR/recovery.log" >"$work/recovery.log"
+[[ -f "$KIOSK_DIR/events.jsonl" ]] && tail -n 300 "$KIOSK_DIR/events.jsonl" >"$work/events.jsonl"
 # Defense in depth: redact common credential/token forms from every text file.
 find "$work" -type f -print0 | xargs -0 sed -i -E \
   -e 's/(MQTT_PASS|HA_TOKEN|WEBUI_PASSWORD_HASH|password|token)([=: ]+)[^ ,\"[:space:]]+/\1\2[REDACTED]/Ig' \

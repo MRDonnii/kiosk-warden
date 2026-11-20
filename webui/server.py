@@ -26,7 +26,9 @@ import threading
 import time
 import urllib.parse
 
+import charts
 import ha_client
+import history
 import ui_assets
 from ui_assets import icon
 
@@ -237,6 +239,24 @@ ENGLISH_TEXT = {
     "Gem og test forbindelsen ovenfor for at vælge måleren.": "Save and test the connection above to choose the sensor.",
     "Gem og test forbindelse": "Save and test connection",
     "Effekt (Home Assistant)": "Power (Home Assistant)",
+    # Status charts (1.26.0)
+    "Helbred og belastning": "Health and load", "Fælles tidsakse · hold musen over for status og værdier": "Shared time axis · hover for status and values",
+    "Genopretninger": "Recoveries", "Genopretning": "Recovery", "Genopretn.": "Recov.", "Chrome-genstarter": "Chrome restarts",
+    "Skærm tændt": "Screen on", "Skærm slukket": "Screen off", "Højeste CPU": "Peak CPU", "OK / kører": "OK / running",
+    "Fejl / stoppet": "Error / stopped", "Ingen data": "No data", "Tændt": "On", "Slukket": "Off",
+    "Belastning: CPU, RAM og GPU i procent": "Load: CPU, RAM and GPU in percent", "Belastning": "Load",
+    "Temperatur: CPU og NVMe i grader": "CPU and NVMe in degrees Celsius", "Skærm": "Screen", "Effekt i watt": "Power in watts",
+    "Netværk i KiB/s": "Network in KiB/s", "KiB/s, ind og ud": "KiB/s, in and out", "CPU-frekvens i MHz": "CPU frequency in MHz",
+    "Disk brugt i procent": "Disk used in percent", "% brugt": "% used", "Frekvens": "Frequency",
+    "Flere målinger (netværk, CPU-frekvens, disk)": "More measurements (network, CPU frequency, disk)", "Vis som tabel": "Show as table",
+    "Tidspunkt": "Time", "CPU-temp.": "CPU temp.", "NVMe-temp.": "NVMe temp.", "gennemsnit": "average", "min–maks pr.": "min–max per",
+    "Ingen målinger i perioden endnu.": "No measurements in this period yet.",
+    "Graferne kunne ikke vises lige nu.": "The charts could not be shown right now.",
+    ". Brug piletasterne for værdier; tabelvisning under graferne.": ". Use the arrow keys for values; table view below the charts.",
+    "Tidslinje for kiosk, Chrome og skærm med genopretninger. Brug piletasterne.": "Timeline of the kiosk, Chrome and the screen with recoveries. Use the arrow keys.",
+    'aria-label="Periode"': 'aria-label="Period"', "skærm genopsat": "screen reset", "side genoptaget": "page resumed",
+    "side genindlæst": "page reloaded", "Chrome genstartet": "Chrome restarted", "offline-side vist": "offline page shown",
+    "login-skærm genstartet": "login screen restarted", "mislykkedes": "failed",
     "Effekt": "Power",
     "URL og token skal begge udfyldes.": "URL and token must both be filled in.",
     "Kunne ikke forbinde": "Could not connect",
@@ -866,9 +886,43 @@ def read_ha_power():
         return None
 
 
+_history = {"store": None, "events": None, "dir": None}
+_history_lock = threading.Lock()
+_last_states = {}
+_chart_cache = {}
+_chart_cache_lock = threading.Lock()
+CHART_CACHE_SECONDS = {"1t": 8, "6t": 25, "24t": 55, "7d": 240}
+
+
+def history_stores():
+    """The minute history (~/kiosk/telemetry) and the event log (~/kiosk/events.jsonl), loaded on first use."""
+    with _history_lock:
+        if _history["dir"] != KIOSK_DIR:
+            store = history.MinuteStore(os.path.join(KIOSK_DIR, "telemetry"))
+            store.load()
+            _history.update(store=store, events=history.EventLog(os.path.join(KIOSK_DIR, "events.jsonl")), dir=KIOSK_DIR)
+        return _history["store"], _history["events"]
+
+
+def observe_states(events):
+    """Log a change of the kiosk's health, Chrome or the screen (checked with every sample)."""
+    if not _last_states:
+        _last_states.update(events.last_values())
+    health = read_file(os.path.join(KIOSK_DIR, "health_state"), "").upper()
+    screen = read_file(os.path.join(KIOSK_DIR, "screen_state"), "").upper()
+    current = {"health": health if health in ("ON", "OFF") else None,
+               "screen": screen if screen in ("ON", "OFF") else None,
+               "chrome": "up" if chrome_is_running() else "down"}
+    for kind, value in current.items():
+        if value and _last_states.get(kind) != value:
+            if events.append(kind, value=value, source="webui"):
+                _last_states[kind] = value
+
+
 def collect_telemetry():
     sample_count = 0
     last_gpu = None
+    store, events = history_stores()
     while True:
         gpu = read_gpu_usage() if sample_count % 3 == 0 else last_gpu
         if gpu is not None:
@@ -876,9 +930,16 @@ def collect_telemetry():
         sample = {"time": int(time.time()), "cpu": read_cpu_usage(), "ram": read_ram_percent(),
                   "gpu": last_gpu, "cpu_temp": read_cpu_temp(), "nvme_temp": read_nvme_temp(),
                   "cpu_mhz": read_cpu_frequency(), "network_kbps": read_network_rate(),
-                  "ha_power": read_ha_power()}
+                  "ha_power": read_ha_power(), "disk": read_disk_percent()}
         with _telemetry_lock:
             _telemetry.append(sample)
+        try:
+            store.add_sample(sample)
+            observe_states(events)
+            if sample_count % 360 == 0:  # hourly
+                events.trim()
+        except Exception as exc:  # the history must never stop the live telemetry
+            print(f"telemetry history: {exc}", file=sys.stderr)
         sample_count += 1
         time.sleep(10)
 
@@ -886,6 +947,38 @@ def collect_telemetry():
 def telemetry_data():
     with _telemetry_lock:
         return list(_telemetry)
+
+
+def chart_records(range_key, now):
+    """Samples for one period: minute history (stamped mid-minute), and for 1 t the 10-second samples."""
+    store, _ = history_stores()
+    span = charts.RANGE[range_key][2]
+    t0 = now - span
+    raw = [r for r in telemetry_data() if isinstance(r.get("time"), (int, float)) and r["time"] >= t0] if range_key == "1t" else []
+    first_raw = raw[0]["time"] if raw else None
+    out = [(t + 30, vals) for t, vals in store.records(t0 - 60) if first_raw is None or t + 60 <= first_raw]
+    for r in raw:
+        out.append((r["time"], {k: (v, v, v) for k in history.KEYS
+                                if isinstance(v := r.get(k), (int, float)) and not isinstance(v, bool)}))
+    return out
+
+
+def chart_pane(range_key, conf):
+    """The chart panel's content for a period, cached briefly so page loads and refreshes cost next to nothing."""
+    range_key = range_key if range_key in charts.RANGE else charts.DEFAULT_RANGE
+    ha_power = bool(conf.get("HA_TOKEN") and conf.get("HA_POWER_ENTITY"))
+    language = conf.get("UI_LANGUAGE", "en")
+    key = (range_key, ha_power, language, KIOSK_DIR)
+    now = time.time()
+    with _chart_cache_lock:
+        hit = _chart_cache.get(key)
+        if hit and hit[0] > now:
+            return hit[1]
+    _, events = history_stores()
+    pane = charts.render_pane(range_key, chart_records(range_key, int(now)), events.read(), ha_power, now, language)
+    with _chart_cache_lock:
+        _chart_cache[key] = (now + CHART_CACHE_SECONDS[range_key], pane)
+    return pane
 
 
 def read_ip():
@@ -1502,12 +1595,14 @@ pollStatus();
     return body
 
 
-def render_dashboard(conf, message=None, error=None):
+def render_dashboard(conf, message=None, error=None, chart_range=None):
     health_state = read_file(os.path.join(KIOSK_DIR, "health_state"), "?")
     health_detail = read_file(os.path.join(KIOSK_DIR, "health_detail"), "")
     stats = get_stats()
-    history = telemetry_data()
-    live = history[-1] if history else {}
+    history_rows = telemetry_data()
+    live = history_rows[-1] if history_rows else {}
+    charts._L.lang = "en" if conf.get("UI_LANGUAGE", "en") == "en" else "da"
+    num = charts.fmt_unit
 
     body = PAGE_HEAD.format(title_suffix=" — Status")
     body += render_page_header("Status", conf, "Driftsstatus, ressourceforbrug og den aktive kiosks helbred.")
@@ -1525,83 +1620,51 @@ def render_dashboard(conf, message=None, error=None):
     body += render_message(message, error)
 
     chrome_label = "Kører" if stats["chrome_running"] else "Stoppet"
-    temp_val = f'{stats["cpu_temp"]}°C' if stats["cpu_temp"] is not None else "?"
-    ram_val = f'{stats["ram_percent"]}%' if stats["ram_percent"] is not None else "?"
-    disk_val = f'{stats["disk_percent"]}%' if stats["disk_percent"] is not None else "?"
-    cpu_val = f'{live.get("cpu")}%' if live.get("cpu") is not None else stats["loadavg"].split(" / ")[0]
+    temp_val = num(stats["cpu_temp"], 0, "°C") if stats["cpu_temp"] is not None else "?"
+    ram_val = num(stats["ram_percent"], 0, "%") if stats["ram_percent"] is not None else "?"
+    disk_val = num(stats["disk_percent"], 0, "%") if stats["disk_percent"] is not None else "?"
+    cpu_val = num(live.get("cpu"), 1, "%") if live.get("cpu") is not None else stats["loadavg"].split(" / ")[0]
     healthy = health_state == "ON" and stats["chrome_running"]
     hero_value = "Kører" if healthy else ("Fejl" if health_state == "OFF" or not stats["chrome_running"] else (health_state if health_state not in ("", "?") else "Ukendt"))
     hero_sub = f'Chrome {chrome_label.lower()} · {health_state if health_state not in ("", "?") else "ukendt"}'
-    spark_rows = [row for row in history[-12:] if isinstance(row, dict)]
-    spark = "".join(f'<b style="height:{max(8, min(100, int(row.get("cpu") or 0)))}%"></b>' for row in spark_rows) if spark_rows else ""
 
     body += '<div class="kpis">'
     body += (f'<div class="paper kpi fd-kpi-hero"><div class="lbl">{icon("device-tv")}Kiosk</div><div class="val">{esc(hero_value)}</div>'
-             f'<div class="sub">{esc(hero_sub)}</div>' + (f'<div class="fd-spark" title="CPU">{spark}</div>' if spark else "") + '</div>')
+             f'<div class="sub">{esc(hero_sub)}</div></div>')
     body += render_tile("cpu", "CPU", cpu_val, level_for(live.get("cpu"), 80, 95), live.get("cpu"))
     body += render_tile("box", "RAM", ram_val, level_for(stats["ram_percent"], 70, 90), stats["ram_percent"])
     body += render_tile("package", "Disk", disk_val, level_for(stats["disk_percent"], 80, 93), stats["disk_percent"])
     body += render_tile("temperature", "Temperatur", temp_val, level_for(stats["cpu_temp"], 65, 80), stats["cpu_temp"])
     ha_power_configured = bool(conf.get("HA_TOKEN") and conf.get("HA_POWER_ENTITY"))
     if ha_power_configured:
-        power_val = f'{live.get("ha_power")} W' if live.get("ha_power") is not None else "?"
+        power_val = num(live.get("ha_power"), 1, "W") if live.get("ha_power") is not None else "?"
         body += render_tile("bolt", "Effekt", power_val, sub="fra Home Assistant")
     body += "</div>"
+
+    # Helbred og belastning: server-rendered SVG (charts.py); app.js adds the tooltip and the period switch.
+    chart_range = chart_range if chart_range in charts.RANGE else charts.DEFAULT_RANGE
+    try:
+        pane = chart_pane(chart_range, conf)
+    except Exception as exc:  # a broken history file must never take the Status page down
+        print(f"charts: {exc}", file=sys.stderr)
+        pane = '<div class="kg-empty" style="height:120px">Graferne kunne ikke vises lige nu.</div>'
+    body += charts.render_panel(chart_range, pane)
 
     chrome_badge = f'<span class="badge {"b-ok" if stats["chrome_running"] else "b-bad"}">{esc(chrome_label)}</span>'
     body += '<div class="paper flush"><div class="kv-grid">'
     body += render_kv("world", "IP", esc(stats["ip"]))
     body += render_kv("clock", "Oppetid", esc(stats["uptime"]))
-    body += render_kv("activity", "GPU", esc(f'{live.get("gpu")}%' if live.get("gpu") is not None else "?"))
-    body += render_kv("gauge", "CPU-frekvens", esc(f'{live.get("cpu_mhz")} MHz' if live.get("cpu_mhz") is not None else "?"))
-    body += render_kv("temperature", "NVMe temperatur", esc(f'{live.get("nvme_temp")}°C' if live.get("nvme_temp") is not None else "?"))
-    body += render_kv("wifi", "Netværk", esc(f'{live.get("network_kbps")} KiB/s' if live.get("network_kbps") is not None else "?"))
+    body += render_kv("activity", "GPU", esc(num(live.get("gpu"), 1, "%") if live.get("gpu") is not None else "?"))
+    body += render_kv("gauge", "CPU-frekvens", esc(num(live.get("cpu_mhz"), 0, "MHz") if live.get("cpu_mhz") is not None else "?"))
+    body += render_kv("temperature", "NVMe temperatur", esc(num(live.get("nvme_temp"), 1, "°C") if live.get("nvme_temp") is not None else "?"))
+    body += render_kv("wifi", "Netværk", esc(num(live.get("network_kbps"), 1, "KiB/s") if live.get("network_kbps") is not None else "?"))
     body += render_kv("device-desktop", "Chrome", chrome_badge)
     body += render_kv("info-circle", "Model", esc(stats["model"]))
     body += "</div></div>"
 
     if health_detail:
         body += f'<div class="status" style="margin:0">{esc(health_detail)}</div>'
-    window = '<small>seneste 60 minutter</small>'
-    def legend(*series):
-        return '<div class="legend">' + "".join(f'<span><i style="background:{color}"></i>{label}</span>' for label, color in series) + "</div>"
-    power_chart = (
-        f'<div class="chart-card"><div class="chart-title">Effekt (Home Assistant){window}</div>{legend(("W", "#facc15"))}'
-        '<canvas class="telemetry-chart" id="powerChart"></canvas></div>'
-        if ha_power_configured else ""
-    )
-    power_draw = (
-        "drawChart('powerChart',rows,[{key:'ha_power',label:'W',color:'#facc15'}],0,true);"
-        if ha_power_configured else ""
-    )
-    body += f"""
-<div class="charts">
-  <div class="chart-card"><div class="chart-title">CPU, RAM og GPU{window}</div>{legend(("CPU", "#3b82f6"), ("RAM", "#8b5cf6"), ("GPU", "#22c55e"))}<canvas class="telemetry-chart" id="usageChart"></canvas></div>
-  <div class="chart-card"><div class="chart-title">CPU- og NVMe-temperatur{window}</div>{legend(("CPU °C", "#ef4444"), ("NVMe °C", "#f59e0b"))}<canvas class="telemetry-chart" id="temperatureChart"></canvas></div>
-  <div class="chart-card"><div class="chart-title">CPU-frekvens{window}</div>{legend(("MHz", "#06b6d4"))}<canvas class="telemetry-chart" id="frequencyChart"></canvas></div>
-  <div class="chart-card"><div class="chart-title">Netværkstrafik{window}</div>{legend(("KiB/s", "#a855f7"))}<canvas class="telemetry-chart" id="networkChart"></canvas></div>
-  {power_chart}
-</div>
-</div>
-<script>
-function drawChart(id, rows, series, maxValue, fill) {{
-  const canvas=document.getElementById(id), ratio=window.devicePixelRatio||1, width=canvas.clientWidth, height=canvas.clientHeight;
-  canvas.width=width*ratio; canvas.height=height*ratio; const c=canvas.getContext('2d'); c.scale(ratio,ratio); c.clearRect(0,0,width,height);
-  const css=getComputedStyle(document.documentElement); c.strokeStyle=css.getPropertyValue('--fd-border').trim()||'rgba(128,128,128,.22)';
-  c.lineWidth=1; for(let i=0;i<=4;i++){{const y=Math.round(6+(height-12)*i/4)+.5;c.beginPath();c.moveTo(0,y);c.lineTo(width,y);c.stroke();}}
-  const visible=rows.slice(-360); if(visible.length<2)return;
-  const values=visible.flatMap(r=>series.map(s=>Number(r[s.key])).filter(Number.isFinite)); const top=maxValue||Math.max(1,...values)*1.12;
-  const fillSeries=fill||series.length===1;
-  for(const s of series){{const pts=[];visible.forEach((r,i)=>{{const v=Number(r[s.key]);if(!Number.isFinite(v))return;pts.push([i*width/(visible.length-1),height-6-Math.min(top,v)*(height-16)/top]);}});if(pts.length<2)continue;
-    if(fillSeries){{c.globalAlpha=.12;c.fillStyle=s.color;c.beginPath();c.moveTo(pts[0][0],height);pts.forEach(p=>c.lineTo(p[0],p[1]));c.lineTo(pts[pts.length-1][0],height);c.closePath();c.fill();c.globalAlpha=1;}}
-    c.strokeStyle=s.color;c.lineWidth=2;c.lineJoin='round';c.beginPath();pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.stroke();}}
-}}
-let lastRows=null;
-function drawAll(rows){{drawChart('usageChart',rows,[{{key:'cpu',label:'CPU',color:'#3b82f6'}},{{key:'ram',label:'RAM',color:'#8b5cf6'}},{{key:'gpu',label:'GPU',color:'#22c55e'}}],100);drawChart('temperatureChart',rows,[{{key:'cpu_temp',label:'CPU °C',color:'#ef4444'}},{{key:'nvme_temp',label:'NVMe °C',color:'#f59e0b'}}],100);drawChart('frequencyChart',rows,[{{key:'cpu_mhz',label:'MHz',color:'#06b6d4'}}]);drawChart('networkChart',rows,[{{key:'network_kbps',label:'KiB/s',color:'#a855f7'}}]);{power_draw}}}
-async function updateTelemetry(){{try{{const r=await fetch('/api/telemetry',{{cache:'no-store'}});if(!r.ok)return;lastRows=await r.json();drawAll(lastRows);}}catch(_){{}}}}
-updateTelemetry();setInterval(updateTelemetry,10000);addEventListener('resize',()=>lastRows&&drawAll(lastRows));addEventListener('kw-look',()=>lastRows&&drawAll(lastRows));
-</script>
-"""
+    body += "</div>"
 
     body += PAGE_TAIL
     return body
@@ -2137,6 +2200,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_fragment(self, body):
+        """An HTML fragment for fetch(): localized like a page, never cached."""
+        data = localize_html(body, read_conf().get("UI_LANGUAGE", "en")).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self._security_headers()
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _chart_range(self, parsed):
+        """The chart period: ?range=…, else the kw_range cookie the period buttons set."""
+        wanted = urllib.parse.parse_qs(parsed.query).get("range", [""])[0]
+        if not wanted:
+            try:
+                morsel = http.cookies.SimpleCookie(self.headers.get("Cookie", "")).get("kw_range")
+                wanted = morsel.value if morsel else ""
+            except http.cookies.CookieError:
+                wanted = ""
+        return wanted if wanted in charts.RANGE else charts.DEFAULT_RANGE
+
     def _send_json(self, payload, status=200, cookie=None):
         language = read_conf().get("UI_LANGUAGE", "en")
         if language == "en" and isinstance(payload, dict):
@@ -2237,6 +2322,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_json(update_status())
         if parsed.path == "/api/telemetry":
             return self._send_json(telemetry_data())
+        if parsed.path == "/api/charts":
+            return self._send_fragment(chart_pane(self._chart_range(parsed), conf))
         if parsed.path == "/api/smartdash-status":
             try:
                 result = subprocess.run([os.path.join(KIOSK_DIR, "chrome-lifecycle.py"), "status"], timeout=4, check=False, capture_output=True, text=True)
@@ -2254,7 +2341,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/mqtt":
             return self._send_html(render_mqtt(conf))
         if parsed.path in ("/", ""):
-            return self._send_html(render_dashboard(conf))
+            return self._send_html(render_dashboard(conf, chart_range=self._chart_range(parsed)))
         self.send_response(404)
         self.end_headers()
 
