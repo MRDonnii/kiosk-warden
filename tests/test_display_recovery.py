@@ -27,7 +27,8 @@ class Env:
         self.calls = self.dir / "calls.log"
         self.set_sessions(sessions)
         self.stub("loginctl", f'cat "{self.dir}/sessions"')
-        self.stub("lightdm", f'[ "$1" = --show-config ] && printf "A  [Seat:*]\\nE  autologin-user={autologin}\\n"' if autologin else 'exit 0')
+        # Like the real lightdm, the configuration goes to stderr.
+        self.stub("lightdm", f'[ "$1" = --show-config ] && printf "A  [Seat:*]\\nE  autologin-user={autologin}\\n" >&2' if autologin else 'exit 0')
         self.stub(
             "systemctl",
             f'''case "$1" in

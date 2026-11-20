@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kiosk Warden display recovery, root part. helper-version: 1
+# Kiosk Warden display recovery, root part. helper-version: 2
 #
 # setup-display-recovery.sh installs this file as /usr/local/sbin/kiosk-warden-display-recover and lets the kiosk user
 # run exactly that, without arguments and without a password (sudoers).
@@ -46,7 +46,8 @@ user="${SUDO_USER:-}"
 systemctl is-enabled --quiet lightdm 2>/dev/null || { say "lightdm is not the display manager; nothing to do"; exit 13; }
 
 # lightdm must auto-login this very user, otherwise a restart only brings the greeter back.
-autologin="$(lightdm --show-config 2>/dev/null | sed -n 's/^[A-Z ]*autologin-user=//p' | tail -n 1)"
+# lightdm prints its configuration on stderr.
+autologin="$(lightdm --show-config 2>&1 | sed -n 's/^[A-Z ]*autologin-user=//p' | tail -n 1)"
 [[ "$autologin" == "$user" ]] || { say "autologin is not set up for $user (it is '${autologin:-none}'); not restarting lightdm"; exit 12; }
 
 # A graphical session (the kiosk, or a person) must not be disturbed.

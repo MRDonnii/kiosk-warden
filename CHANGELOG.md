@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.24.1 — 2026-11-20
+
+- Self-healing screen: the root helper now reads LightDM's configuration correctly (LightDM prints it on stderr). Before, it always answered "autologin is not set up" and never restarted LightDM. Run `sudo ~/kiosk/setup-display-recovery.sh` once more to install the fixed helper.
+
 ## v1.24.0 — 2026-11-20
 
 - Self-healing screen on LightDM kiosks: when the kiosk session ends (X server or Openbox exits) LightDM shows its login screen and never logs in again by itself, so the screen stayed dark and Chrome crash-looped until someone restarted LightDM or rebooted. The watchdog now notices that there has been no graphical session for a minute and restarts LightDM, so the autologin starts the kiosk again within about two minutes.
