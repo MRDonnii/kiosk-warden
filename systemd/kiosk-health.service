@@ -1,0 +1,13 @@
+[Unit]
+Description=Kiosk health and blank page recovery
+After=kiosk-chrome.service kiosk-mqtt-control.service
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+ExecStart=%h/kiosk/health-check.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

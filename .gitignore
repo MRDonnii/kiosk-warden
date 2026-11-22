@@ -1,0 +1,7 @@
+kiosk.conf
+.version
+backups/
+screenshots/
+*.log
+__pycache__/
+*.pyc

@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+KIOSK_DIR="${KIOSK_DIR:-$HOME/kiosk}"
+source "$KIOSK_DIR/kiosk.conf"
+source "$KIOSK_DIR/screen-backend.sh"
+# Recoveries also go to events.jsonl (the timeline on the Status page).
+source "$KIOSK_DIR/kiosk-event.sh" 2>/dev/null || kiosk_event() { :; }
+STATE_FILE="$KIOSK_DIR/warden_state.json"
+LOCK_FILE="$KIOSK_DIR/warden-state.lock"
+CHROME_LIFECYCLE="$KIOSK_DIR/chrome-lifecycle.py"
+SCREEN_FILE="$KIOSK_DIR/screen_state"
+WAKE_FILE="$KIOSK_DIR/wake_pending"
+VERIFY_FILE="$KIOSK_DIR/wake_verification.json"
+
+write_verification() {
+  local ok="$1" stage="$2" detail="${3:-}"
+  jq -cn --argjson ok "$ok" --arg stage "$stage" --arg detail "$detail" --arg at "$(date -Iseconds)" \
+    '{ok:$ok,stage:$stage,detail:$detail,checked_at:$at}' >"$VERIFY_FILE.tmp"
+  mv "$VERIFY_FILE.tmp" "$VERIFY_FILE"
+}
+
+write_state() {
+  local state="$1" reason="${2:-}" tmp="$STATE_FILE.tmp"
+  jq -cn --arg state "$state" --arg reason "$reason" --arg at "$(date -Iseconds)" \
+    '{state:$state,reason:$reason,changed_at:$at}' >"$tmp"
+  mv "$tmp" "$STATE_FILE"
+  printf '%s\n' "$state" >"$KIOSK_DIR/warden_state"
+}
+
+chrome_page_json() {
+  curl -fsS --max-time 3 http://127.0.0.1:9222/json/list 2>/dev/null \
+    | jq -c '[.[] | select(.type=="page" and (.url|startswith("http")))][0] // empty' 2>/dev/null || true
+}
+
+wait_geometry() {
+  local geometry width height
+  for _ in $(seq 1 "${KIOSK_WAKE_GEOMETRY_TRIES:-30}"); do
+    geometry="$(xdotool getdisplaygeometry 2>/dev/null || true)"
+    read -r width height <<<"$geometry"
+    [[ "${width:-0}" -ge "${KIOSK_MIN_WIDTH:-1024}" && "${height:-0}" -ge "${KIOSK_MIN_HEIGHT:-600}" ]] && return 0
+    sleep 0.2
+  done
+  return 1
+}
+
+# The page state a recovery has to bring back: a screen that was put to sleep stays asleep (its page idle, the monitor
+# off). Before 1.24.0 every recovery woke it: a page that was only reloading in standby (Home Assistant's refresh every
+# 10 minutes) looked broken for a moment, health-check "recovered" it, and the dark kiosk ran its 3D page and camera
+# streams at full power, with the monitor on, while Home Assistant still showed the screen as off.
+WANT=active
+want_state() { [[ "$(cat "$SCREEN_FILE" 2>/dev/null || echo ON)" == OFF ]] && echo idle || echo active; }
+
+verify_page() {
+  local page url fallback
+  page="$(chrome_page_json)"; [[ -n "$page" ]] || return 1
+  url="$(jq -r '.url // ""' <<<"$page")"
+  fallback="${KIOSK_WEBUI_SCHEME:-http}://127.0.0.1:${KIOSK_WEBUI_PORT:-8080}/offline"
+  [[ "$url" == "$KIOSK_URL"* || ( -f "$KIOSK_DIR/fallback_active" && "$url" == "$fallback"* ) ]] || return 1
+  "$CHROME_LIFECYCLE" verify "$WANT" >/dev/null
+}
+
+verify_wake() {
+  wait_geometry || { write_verification false geometry "display is below the configured minimum"; return 1; }
+  verify_page || { write_verification false page "Chrome URL, document or renderer is not ready"; return 1; }
+  write_verification true complete "geometry, page and renderer verified"
+}
+
+wait_verify_wake() {
+  local tries="${KIOSK_WAKE_VERIFY_TRIES:-8}"
+  for _ in $(seq 1 "$tries"); do
+    # A reloaded page restores its idle state itself, a restarted Chrome does not: tell it again until it answers.
+    if [[ "$WANT" == idle ]]; then "$CHROME_LIFECYCLE" idle >/dev/null 2>&1 || true; fi
+    verify_wake && return 0
+    sleep 1
+  done
+  return 1
+}
+
+recover_staged() {
+  local reason="${1:-verification failed}" step
+  write_state RECOVERING "$reason"
+  WANT="$(want_state)"
+  for step in resize resume reload restart; do
+    case "$step" in
+      # Switching the output on would wake a sleeping monitor.
+      resize) [[ "$WANT" == active ]] || continue; screen_prepare_on; wait_geometry || true ;;
+      resume) "$CHROME_LIFECYCLE" "$WANT" >/dev/null 2>&1 || true ;;
+      reload) "$CHROME_LIFECYCLE" reload >/dev/null 2>&1 || true; sleep 3 ;;
+      restart) systemctl --user restart kiosk-chrome.service; sleep 6 ;;
+    esac
+    if wait_verify_wake; then
+      printf '%s %s: %s\n' "$(date -Iseconds)" "$step" "$reason" >>"$KIOSK_DIR/recovery.log"
+      kiosk_event recovery "$step" "$reason" warden
+      return 0
+    fi
+  done
+  printf '%s failed: %s\n' "$(date -Iseconds)" "$reason" >>"$KIOSK_DIR/recovery.log"
+  kiosk_event recovery failed "$reason" warden
+  return 1
+}
+
+wake() {
+  local source="${1:-command}"
+  write_state WAKING "wake requested by $source"; touch "$WAKE_FILE"
+  screen_prepare_on || true
+  wait_geometry || true
+  # Light the panel before resuming the page. While DPMS is off the GPU process
+  # gets no vsync, so a page that compiles WebGL shaders on resume (a 3D view
+  # after a reload) blocks on it for 15-25 s and verification times out while
+  # the screen stays dark. screen_show runs again below, because a Chrome
+  # restart during recovery turns the panel off again while screen_state is OFF.
+  screen_show
+  "$CHROME_LIFECYCLE" active >/dev/null 2>&1 || true
+  if ! wait_verify_wake; then recover_staged "wake verification failed" || { write_state RECOVERING "wake recovery exhausted"; return 1; }; fi
+  screen_show
+  rm -f "$WAKE_FILE"; printf 'ON\n' >"$SCREEN_FILE"
+  write_state ON "wake verified"
+}
+
+sleep_screen() {
+  write_state SLEEPING "sleep requested"
+  "$CHROME_LIFECYCLE" idle >/dev/null 2>&1 || true
+  screen_hide
+  printf 'OFF\n' >"$SCREEN_FILE"; rm -f "$WAKE_FILE"
+  write_state OFF "screen backend confirmed request"
+}
+
+status() {
+  local display
+  display="$(screen_geometry)"
+  jq -cn --argjson machine "$(cat "$STATE_FILE" 2>/dev/null || echo '{"state":"UNKNOWN"}')" \
+    --argjson display "$display" --arg power "$(screen_power_state)" \
+    '$machine + {display:$display,power:$power}'
+}
+
+exec 9>"$LOCK_FILE"
+flock -w 30 9 || { echo 'State transition already in progress' >&2; exit 75; }
+case "${1:-status}" in
+  on|wake) wake "${2:-command}" ;;
+  off|sleep) sleep_screen ;;
+  recover)
+    recover_staged "${2:-manual recovery}" || exit 1
+    if [[ "$WANT" == idle ]]; then screen_hide || true; write_state OFF "recovery verified (screen kept off)"
+    else screen_show; write_state ON "recovery verified"; fi ;;
+  verify) verify_wake ;;
+  status) status ;;
+  *) echo 'Usage: warden-state.sh on|off|recover|verify|status' >&2; exit 2 ;;
+esac
