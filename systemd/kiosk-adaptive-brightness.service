@@ -1,0 +1,12 @@
+[Unit]
+Description=Kiosk Warden adaptive display brightness
+After=kiosk-capabilities.service
+
+[Service]
+Type=simple
+ExecStart=%h/kiosk/adaptive-brightness.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

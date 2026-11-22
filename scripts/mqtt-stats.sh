@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+source "$HOME/kiosk/mqtt-lib.sh"
+
+MODE_FILE="$HOME/kiosk/window_mode"
+SCREEN_FILE="$HOME/kiosk/screen_state"
+THEME_FILE="$HOME/kiosk/theme"
+ZOOM_FILE="$HOME/kiosk/page_zoom"
+KEYBOARD_FILE="$HOME/kiosk/keyboard_state"
+VERSION_FILE="$HOME/kiosk/version"
+ERROR_FILE="$HOME/kiosk/errors"
+
+read_cpu_total_idle() {
+  awk '/^cpu / {idle=$5; total=0; for (i=2;i<=NF;i++) total+=$i; print total, idle}' /proc/stat
+}
+
+package_upgrades() {
+  apt list --upgradable 2>/dev/null | awk 'NR>1 {count++} END {print count+0}'
+}
+
+host_model() {
+  cat /sys/devices/virtual/dmi/id/product_name 2>/dev/null || hostnamectl chassis 2>/dev/null || echo "Unknown"
+}
+
+serial_number() {
+  cat /sys/devices/virtual/dmi/id/product_serial 2>/dev/null | tr -d '\n' || echo "Unknown"
+}
+
+memory_size_gib() {
+  awk '/^MemTotal:/ {printf "%.2f GiB", $2/1024/1024}' /proc/meminfo
+}
+
+# Optional: relay a power/energy reading FROM Home Assistant back into this
+# device's own sensors. Empty output whenever HA_URL/HA_TOKEN/HA_POWER_ENTITY
+# aren't all set - installs that never configure this pay no network cost.
+ha_power_reading() {
+  if [[ -z "${HA_URL:-}" || -z "${HA_TOKEN:-}" || -z "${HA_POWER_ENTITY:-}" ]]; then
+    return 0
+  fi
+  local json state
+  json="$(python3 "$HOME/kiosk/webui/ha_client.py" get_state "$HA_URL" "$HA_TOKEN" "$HA_POWER_ENTITY" 2>/dev/null)" || return 0
+  state="$(jq -r '.state // empty' <<<"$json" 2>/dev/null)" || return 0
+  if [[ "$state" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+    echo "$state"
+  fi
+  return 0
+}
+
+UPDATE_CHECK_INTERVAL=1800
+last_update_check=0
+
+check_for_update() {
+  local now state channel
+  now="$(date +%s)"
+  if (( now - last_update_check < UPDATE_CHECK_INTERVAL )); then
+    return 0
+  fi
+  last_update_check="$now"
+  channel="$(cat "$HOME/kiosk/update_channel" 2>/dev/null || echo stable)"
+  state="$("$HOME/kiosk/self-update.sh" check "$channel" 2>/dev/null)" || return 0
+  mqtt_pub "$BASE_TOPIC/update/state" "$(jq -c '{installed_version,latest_version,title,release_url,release_summary,in_progress} | with_entries(select(.value != null))' <<<"$state")" -r || true
+}
+
+prev="$(read_cpu_total_idle)"
+mqtt_pub "$BASE_TOPIC/online/status" "online" -r || true
+
+while true; do
+  sleep "$STATS_INTERVAL"
+  curr="$(read_cpu_total_idle)"
+  cpu_load="$(awk -v p="$prev" -v c="$curr" 'BEGIN {split(p,pa," "); split(c,ca," "); dt=ca[1]-pa[1]; di=ca[2]-pa[2]; if (dt>0) printf "%.1f", (100*(dt-di)/dt); else print "0"}')"
+  prev="$curr"
+  ram_used="$(free | awk '/^Mem:/ {printf "%.1f", ($3/$2)*100}')"
+  cpu_temp="$(sensors 2>/dev/null | awk '/Package id 0|Tctl|CPU/ {gsub(/[+°C]/,"",$4); print $4; exit}')"
+  cpu_temp="${cpu_temp:-0}"
+  uptime_text="$(uptime -p | sed 's/^up //')"
+  uptime_minutes="$(awk '{print int($1/60)}' /proc/uptime)"
+  ip_addr="$(hostname -I | awk '{print $1}')"
+  if pgrep -f "$HOME/.config/chrome-kiosk" >/dev/null; then chrome_running="on"; else chrome_running="off"; fi
+  keyboard_state="$(cat "$KEYBOARD_FILE" 2>/dev/null || echo OFF)"
+  if command -v pactl >/dev/null 2>&1; then
+    volume="$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | awk -F'/' 'NR==1 {gsub(/[% ]/,"",$2); print $2; exit}' || true)"
+  else
+    volume=""
+  fi
+  volume="${volume:-$(cat "$HOME/kiosk/volume" 2>/dev/null || echo 100)}"
+  heartbeat="$(date -Iseconds)"
+  capabilities="$(cat "$HOME/kiosk/capabilities.json" 2>/dev/null || echo '{}')"
+
+  mqtt_pub "$BASE_TOPIC/online/status" "online" -r || true
+  mqtt_pub "$BASE_TOPIC/stats/cpu_load" "$cpu_load" || true
+  mqtt_pub "$BASE_TOPIC/stats/processor_usage" "$cpu_load" || true
+  mqtt_pub "$BASE_TOPIC/stats/ram_used" "$ram_used" || true
+  mqtt_pub "$BASE_TOPIC/stats/memory_usage" "$ram_used" || true
+  mqtt_pub "$BASE_TOPIC/stats/memory_size" "$(memory_size_gib)" -r || true
+  mqtt_pub "$BASE_TOPIC/stats/cpu_temperature" "$cpu_temp" || true
+  mqtt_pub "$BASE_TOPIC/stats/processor_temperature" "$cpu_temp" || true
+  mqtt_pub "$BASE_TOPIC/stats/uptime" "$uptime_text" || true
+  mqtt_pub "$BASE_TOPIC/stats/uptime_minutes" "$uptime_minutes" || true
+  mqtt_pub "$BASE_TOPIC/stats/ip_address" "$ip_addr" || true
+  mqtt_pub "$BASE_TOPIC/stats/network_address" "$ip_addr" || true
+  mqtt_pub "$BASE_TOPIC/stats/web_ui_url" "${KIOSK_WEBUI_SCHEME:-http}://${ip_addr}:${KIOSK_WEBUI_PORT:-8080}" -r || true
+  mqtt_pub "$BASE_TOPIC/stats/host_name" "$(hostname)" -r || true
+  mqtt_pub "$BASE_TOPIC/stats/model" "$(host_model)" -r || true
+  mqtt_pub "$BASE_TOPIC/stats/serial_number" "$(serial_number)" -r || true
+  mqtt_pub "$BASE_TOPIC/stats/package_upgrades" "$(package_upgrades)" || true
+  mqtt_pub "$BASE_TOPIC/stats/chrome_running" "$chrome_running" || true
+  mqtt_pub "$BASE_TOPIC/state/window_mode" "$(cat "$MODE_FILE" 2>/dev/null || echo Kiosk)" -r || true
+  mqtt_pub "$BASE_TOPIC/state/screen" "$(cat "$SCREEN_FILE" 2>/dev/null || echo ON)" -r || true
+  mqtt_pub "$BASE_TOPIC/state/url" "$KIOSK_URL" -r || true
+  mqtt_pub "$BASE_TOPIC/state/keyboard" "$keyboard_state" -r || true
+  mqtt_pub "$BASE_TOPIC/state/theme" "$(cat "$THEME_FILE" 2>/dev/null || echo Dark)" -r || true
+  mqtt_pub "$BASE_TOPIC/state/page_zoom" "$(cat "$ZOOM_FILE" 2>/dev/null || echo 100)" -r || true
+  mqtt_pub "$BASE_TOPIC/state/volume" "$volume" -r || true
+  mqtt_pub "$BASE_TOPIC/diagnostic/capabilities" "$capabilities" -r || true
+  brightness="$($HOME/kiosk/hardware-control.py brightness-get 2>/dev/null || true)"
+  microphone="$($HOME/kiosk/hardware-control.py microphone-get 2>/dev/null || true)"
+  illuminance="$($HOME/kiosk/hardware-control.py illuminance-get 2>/dev/null || true)"
+  battery="$($HOME/kiosk/hardware-control.py battery-get 2>/dev/null || true)"
+  [[ -n "$brightness" ]] && mqtt_pub "$BASE_TOPIC/state/brightness" "$brightness" -r || true
+  [[ -n "$microphone" ]] && mqtt_pub "$BASE_TOPIC/state/microphone" "$microphone" -r || true
+  [[ -n "$illuminance" ]] && mqtt_pub "$BASE_TOPIC/stats/illuminance" "$illuminance" || true
+  [[ -n "$battery" ]] && mqtt_pub "$BASE_TOPIC/stats/battery" "$battery" || true
+  case "$(powerprofilesctl get 2>/dev/null || true)" in power-saver) power_profile="Strømbesparelse" ;; balanced) power_profile="Balanceret" ;; performance) power_profile="Ydelse" ;; *) power_profile="Ukendt" ;; esac
+  mqtt_pub "$BASE_TOPIC/state/power_profile" "$power_profile" -r || true
+  mqtt_pub "$BASE_TOPIC/diagnostic/errors" "$(cat "$ERROR_FILE" 2>/dev/null || echo 0)" || true
+  mqtt_pub "$BASE_TOPIC/diagnostic/heartbeat" "$heartbeat" || true
+  mqtt_pub "$BASE_TOPIC/diagnostic/last_active" "$heartbeat" || true
+  mqtt_pub "$BASE_TOPIC/diagnostic/version" "$(cat "$VERSION_FILE" 2>/dev/null || echo 1.5.0)" -r || true
+  ha_power="$(ha_power_reading)"
+  [[ -n "$ha_power" ]] && mqtt_pub "$BASE_TOPIC/stats/pc_power_w" "$ha_power" || true
+  check_for_update
+done
