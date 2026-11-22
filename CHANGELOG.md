@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.27.3 — 2026-11-22
+
+- **Maintenance.** Release to test updating after the repository move. No functional changes.
+
 ## v1.27.2 — 2026-11-22
 
 - **Cleanup.** Personal examples removed from the code. No functional changes.
