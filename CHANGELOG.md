@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.28.0 — 2026-11-24
+
+- **Codex CLI as a Home Assistant update.** When Codex is installed on the kiosk (`~/.local/bin/codex`), `update.<kiosk>_codex_cli` shows the installed and the latest version (npm dist-tag `latest` of `@openai/codex`) and gets an **Install** button that runs `codex update` as the kiosk user – no root needed. Checked hourly with the system updates; a failed update is shown in the summary. Without Codex the entity is removed again.
+- **Old Codex versions are cleaned up.** Codex keeps every version it has ever installed (several GB after a few months). After a good update only the current and the previous one are kept.
 ## v1.27.3 — 2026-11-22
 
 - **Maintenance.** Release to test updating after the repository move. No functional changes.

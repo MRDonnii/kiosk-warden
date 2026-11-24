@@ -341,6 +341,12 @@ handle_claude_code_install() {
     "$HOME/kiosk/claude-code-update.sh" install >/dev/null 2>&1 || true
 }
 
+# Codex CLI (Home Assistant's Install button on Codex CLI); codex-update.sh reports the progress.
+handle_codex_cli_install() {
+  systemd-run --user --collect --unit="kiosk-codex-update-$(date +%s)" \
+    "$HOME/kiosk/codex-update.sh" install >/dev/null 2>&1 || true
+}
+
 handle_codex_remote_command() {
   case "$1" in
     restart) restart_codex_remote ;;
@@ -411,4 +417,5 @@ listen_topic "$CODEX_REMOTE_TOPIC/command" handle_codex_remote_command &
 listen_topic "$BASE_TOPIC/update/install" handle_update_install &
 listen_topic "$BASE_TOPIC/system_updates/install" handle_system_updates_install &
 listen_topic "$BASE_TOPIC/claude_code/install" handle_claude_code_install &
+listen_topic "$BASE_TOPIC/codex_cli/install" handle_codex_cli_install &
 listen_topic "$BASE_TOPIC/command" handle_command

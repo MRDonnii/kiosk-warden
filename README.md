@@ -257,6 +257,13 @@ dist-tag of the channel in `~/.claude/settings.json`, `latest` by default). Its
 sessions keep their version until they are started again
 (`scripts/claude-code-update.sh check` prints the versions as JSON).
 
+Codex CLI works the same way: when `~/.local/bin/codex` is there,
+`update.kiosk_..._codex_cli` shows the installed and the latest version (npm
+dist-tag `latest` of `@openai/codex`) and its **Install** button runs
+`codex update` as the kiosk user. After a good update only the current and the
+previous standalone release in `~/.codex/packages/standalone/releases` are kept
+(`scripts/codex-update.sh check` prints the versions as JSON).
+
 ### Self-healing screen (LightDM kiosks)
 
 LightDM logs the kiosk user in once per start. When the kiosk session later ends
